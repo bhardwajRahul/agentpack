@@ -19,6 +19,8 @@ Agentpack is a local-first open-source tool. It does not connect to an agent's h
 - a local MCP server
 - project instructions such as `AGENTS.md`, `CLAUDE.md`, and Cursor rules
 
+`.agentpack/` is local task state and is ignored by git by default. Export or bundle sanitized context when you want to hand work to another agent or chat.
+
 ## v0 Scope
 
 The first version is intentionally small:
@@ -93,6 +95,24 @@ Agentpack stores:
 - compact resume context under a rough token budget
 
 The source cache is deliberately lightweight. Agentpack stores metadata, hashes, summaries, and optional snippets, not a full copy of the repository.
+
+## Context Budgets
+
+`--budget` is an approximate token target for generated handoff context. v0 uses a simple estimate, so the number is a practical ceiling, not a guarantee.
+
+Suggested defaults:
+
+- `1200`: quick status ping
+- `4000`: normal chat handoff
+- `8000`: deeper coding-agent handoff
+- `16000`: large debugging session or review
+
+When unsure, start with:
+
+```bash
+agentpack resume --budget 4000
+agentpack export --to chatgpt --budget 4000
+```
 
 ## MCP
 

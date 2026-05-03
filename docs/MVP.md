@@ -50,6 +50,8 @@ agentpack install cursor
 
 `events.jsonl` is the append-only task ledger. `sources.json` records file hashes, summaries, and optional snippets. `checkpoints/` stores materialized resume snapshots plus git metadata.
 
+`.agentpack/` is ignored by git by default. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
+
 ## Budget Policy
 
 Budget packing is deterministic and approximate. The v0 token estimate is intentionally simple:
@@ -68,3 +70,13 @@ Resume sections are prioritized:
 6. Evidence.
 7. Recent timeline.
 
+Suggested presets:
+
+```text
+1200: quick status ping
+4000: normal chat handoff
+8000: deeper coding-agent handoff
+16000: large debugging session or review
+```
+
+MCP clients should choose the smallest budget that preserves next-action safety. Humans can override it per command.
