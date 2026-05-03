@@ -1,0 +1,333 @@
+import { existsSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
+import { buildResume } from "../core/resume.js";
+import {
+  appendEvent,
+  getPackPath,
+  initPack,
+  readState,
+  requirePackRoot,
+  writeState
+} from "../core/store.js";
+import { addEvidence, addSourceRecord, replayEvents } from "../operations.js";
+import { installIntegration } from "../integrations/install.js";
+import { startMcpServer } from "../mcp/server.js";
+
+type ArgValue = string | boolean | string[];
+
+interface ParsedArgs {
+  options: Record<string, ArgValue>;
+  positionals: string[];
+}
+
+export async function runCli(argv: string[], cwd: string): Promise<void> {
+  const command = argv[0];
+  const rest = argv.slice(1);
+
+  if (!command || command === "--help" || command === "-h") {
+    printHelp();
+    return;
+  }
+
+  if (command === "init") {
+    const packPath = initPack(cwd);
+    process.stdout.write(`Initialized Agentpack at ${packPath}\n`);
+    return;
+  }
+
+  if (command === "mcp") {
+    startMcpServer(cwd);
+    return;
+  }
+
+  const root = requirePackRoot(cwd);
+
+  if (command === "status") {
+    const state = readState(root);
+    process.stdout.write(`${JSON.stringify(state, null, 2)}\n`);
+    return;
+  }
+
+  if (command === "record") {
+    recordCommand(root, rest);
+    return;
+  }
+
+  if (command === "source") {
+    sourceCommand(root, rest);
+    return;
+  }
+
+  if (command === "evidence") {
+    evidenceCommand(root, rest);
+    return;
+  }
+
+  if (command === "checkpoint") {
+    const parsed = parseArgs(rest);
+    const checkpoint = createCheckpoint(root, {
+      summary: stringOption(parsed.options.message) || stringOption(parsed.options.m) || stringOption(parsed.options.summary),
+      status: stringOption(parsed.options.status),
+      nextActions: toArray(parsed.options.next)
+    });
+    process.stdout.write(`Created checkpoint ${checkpoint.id}\n`);
+    return;
+  }
+
+  if (command === "resume") {
+    const parsed = parseArgs(rest);
+    const resume = buildResume(root, {
+      budget: numberOption(parsed.options.budget),
+      query: stringOption(parsed.options.query)
+    });
+    process.stdout.write(`${resume.markdown}\n`);
+    return;
+  }
+
+  if (command === "export") {
+    const parsed = parseArgs(rest);
+    const target = stringOption(parsed.options.to) || parsed.positionals[0] || "chatgpt";
+    const resume = buildResume(root, {
+      budget: numberOption(parsed.options.budget) || 4000
+    });
+    const filePath = exportPath(root, target);
+    writeFileSync(filePath, resume.markdown, "utf8");
+    process.stdout.write(`Exported ${target} handoff to ${filePath}\n`);
+    return;
+  }
+
+  if (command === "diff") {
+    const parsed = parseArgs(rest);
+    process.stdout.write(`${diffCheckpoints(root, parsed.positionals[0], parsed.positionals[1])}\n`);
+    return;
+  }
+
+  if (command === "replay") {
+    const parsed = parseArgs(rest);
+    process.stdout.write(`${replayEvents(root, numberOption(parsed.options.limit) || 50)}\n`);
+    return;
+  }
+
+  if (command === "install") {
+    const target = rest[0];
+    if (!target) {
+      throw new Error("install requires target: codex, claude, or cursor");
+    }
+    const message = installIntegration(root, target);
+    process.stdout.write(`${message}\n`);
+    return;
+  }
+
+  if (command === "set") {
+    setCommand(root, rest);
+    return;
+  }
+
+  throw new Error(`Unknown command: ${command}`);
+}
+
+function printHelp(): void {
+  process.stdout.write(`Agentpack
+
+Portable savegames and context budgets for AI coding agents.
+
+Usage:
+  agentpack init
+  agentpack set goal <text>
+  agentpack set status <text>
+  agentpack set next <item> [--next <item>]
+  agentpack source add <file> --summary <text>
+  agentpack record decision <text>
+  agentpack record dead-end <text> --reason <text>
+  agentpack evidence add --kind test-output --file test.log
+  agentpack checkpoint -m <summary>
+  agentpack resume --budget 4000
+  agentpack export --to chatgpt --budget 4000
+  agentpack diff [from] [to]
+  agentpack replay
+  agentpack mcp
+  agentpack install codex|claude|cursor
+`);
+}
+
+function recordCommand(root: string, rest: string[]): void {
+  const type = rest[0];
+  const args = rest.slice(1);
+  const parsed = parseArgs(args);
+  const text = stringOption(parsed.options.text) || parsed.positionals.join(" ");
+
+  if (!isRecordType(type)) {
+    throw new Error("record type must be decision, dead-end, or note");
+  }
+
+  if (!text) {
+    throw new Error("record requires text");
+  }
+
+  const event = appendEvent(root, type, {
+    text,
+    reason: stringOption(parsed.options.reason) || "",
+    files: toArray(parsed.options.file),
+    evidence: toArray(parsed.options.evidence)
+  });
+
+  process.stdout.write(`Recorded ${type} ${event.id}\n`);
+}
+
+function sourceCommand(root: string, rest: string[]): void {
+  const subcommand = rest[0];
+  const args = rest.slice(1);
+  if (subcommand !== "add") {
+    throw new Error("source command supports only `add` in v0");
+  }
+
+  const parsed = parseArgs(args);
+  const filePath = parsed.positionals[0];
+  if (!filePath) {
+    throw new Error("source add requires a file path");
+  }
+
+  const source = addSourceRecord(root, filePath, {
+    summary: stringOption(parsed.options.summary) || stringOption(parsed.options.s) || parsed.positionals.slice(1).join(" "),
+    snippet: stringOption(parsed.options.snippet) || ""
+  });
+
+  process.stdout.write(`Recorded source ${source.path} (${source.hash.slice(0, 12)})\n`);
+}
+
+function evidenceCommand(root: string, rest: string[]): void {
+  const subcommand = rest[0];
+  const args = rest.slice(1);
+  if (subcommand !== "add") {
+    throw new Error("evidence command supports only `add` in v0");
+  }
+
+  const parsed = parseArgs(args);
+  const event = addEvidence(root, {
+    kind: stringOption(parsed.options.kind) || "note",
+    file: stringOption(parsed.options.file),
+    content: stringOption(parsed.options.content) || parsed.positionals.join(" "),
+    command: stringOption(parsed.options.command),
+    exitCode: stringOption(parsed.options.exitCode)
+  });
+
+  process.stdout.write(`Attached evidence ${event.id}\n`);
+}
+
+function setCommand(root: string, rest: string[]): void {
+  const field = rest[0];
+  const args = rest.slice(1);
+  const parsed = parseArgs(args);
+  const state = readState(root);
+  const text = parsed.positionals.join(" ");
+
+  if (field === "goal") {
+    state.goal = text;
+  } else if (field === "status") {
+    state.currentStatus = text;
+  } else if (field === "next") {
+    state.nextActions = [text, ...toArray(parsed.options.next)].filter(Boolean);
+  } else {
+    throw new Error("set supports goal, status, or next");
+  }
+
+  writeState(root, state);
+  process.stdout.write(`Updated ${field}\n`);
+}
+
+function exportPath(root: string, target: string): string {
+  const normalized = String(target).toLowerCase();
+  const fileName = normalized === "chatgpt" ? "chatgpt-handoff.md" : `${normalized}-handoff.md`;
+  const filePath = getPackPath(root, "exports", fileName);
+  if (!existsSync(path.dirname(filePath))) {
+    throw new Error("Agentpack exports directory is missing. Run `agentpack init` again.");
+  }
+  return filePath;
+}
+
+function parseArgs(args: string[]): ParsedArgs {
+  const options: Record<string, ArgValue> = {};
+  const positionals: string[] = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const item = args[index];
+    if (!item) {
+      continue;
+    }
+
+    if (item.startsWith("--")) {
+      const [rawKey, inlineValue] = item.slice(2).split("=", 2);
+      if (!rawKey) {
+        continue;
+      }
+      const value = inlineValue !== undefined ? inlineValue : args[index + 1];
+      if (inlineValue === undefined && value && !value.startsWith("-")) {
+        index += 1;
+        addOption(options, rawKey, value);
+      } else {
+        addOption(options, rawKey, true);
+      }
+      continue;
+    }
+
+    if (item.startsWith("-") && item.length > 1) {
+      const key = item.slice(1);
+      const value = args[index + 1];
+      if (value && !value.startsWith("-")) {
+        index += 1;
+        addOption(options, key, value);
+      } else {
+        addOption(options, key, true);
+      }
+      continue;
+    }
+
+    positionals.push(item);
+  }
+
+  return { options, positionals };
+}
+
+function addOption(options: Record<string, ArgValue>, key: string, value: ArgValue): void {
+  if (options[key] === undefined) {
+    options[key] = value;
+    return;
+  }
+
+  if (Array.isArray(options[key])) {
+    const textValue = stringOption(value);
+    if (textValue) {
+      options[key].push(textValue);
+    }
+    return;
+  }
+
+  options[key] = [...toArray(options[key]), ...toArray(value)];
+}
+
+function toArray(value: ArgValue | undefined): string[] {
+  if (value === undefined || value === true || value === false) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+}
+
+function stringOption(value: ArgValue | undefined): string {
+  if (value === undefined || value === true || value === false) {
+    return "";
+  }
+  return Array.isArray(value) ? value[0] || "" : value;
+}
+
+function numberOption(value: ArgValue | undefined): number {
+  if (value === undefined || value === true || value === false) {
+    return 0;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function isRecordType(value: string | undefined): value is "decision" | "dead-end" | "note" {
+  return value === "decision" || value === "dead-end" || value === "note";
+}

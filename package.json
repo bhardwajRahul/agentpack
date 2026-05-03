@@ -1,0 +1,41 @@
+{
+  "name": "agentpack-cli",
+  "version": "0.0.0",
+  "description": "Portable savegames and context budgets for AI coding agents.",
+  "type": "module",
+  "bin": {
+    "agentpack": "./dist/src/agentpack.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "smoke": "npm run build && node dist/src/agentpack.js --help",
+    "test": "npm run build && node --test dist/tests/*.test.js",
+    "prepack": "npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "npm@10.9.7",
+  "keywords": [
+    "agents",
+    "ai",
+    "coding-agents",
+    "mcp",
+    "local-first"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE",
+    "assets/agentpack-logo.jpg"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "typescript": "5.8.3"
+  }
+}

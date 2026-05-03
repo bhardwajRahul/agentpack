@@ -1,0 +1,96 @@
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { getFileRecord } from "./core/hash.js";
+import {
+  appendEvent,
+  getPackPath,
+  readEvents,
+  readSources,
+  writeSources
+} from "./core/store.js";
+import { createId } from "./core/ids.js";
+import type { AgentpackEvent, SourceRecord } from "./core/types.js";
+
+interface SourceRecordOptions {
+  summary?: string;
+  snippet?: string;
+}
+
+interface EvidenceOptions {
+  kind?: string;
+  content?: string;
+  text?: string;
+  file?: string;
+  path?: string;
+  command?: string;
+  exitCode?: number | string | null;
+}
+
+export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
+  const source = getFileRecord(root, filePath, {
+    summary: options.summary || "Reviewed source.",
+    snippet: options.snippet || ""
+  });
+  const state = readSources(root);
+  const existing = state.sources.findIndex((item) => item.path === source.path);
+
+  if (existing >= 0) {
+    state.sources[existing] = source;
+  } else {
+    state.sources.push(source);
+  }
+
+  writeSources(root, state);
+  appendEvent(root, "source", {
+    path: source.path,
+    hash: source.hash,
+    summary: source.summary
+  });
+  return source;
+}
+
+export function addEvidence(root: string, options: EvidenceOptions = {}): AgentpackEvent {
+  const kind = options.kind || "note";
+  const content = readEvidenceContent(root, options);
+  const id = createId("ev");
+  const extension = kind === "json" ? "json" : "txt";
+  const evidencePath = path.join("evidence", `${id}.${extension}`);
+  const absolutePath = getPackPath(root, evidencePath);
+  const exitCode = options.exitCode === undefined || options.exitCode === null ? null : Number(options.exitCode);
+
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, content, "utf8");
+
+  return appendEvent(root, "evidence", {
+    kind,
+    path: evidencePath,
+    command: options.command || "",
+    exitCode: Number.isFinite(exitCode) ? exitCode : null
+  });
+}
+
+export function replayEvents(root: string, limit = 50): string {
+  const events = readEvents(root).slice(-Number(limit || 50));
+  if (!events.length) {
+    return "No Agentpack events yet.";
+  }
+
+  return events.map((event) => {
+    const label = event.text || event.summary || event.path || event.kind || event.checkpointId || "";
+    return `${event.ts} [${event.type}] ${label}`.trim();
+  }).join("\n");
+}
+
+function readEvidenceContent(root: string, options: EvidenceOptions): string {
+  const inputPath = options.file || options.path;
+  if (inputPath) {
+    const absolutePath = path.resolve(root, inputPath);
+    const relativePath = path.relative(root, absolutePath);
+    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      throw new Error(`Refusing to attach evidence outside project root: ${inputPath}`);
+    }
+    return readFileSync(absolutePath, "utf8");
+  }
+
+  return String(options.content || options.text || "");
+}
