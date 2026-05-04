@@ -39,9 +39,10 @@ npm install -g agentpack-cli
 agentpack init
 agentpack source add src/index.ts --summary "Main CLI entrypoint. Re-open only if hash changed."
 agentpack record decision "Use file-first JSON/JSONL storage for the MVP."
+agentpack run "npm test"
 agentpack checkpoint -m "CLI skeleton works; MCP server is next."
-agentpack resume --budget 4000
-agentpack export --to chatgpt --budget 4000
+agentpack resume --preset chat
+agentpack export --to chatgpt --preset chat
 ```
 
 For local development in this repo:
@@ -110,8 +111,8 @@ Suggested defaults:
 When unsure, start with:
 
 ```bash
-agentpack resume --budget 4000
-agentpack export --to chatgpt --budget 4000
+agentpack resume --preset chat
+agentpack export --to chatgpt --preset chat
 ```
 
 ## MCP

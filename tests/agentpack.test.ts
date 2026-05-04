@@ -18,20 +18,24 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   run(dir, ["set", "goal", "Ship a tiny Agentpack MVP"]);
   run(dir, ["source", "add", "index.js", "--summary", "Entry point already inspected."]);
   run(dir, ["record", "decision", "Use local JSON and JSONL storage for v0."]);
+  run(dir, ["note", "This is a local task-state note."]);
   run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
+  run(dir, ["run", process.execPath, "--version"]);
   run(dir, ["checkpoint", "-m", "First checkpoint"]);
 
-  const resume = run(dir, ["resume", "--budget", "800"]);
+  const resume = run(dir, ["resume", "--preset", "quick"]);
   assert.match(resume, /Ship a tiny Agentpack MVP/);
   assert.match(resume, /Source Cache/);
   assert.match(resume, /Do not re-open unless needed or unless hash changed/);
 
-  const exported = run(dir, ["export", "--to", "chatgpt", "--budget", "800"]);
+  const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "quick"]);
   assert.match(exported, /chatgpt-handoff\.md/);
   assert.equal(existsSync(path.join(dir, ".agentpack", "exports", "chatgpt-handoff.md")), true);
 
   const replay = run(dir, ["replay"]);
   assert.match(replay, /decision/);
+  assert.match(replay, /note/);
+  assert.match(replay, /command-output/);
   assert.match(replay, /checkpoint/);
 
   const sourceDb = JSON.parse(readFileSync(path.join(dir, ".agentpack", "sources.json"), "utf8"));

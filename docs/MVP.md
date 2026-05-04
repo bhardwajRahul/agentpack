@@ -22,9 +22,11 @@ agentpack source add <file> --summary <text>
 agentpack record decision <text>
 agentpack record dead-end <text>
 agentpack evidence add --kind test-output --file <path>
+agentpack note <text>
+agentpack run <command>
 agentpack checkpoint -m <summary>
-agentpack resume --budget 4000
-agentpack export --to chatgpt --budget 4000
+agentpack resume --preset chat
+agentpack export --to chatgpt --preset chat
 agentpack diff
 agentpack replay
 agentpack mcp

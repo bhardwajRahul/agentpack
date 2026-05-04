@@ -3,6 +3,7 @@ import { buildResume } from "../core/resume.js";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { addEvidence, addSourceRecord, replayEvents } from "../operations.js";
 import type { Readable, Writable } from "node:stream";
+import { resolveBudget } from "../core/presets.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -29,7 +30,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         query: { type: "string" },
-        budget: { type: "number" }
+        budget: { type: "number" },
+        preset: { type: "string" }
       }
     }
   },
@@ -105,6 +107,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         budget: { type: "number" },
+        preset: { type: "string" },
         query: { type: "string" }
       }
     }
@@ -256,7 +259,11 @@ function route(root: string, method: string | undefined, params: Record<string, 
 
 function callTool(root: string, name: string, args: Record<string, unknown>): unknown {
   if (name === "load_context" || name === "resume") {
-    const resume = buildResume(root, { budget: numberValue(args.budget, 4000), query: text(args.query) });
+    const budget = resolveBudget({
+      budget: numberValue(args.budget, 0),
+      preset: text(args.preset)
+    }, 4000);
+    const resume = buildResume(root, { budget, query: text(args.query) });
     return toolText(resume.markdown);
   }
 

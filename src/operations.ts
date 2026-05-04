@@ -76,7 +76,7 @@ export function replayEvents(root: string, limit = 50): string {
   }
 
   return events.map((event) => {
-    const label = event.text || event.summary || event.path || event.kind || event.checkpointId || "";
+    const label = event.text || event.summary || event.kind || event.path || event.checkpointId || "";
     return `${event.ts} [${event.type}] ${label}`.trim();
   }).join("\n");
 }

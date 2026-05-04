@@ -1,7 +1,9 @@
 import { existsSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildResume } from "../core/resume.js";
+import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import {
   appendEvent,
   getPackPath,
@@ -54,6 +56,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     return;
   }
 
+  if (command === "note") {
+    noteCommand(root, rest);
+    return;
+  }
+
   if (command === "source") {
     sourceCommand(root, rest);
     return;
@@ -61,6 +68,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "evidence") {
     evidenceCommand(root, rest);
+    return;
+  }
+
+  if (command === "run") {
+    runCommand(root, rest);
     return;
   }
 
@@ -78,7 +90,7 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
   if (command === "resume") {
     const parsed = parseArgs(rest);
     const resume = buildResume(root, {
-      budget: numberOption(parsed.options.budget),
+      budget: budgetOption(parsed.options),
       query: stringOption(parsed.options.query)
     });
     process.stdout.write(`${resume.markdown}\n`);
@@ -89,7 +101,7 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     const parsed = parseArgs(rest);
     const target = stringOption(parsed.options.to) || parsed.positionals[0] || "chatgpt";
     const resume = buildResume(root, {
-      budget: numberOption(parsed.options.budget) || 4000
+      budget: budgetOption(parsed.options, 4000)
     });
     const filePath = exportPath(root, target);
     writeFileSync(filePath, resume.markdown, "utf8");
@@ -140,14 +152,18 @@ Usage:
   agentpack source add <file> --summary <text>
   agentpack record decision <text>
   agentpack record dead-end <text> --reason <text>
+  agentpack note <text>
   agentpack evidence add --kind test-output --file test.log
+  agentpack run "npm test"
   agentpack checkpoint -m <summary>
-  agentpack resume --budget 4000
-  agentpack export --to chatgpt --budget 4000
+  agentpack resume --preset chat
+  agentpack export --to chatgpt --preset chat
   agentpack diff [from] [to]
   agentpack replay
   agentpack mcp
   agentpack install codex|claude|cursor
+
+Budget presets: ${formatBudgetPresets()}
 `);
 }
 
@@ -173,6 +189,18 @@ function recordCommand(root: string, rest: string[]): void {
   });
 
   process.stdout.write(`Recorded ${type} ${event.id}\n`);
+}
+
+function noteCommand(root: string, rest: string[]): void {
+  const parsed = parseArgs(rest);
+  const text = stringOption(parsed.options.text) || parsed.positionals.join(" ");
+
+  if (!text) {
+    throw new Error("note requires text");
+  }
+
+  const event = appendEvent(root, "note", { text });
+  process.stdout.write(`Recorded note ${event.id}\n`);
 }
 
 function sourceCommand(root: string, rest: string[]): void {
@@ -213,6 +241,53 @@ function evidenceCommand(root: string, rest: string[]): void {
   });
 
   process.stdout.write(`Attached evidence ${event.id}\n`);
+}
+
+function runCommand(root: string, rest: string[]): void {
+  const command = rest.join(" ").trim();
+  if (!command) {
+    throw new Error("run requires a command");
+  }
+
+  const startedAt = new Date().toISOString();
+  const result = spawnSync(command, {
+    cwd: root,
+    shell: true,
+    encoding: "utf8",
+    maxBuffer: 10 * 1024 * 1024
+  });
+
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  if (stdout) {
+    process.stdout.write(stdout);
+  }
+  if (stderr) {
+    process.stderr.write(stderr);
+  }
+
+  const exitCode = typeof result.status === "number" ? result.status : 1;
+  const content = [
+    `Command: ${command}`,
+    `Started: ${startedAt}`,
+    `Exit code: ${exitCode}`,
+    "",
+    "## stdout",
+    stdout || "(empty)",
+    "",
+    "## stderr",
+    stderr || "(empty)"
+  ].join("\n");
+
+  const event = addEvidence(root, {
+    kind: "command-output",
+    content,
+    command,
+    exitCode
+  });
+
+  process.stdout.write(`\nAttached command evidence ${event.id}\n`);
+  process.exitCode = exitCode;
 }
 
 function setCommand(root: string, rest: string[]): void {
@@ -326,6 +401,13 @@ function numberOption(value: ArgValue | undefined): number {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function budgetOption(options: Record<string, ArgValue>, fallback = 0): number {
+  return resolveBudget({
+    budget: numberOption(options.budget),
+    preset: stringOption(options.preset)
+  }, fallback);
 }
 
 function isRecordType(value: string | undefined): value is "decision" | "dead-end" | "note" {
