@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "resume"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -49,6 +49,12 @@ try {
     }
   });
 
+  const sourceStatus = await client.request("tools/call", {
+    name: "source_status",
+    arguments: {}
+  });
+  assertMatch(sourceStatus.result?.content?.[0]?.text || "", /UNCHANGED index\.js/, "source_status reports unchanged source");
+
   const resume = await client.request("tools/call", {
     name: "resume",
     arguments: {
@@ -61,7 +67,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

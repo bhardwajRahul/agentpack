@@ -1,7 +1,7 @@
 import { appendEvent, requirePackRoot } from "../core/store.js";
 import { buildResume } from "../core/resume.js";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
-import { addEvidence, addSourceRecord, replayEvents } from "../operations.js";
+import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 
@@ -86,6 +86,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         snippet: { type: "string" }
       },
       required: ["path"]
+    }
+  },
+  {
+    name: "source_status",
+    description: "Check whether recorded source conclusions are still valid based on file hashes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        json: { type: "boolean" }
+      }
     }
   },
   {
@@ -304,6 +314,13 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
     return toolText(`Recorded source ${source.path} (${source.hash.slice(0, 12)}).`);
   }
 
+  if (name === "source_status") {
+    if (booleanValue(args.json, false)) {
+      return toolText(JSON.stringify(getSourceStatuses(root), null, 2));
+    }
+    return toolText(formatSourceStatuses(root));
+  }
+
   if (name === "checkpoint") {
     const checkpoint = createCheckpoint(root, {
       summary: text(args.summary),
@@ -365,6 +382,10 @@ function numberValue(value: unknown, fallback: number): number {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function booleanValue(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function errorMessage(error: unknown): string {

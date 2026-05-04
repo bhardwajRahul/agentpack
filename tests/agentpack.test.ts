@@ -79,7 +79,8 @@ test("exposes expected MCP tools", () => {
     "record_decision",
     "record_source",
     "replay",
-    "resume"
+    "resume",
+    "source_status"
   ]);
 });
 
@@ -144,9 +145,21 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.match(source.result.content[0].text, /Recorded source index\.js/);
 
-  const resume = await mcp.send({
+  const sourceStatus = await mcp.send({
     jsonrpc: "2.0",
     id: 5,
+    method: "tools/call",
+    params: {
+      name: "source_status",
+      arguments: {}
+    }
+  });
+  assert.match(sourceStatus.result.content[0].text, /UNCHANGED index\.js/);
+  assert.match(sourceStatus.result.content[0].text, /do not re-open unless needed/);
+
+  const resume = await mcp.send({
+    jsonrpc: "2.0",
+    id: 6,
     method: "tools/call",
     params: {
       name: "resume",

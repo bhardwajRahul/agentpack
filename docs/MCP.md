@@ -13,6 +13,7 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 - `record_dead_end`
 - `attach_evidence`
 - `record_source`
+- `source_status`
 - `checkpoint`
 - `resume`
 - `diff`
@@ -40,6 +41,7 @@ The smoke test verifies:
 - `tools/list`
 - `tools/call record_decision`
 - `tools/call record_source`
+- `tools/call source_status`
 - `tools/call resume`
 - notification messages do not produce responses
 

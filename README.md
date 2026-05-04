@@ -136,6 +136,7 @@ agentpack export --to chatgpt --preset chat
 - `record_dead_end`
 - `attach_evidence`
 - `record_source`
+- `source_status`
 - `checkpoint`
 - `resume`
 - `diff`
