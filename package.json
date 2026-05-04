@@ -8,6 +8,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "mcp:smoke": "npm run build && node scripts/mcp-smoke.mjs",
     "smoke": "npm run build && node dist/src/agentpack.js --help",
     "test": "npm run build && node --test dist/tests/*.test.js",
     "prepack": "npm test"
@@ -26,6 +27,7 @@
   "license": "MIT",
   "files": [
     "dist/src",
+    "scripts/mcp-smoke.mjs",
     "README.md",
     "LICENSE",
     "assets/agentpack-logo.jpg"

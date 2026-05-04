@@ -20,7 +20,15 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 
 ## Manual Smoke
 
-In normal use, a client such as Codex, Claude Code, or Cursor starts `agentpack mcp`. For development, the test suite exercises the same newline-delimited JSON-RPC flow in memory:
+In normal use, a client such as Codex, Claude Code, or Cursor starts `agentpack mcp`. For development, run the local smoke command:
+
+```bash
+npm run mcp:smoke
+```
+
+It creates a temporary Agentpack workspace, starts `agentpack mcp`, sends JSON-RPC messages over stdio, and removes the temporary workspace after the check.
+
+The test suite also exercises the same newline-delimited JSON-RPC flow in memory:
 
 ```bash
 npm test

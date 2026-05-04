@@ -54,6 +54,7 @@ For local development in this repo:
 fnm use 22
 npm ci --ignore-scripts
 npm test
+npm run mcp:smoke
 node dist/src/agentpack.js --help
 ```
 
@@ -72,6 +73,14 @@ eval "$(fnm env --use-on-cd --shell zsh)"
 ```
 
 See [docs/SETUP.md](docs/SETUP.md) for the full setup guide.
+
+To verify the local MCP server without configuring an agent client yet:
+
+```bash
+npm run mcp:smoke
+```
+
+The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize`, `tools/list`, and a short `resume` flow, then deletes the temporary workspace.
 
 ## Security Posture
 
