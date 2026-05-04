@@ -132,6 +132,8 @@ agentpack export --to chatgpt --preset chat
 - `diff`
 - `replay`
 
+See [docs/MCP.md](docs/MCP.md) for the current MCP contract and smoke-test flow.
+
 ## Roadmap
 
 ```text
