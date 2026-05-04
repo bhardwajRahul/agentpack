@@ -23,14 +23,26 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   run(dir, ["note", "This is a local task-state note."]);
   run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
   run(dir, ["run", process.execPath, "--version"]);
-  run(dir, ["checkpoint", "-m", "First checkpoint"]);
+  run(dir, [
+    "checkpoint",
+    "-m",
+    "First checkpoint",
+    "--status",
+    "Ready for handoff",
+    "--next",
+    "Open MCP contract"
+  ]);
 
-  const resume = run(dir, ["resume", "--preset", "quick"]);
+  const resume = run(dir, ["resume", "--preset", "agent"]);
   assert.match(resume, /Ship a tiny Agentpack MVP/);
+  assert.match(resume, /Ready for handoff/);
+  assert.match(resume, /Open MCP contract/);
   assert.match(resume, /Source Cache/);
   assert.match(resume, /Do not re-open unless needed or unless hash changed/);
+  assert.match(resume, /command-output/);
+  assert.match(resume, /exit code: 0/);
 
-  const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "quick"]);
+  const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "agent"]);
   assert.match(exported, /chatgpt-handoff\.md/);
   assert.equal(existsSync(path.join(dir, ".agentpack", "exports", "chatgpt-handoff.md")), true);
 

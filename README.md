@@ -42,7 +42,7 @@ agentpack source add src/index.ts --summary "Main CLI entrypoint. Re-open only i
 agentpack source status
 agentpack record decision "Use file-first JSON/JSONL storage for the MVP."
 agentpack run "npm test"
-agentpack checkpoint -m "CLI skeleton works; MCP server is next."
+agentpack checkpoint -m "CLI skeleton works; MCP server is next." --status "Ready for MCP polish" --next "Test MCP JSON-RPC flow"
 agentpack resume --preset chat
 agentpack export --to chatgpt --preset chat
 agentpack doctor

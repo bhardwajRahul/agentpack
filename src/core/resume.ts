@@ -161,9 +161,17 @@ function formatEvidence(root: string, events: AgentpackEvent[]): string[] {
     const eventPath = text(event.path);
     const file = eventPath ? getPackPath(root, eventPath) : null;
     const preview = file && existsSync(file)
-      ? readFileSync(file, "utf8").slice(0, 240).replace(/\s+/g, " ")
+      ? previewText(readFileSync(file, "utf8"))
       : text(event.content);
-    return `- ${event.ts}: ${text(event.kind) || "note"} ${eventPath} ${preview ? `- ${preview}` : ""}`.trim();
+    const lines = [
+      `- ${event.ts}: ${text(event.kind) || "note"}`,
+      text(event.command) ? `  - command: ${text(event.command)}` : null,
+      event.exitCode !== undefined && event.exitCode !== null ? `  - exit code: ${String(event.exitCode)}` : null,
+      eventPath ? `  - path: ${eventPath}` : null,
+      preview ? `  - preview: ${preview}` : null
+    ];
+
+    return lines.filter(Boolean).join("\n");
   });
 }
 
@@ -184,4 +192,11 @@ function text(value: unknown): string {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function previewText(value: string): string {
+  return value
+    .slice(0, 360)
+    .replace(/\s+/g, " ")
+    .trim();
 }

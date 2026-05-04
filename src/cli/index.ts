@@ -164,7 +164,7 @@ Usage:
   agentpack note <text>
   agentpack evidence add --kind test-output --file test.log
   agentpack run "npm test"
-  agentpack checkpoint -m <summary>
+  agentpack checkpoint -m <summary> --status <text> --next <item>
   agentpack resume --preset chat
   agentpack export --to chatgpt --preset chat
   agentpack diff [from] [to]

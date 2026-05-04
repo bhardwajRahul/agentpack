@@ -25,7 +25,7 @@ agentpack record dead-end <text>
 agentpack evidence add --kind test-output --file <path>
 agentpack note <text>
 agentpack run <command>
-agentpack checkpoint -m <summary>
+agentpack checkpoint -m <summary> --status <text> --next <item>
 agentpack resume --preset chat
 agentpack export --to chatgpt --preset chat
 agentpack diff
