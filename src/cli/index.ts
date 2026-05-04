@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildResume } from "../core/resume.js";
 import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
+import { buildDoctorReport } from "../core/doctor.js";
 import {
   appendEvent,
   getPackPath,
@@ -12,7 +13,7 @@ import {
   requirePackRoot,
   writeState
 } from "../core/store.js";
-import { addEvidence, addSourceRecord, replayEvents } from "../operations.js";
+import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
 import { installIntegration } from "../integrations/install.js";
 import { startMcpServer } from "../mcp/server.js";
 
@@ -40,6 +41,13 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "mcp") {
     startMcpServer(cwd);
+    return;
+  }
+
+  if (command === "doctor") {
+    const report = buildDoctorReport(cwd);
+    process.stdout.write(`${report.text}\n`);
+    process.exitCode = report.ok ? 0 : 1;
     return;
   }
 
@@ -150,6 +158,7 @@ Usage:
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
   agentpack source add <file> --summary <text>
+  agentpack source status [--json]
   agentpack record decision <text>
   agentpack record dead-end <text> --reason <text>
   agentpack note <text>
@@ -160,6 +169,7 @@ Usage:
   agentpack export --to chatgpt --preset chat
   agentpack diff [from] [to]
   agentpack replay
+  agentpack doctor
   agentpack mcp
   agentpack install codex|claude|cursor
 
@@ -206,8 +216,19 @@ function noteCommand(root: string, rest: string[]): void {
 function sourceCommand(root: string, rest: string[]): void {
   const subcommand = rest[0];
   const args = rest.slice(1);
+
+  if (subcommand === "status") {
+    const parsed = parseArgs(args);
+    if (parsed.options.json) {
+      process.stdout.write(`${JSON.stringify(getSourceStatuses(root), null, 2)}\n`);
+    } else {
+      process.stdout.write(`${formatSourceStatuses(root)}\n`);
+    }
+    return;
+  }
+
   if (subcommand !== "add") {
-    throw new Error("source command supports only `add` in v0");
+    throw new Error("source command supports `add` and `status`");
   }
 
   const parsed = parseArgs(args);

@@ -19,6 +19,7 @@ The project is local-first and open-source by default. Optional hosted sync can 
 ```bash
 agentpack init
 agentpack source add <file> --summary <text>
+agentpack source status
 agentpack record decision <text>
 agentpack record dead-end <text>
 agentpack evidence add --kind test-output --file <path>
@@ -29,6 +30,7 @@ agentpack resume --preset chat
 agentpack export --to chatgpt --preset chat
 agentpack diff
 agentpack replay
+agentpack doctor
 agentpack mcp
 agentpack install codex
 agentpack install claude
@@ -52,7 +54,7 @@ agentpack install cursor
 
 `events.jsonl` is the append-only task ledger. `sources.json` records file hashes, summaries, and optional snippets. `checkpoints/` stores materialized resume snapshots plus git metadata.
 
-`.agentpack/` is ignored by git by default. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
+`.agentpack/` is ignored by git by default. `agentpack init` adds `.agentpack/` to the project `.gitignore` when needed. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
 
 ## Budget Policy
 

@@ -28,6 +28,7 @@ The first version is intentionally small:
 - initialize a local `.agentpack/`
 - record decisions, dead ends, evidence, and inspected sources
 - store file hashes so agents can avoid re-reading unchanged files
+- check whether recorded sources are unchanged, changed, or missing
 - create checkpoints with git status, git diff, and generated resume context
 - export a budgeted handoff for ChatGPT or another manual target
 - run a minimal local MCP server for agent clients
@@ -38,11 +39,13 @@ The first version is intentionally small:
 npm install -g agentpack-cli
 agentpack init
 agentpack source add src/index.ts --summary "Main CLI entrypoint. Re-open only if hash changed."
+agentpack source status
 agentpack record decision "Use file-first JSON/JSONL storage for the MVP."
 agentpack run "npm test"
 agentpack checkpoint -m "CLI skeleton works; MCP server is next."
 agentpack resume --preset chat
 agentpack export --to chatgpt --preset chat
+agentpack doctor
 ```
 
 For local development in this repo:

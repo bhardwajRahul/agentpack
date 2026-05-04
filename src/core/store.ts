@@ -71,7 +71,23 @@ export function initPack(root: string): string {
     writeFileSync(path.join(packPath, "events.jsonl"), "", "utf8");
   }
 
+  ensurePackIgnored(root);
+
   return packPath;
+}
+
+export function ensurePackIgnored(root: string): void {
+  const gitignorePath = path.join(root, ".gitignore");
+  const entry = `${PACK_DIR}/`;
+  const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
+  const lines = existing.split(/\r?\n/).map((line) => line.trim());
+
+  if (lines.includes(entry) || lines.includes(PACK_DIR)) {
+    return;
+  }
+
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+  writeFileSync(gitignorePath, `${existing}${prefix}${entry}\n`, "utf8");
 }
 
 export function getPackPath(root: string, ...parts: string[]): string {

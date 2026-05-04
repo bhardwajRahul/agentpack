@@ -1,6 +1,6 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getFileRecord } from "./core/hash.js";
+import { getFileRecord, sha256File } from "./core/hash.js";
 import {
   appendEvent,
   getPackPath,
@@ -24,6 +24,15 @@ interface EvidenceOptions {
   path?: string;
   command?: string;
   exitCode?: number | string | null;
+}
+
+export interface SourceStatus {
+  path: string;
+  status: "unchanged" | "changed" | "missing";
+  summary: string;
+  recordedHash: string;
+  currentHash: string | null;
+  recordedAt: string;
 }
 
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
@@ -67,6 +76,50 @@ export function addEvidence(root: string, options: EvidenceOptions = {}): Agentp
     command: options.command || "",
     exitCode: Number.isFinite(exitCode) ? exitCode : null
   });
+}
+
+export function getSourceStatuses(root: string): SourceStatus[] {
+  const sources = readSources(root).sources || [];
+
+  return sources.map((source) => {
+    const absolutePath = path.join(root, source.path);
+    const currentHash = existsSync(absolutePath) ? sha256File(absolutePath) : null;
+    const status = currentHash === null
+      ? "missing"
+      : currentHash === source.hash
+        ? "unchanged"
+        : "changed";
+
+    return {
+      path: source.path,
+      status,
+      summary: source.summary || "",
+      recordedHash: source.hash,
+      currentHash,
+      recordedAt: source.recordedAt
+    };
+  });
+}
+
+export function formatSourceStatuses(root: string): string {
+  const statuses = getSourceStatuses(root);
+
+  if (statuses.length === 0) {
+    return "No source records yet. Use `agentpack source add <file> --summary <text>` after inspecting important files.";
+  }
+
+  return statuses.map((source) => {
+    const guidance = source.status === "unchanged"
+      ? "do not re-open unless needed"
+      : "re-open before relying on prior conclusions";
+
+    return [
+      `${source.status.toUpperCase()} ${source.path}`,
+      `  summary: ${source.summary || "No summary recorded."}`,
+      `  recorded: ${source.recordedAt}`,
+      `  guidance: ${guidance}`
+    ].join("\n");
+  }).join("\n\n");
 }
 
 export function replayEvents(root: string, limit = 50): string {
