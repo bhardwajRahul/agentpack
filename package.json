@@ -28,6 +28,7 @@
   "files": [
     "dist/src",
     "scripts/mcp-smoke.mjs",
+    "docs",
     "README.md",
     "LICENSE",
     "assets/agentpack-logo.jpg"

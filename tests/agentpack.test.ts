@@ -158,6 +158,47 @@ test("redacts secrets from stored context and handoff outputs", () => {
   }
 });
 
+test("previews and writes project-local MCP client install files", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-test-"));
+  run(dir, ["init"]);
+
+  const defaultPreview = run(dir, ["install", "cursor"]);
+  assert.match(defaultPreview, /dry run/);
+  assert.match(defaultPreview, /No files were changed/);
+  assert.equal(existsSync(path.join(dir, ".cursor", "mcp.json")), false);
+
+  const claudePreview = run(dir, ["install", "claude", "--dry-run"]);
+  assert.match(claudePreview, /agentpack install claude --write/);
+  assert.equal(existsSync(path.join(dir, "CLAUDE.md")), false);
+  assert.equal(existsSync(path.join(dir, ".mcp.json")), false);
+
+  const claudeInstall = run(dir, ["install", "claude", "--write"]);
+  assert.match(claudeInstall, /Installed Agentpack claude integration/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /agentpack:start/);
+  const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
+  assert.deepEqual(claudeMcp.mcpServers.agentpack, {
+    type: "stdio",
+    command: "agentpack",
+    args: ["mcp"]
+  });
+
+  run(dir, ["install", "cursor", "--write"]);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Use Agentpack/);
+  const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
+  assert.deepEqual(cursorMcp.mcpServers.agentpack, {
+    type: "stdio",
+    command: "agentpack",
+    args: ["mcp", "--root", "${workspaceFolder}"]
+  });
+
+  const codexInstall = run(dir, ["install", "codex", "--write"]);
+  assert.match(codexInstall, /No global Codex config is modified/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
+  const codexSnippet = readFileSync(path.join(dir, ".agentpack", "instructions", "codex-mcp.example.toml"), "utf8");
+  assert.match(codexSnippet, /\[mcp_servers\.agentpack\]/);
+  assert.match(codexSnippet, /args = \["mcp", "--root"/);
+});
+
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('mcp')\n", "utf8");

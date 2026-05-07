@@ -17,8 +17,8 @@ try {
   runCli(["init"]);
   runCli(["set", "goal", "Exercise Agentpack MCP smoke flow."]);
 
-  server = spawn(process.execPath, [cliPath, "mcp"], {
-    cwd: workspace,
+  server = spawn(process.execPath, [cliPath, "mcp", "--root", workspace], {
+    cwd: repoRoot,
     stdio: ["pipe", "pipe", "pipe"]
   });
 

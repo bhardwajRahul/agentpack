@@ -82,6 +82,8 @@ npm run mcp:smoke
 
 The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize`, `tools/list`, and a short `resume` flow, then deletes the temporary workspace.
 
+See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, and Cursor setup.
+
 ## Security Posture
 
 Agentpack keeps the v0 supply chain deliberately small:

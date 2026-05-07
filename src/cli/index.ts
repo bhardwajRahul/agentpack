@@ -41,7 +41,8 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
   }
 
   if (command === "mcp") {
-    startMcpServer(cwd);
+    const parsed = parseArgs(rest);
+    startMcpServer(stringOption(parsed.options.root) || cwd);
     return;
   }
 
@@ -137,7 +138,9 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     if (!target) {
       throw new Error("install requires target: codex, claude, or cursor");
     }
-    const message = installIntegration(root, target);
+    const parsed = parseArgs(rest.slice(1));
+    const dryRun = installDryRun(parsed.options);
+    const message = installIntegration(root, target, { dryRun });
     process.stdout.write(`${message}\n`);
     return;
   }
@@ -173,8 +176,8 @@ Usage:
   agentpack diff [from] [to]
   agentpack replay
   agentpack doctor
-  agentpack mcp
-  agentpack install codex|claude|cursor
+  agentpack mcp [--root <path>]
+  agentpack install codex|claude|cursor [--dry-run|--write]
 
 Budget presets: ${formatBudgetPresets()}
 `);
@@ -428,6 +431,17 @@ function numberOption(value: ArgValue | undefined): number {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function installDryRun(options: Record<string, ArgValue>): boolean {
+  const dryRun = options["dry-run"] === true;
+  const write = options.write === true;
+
+  if (dryRun && write) {
+    throw new Error("install accepts either --dry-run or --write, not both");
+  }
+
+  return !write;
 }
 
 function budgetOption(options: Record<string, ArgValue>, fallback = 0): number {

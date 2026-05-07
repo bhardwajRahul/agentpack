@@ -45,6 +45,26 @@ The smoke test verifies:
 - `tools/call resume`
 - notification messages do not produce responses
 
+## Client Setup
+
+Use dry-run install first:
+
+```bash
+agentpack install codex
+agentpack install claude
+agentpack install cursor
+```
+
+Apply only after reviewing the plan:
+
+```bash
+agentpack install codex --write
+agentpack install claude --write
+agentpack install cursor --write
+```
+
+See [INTEGRATIONS.md](INTEGRATIONS.md) for target-specific files and manual global config steps.
+
 ## Security Notes
 
 - The server operates only on the nearest `.agentpack/` root.
