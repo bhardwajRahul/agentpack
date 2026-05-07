@@ -2,6 +2,18 @@
 
 Agentpack integrates through project files, CLI, and MCP. It does not write hidden global configuration by default.
 
+## Client Matrix
+
+| Client | Instruction file | MCP config surface | Status |
+| --- | --- | --- | --- |
+| Codex | `AGENTS.md` | User-local `~/.codex/config.toml`, copied from `.agentpack/instructions/codex-mcp.example.toml` | Tested |
+| Claude Code | `CLAUDE.md` | Project-local `.mcp.json` | Tested |
+| Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Generated, not tested yet |
+| ChatGPT web / Claude web | Markdown handoff | No local stdio MCP support in v0; use `agentpack export` | Manual handoff |
+| Claude Desktop | Not installed by v0 | Desktop app MCP config or extension flow | Future |
+
+All clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live.
+
 ## Safe Install Flow
 
 Preview first:
