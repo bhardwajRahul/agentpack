@@ -1,14 +1,22 @@
 <!-- agentpack:start -->
 # Agentpack
 
-Use Agentpack to preserve task state for future AI coding agents.
+Use Agentpack as the task-state ledger for this repo.
 
-When you make meaningful progress, call Agentpack tools or CLI commands to record:
-- current status and next actions
-- decisions and their evidence
-- dead ends and failed approaches
-- files inspected, with conclusions and hashes
-- test outputs and relevant command results
+At the start of a task:
+- call `load_context` with a small preset first
+- call `source_status` before re-reading previously inspected files
 
-Before re-reading a file, check Agentpack source cache. If a source is marked unchanged and has a clear conclusion, rely on the recorded conclusion unless the task requires fresh inspection.
+During work:
+- call `record_source` after inspecting an important file, with a concise conclusion
+- call `record_decision` for durable technical/product decisions
+- call `record_dead_end` when an approach failed and should not be repeated
+- call `attach_evidence` for useful test output, command output, or verification notes
+
+Before re-reading an unchanged source file, prefer the recorded source conclusion unless the task requires fresh inspection.
+
+After meaningful progress, call `checkpoint` with:
+- summary
+- current status
+- next actions
 <!-- agentpack:end -->
