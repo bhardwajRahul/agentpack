@@ -1,3 +1,6 @@
+import { getPackPath, readJson } from "./store.js";
+import type { AgentpackConfig } from "./types.js";
+
 const SECRET_VALUE_PATTERN = /((api[_-]?key|token|secret|password)\s*[:=]\s*)(["']?)[^\s"']+/gi;
 
 export function redact(text: string, config: { redactions?: string[] } = {}): string {
@@ -13,4 +16,9 @@ export function redact(text: string, config: { redactions?: string[] } = {}): st
   }
 
   return output;
+}
+
+export function redactForRoot(root: string, text: string): string {
+  const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
+  return redact(text, config);
 }

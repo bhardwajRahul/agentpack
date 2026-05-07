@@ -92,6 +92,7 @@ Agentpack keeps the v0 supply chain deliberately small:
 - `ignore-scripts=true`
 - no telemetry
 - no network calls during normal CLI or MCP operation
+- best-effort redaction for common secret-looking values in stored context and handoff outputs
 - npm provenance prepared for future public releases
 
 ## Core Idea

@@ -9,6 +9,7 @@ import {
   writeSources
 } from "./core/store.js";
 import { createId } from "./core/ids.js";
+import { redactForRoot } from "./core/redaction.js";
 import type { AgentpackEvent, SourceRecord } from "./core/types.js";
 
 interface SourceRecordOptions {
@@ -37,8 +38,8 @@ export interface SourceStatus {
 
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
   const source = getFileRecord(root, filePath, {
-    summary: options.summary || "Reviewed source.",
-    snippet: options.snippet || ""
+    summary: redactForRoot(root, options.summary || "Reviewed source."),
+    snippet: redactForRoot(root, options.snippet || "")
   });
   const state = readSources(root);
   const existing = state.sources.findIndex((item) => item.path === source.path);
@@ -60,7 +61,7 @@ export function addSourceRecord(root: string, filePath: string, options: SourceR
 
 export function addEvidence(root: string, options: EvidenceOptions = {}): AgentpackEvent {
   const kind = options.kind || "note";
-  const content = readEvidenceContent(root, options);
+  const content = redactForRoot(root, readEvidenceContent(root, options));
   const id = createId("ev");
   const extension = kind === "json" ? "json" : "txt";
   const evidencePath = path.join("evidence", `${id}.${extension}`);
@@ -73,7 +74,7 @@ export function addEvidence(root: string, options: EvidenceOptions = {}): Agentp
   return appendEvent(root, "evidence", {
     kind,
     path: evidencePath,
-    command: options.command || "",
+    command: redactForRoot(root, options.command || ""),
     exitCode: Number.isFinite(exitCode) ? exitCode : null
   });
 }
@@ -108,7 +109,7 @@ export function formatSourceStatuses(root: string): string {
     return "No source records yet. Use `agentpack source add <file> --summary <text>` after inspecting important files.";
   }
 
-  return statuses.map((source) => {
+  return redactForRoot(root, statuses.map((source) => {
     const guidance = source.status === "unchanged"
       ? "do not re-open unless needed"
       : "re-open before relying on prior conclusions";
@@ -119,7 +120,7 @@ export function formatSourceStatuses(root: string): string {
       `  recorded: ${source.recordedAt}`,
       `  guidance: ${guidance}`
     ].join("\n");
-  }).join("\n\n");
+  }).join("\n\n"));
 }
 
 export function replayEvents(root: string, limit = 50): string {

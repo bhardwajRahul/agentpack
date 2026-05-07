@@ -35,7 +35,9 @@ npm pack --dry-run
 
 ## Sensitive Data
 
-Agentpack redacts common secret-looking values from generated resume context, but redaction is best-effort. Users should treat `.agentpack/` as project-sensitive data and review exported handoff files before sharing them.
+Agentpack redacts common secret-looking values and configured environment variable values from generated context and key local records such as source summaries, evidence, checkpoints, replay output, and MCP context responses.
+
+Redaction is best-effort, not a guarantee. Users should treat `.agentpack/` as project-sensitive data and review exported handoff files before sharing them.
 
 ## Reporting
 

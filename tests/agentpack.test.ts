@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -82,6 +82,80 @@ test("exposes expected MCP tools", () => {
     "resume",
     "source_status"
   ]);
+});
+
+test("redacts secrets from stored context and handoff outputs", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-redaction-test-"));
+  const secret = "agentpack-secret-value-12345";
+  const priorEnv = process.env.AGENTPACK_TEST_TOKEN;
+  process.env.AGENTPACK_TEST_TOKEN = secret;
+
+  try {
+    writeFileSync(path.join(dir, "index.js"), "console.log('redaction')\n", "utf8");
+    run(dir, ["init"]);
+
+    const configPath = path.join(dir, ".agentpack", "config.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.redactions = [...config.redactions, "AGENTPACK_TEST_TOKEN"];
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    run(dir, ["set", "goal", `Investigate ${secret}`]);
+    run(dir, ["record", "decision", `Use api_key=${secret} and password=hunter2 for testing only.`]);
+    run(dir, [
+      "source",
+      "add",
+      "index.js",
+      "--summary",
+      `Read source that mentioned ${secret}.`,
+      "--snippet",
+      `token=${secret}`
+    ]);
+    run(dir, ["evidence", "add", "--kind", "test-output", "--content", `OPENAI_API_KEY=${secret}\npassword=hunter2`]);
+    run(dir, [
+      "checkpoint",
+      "-m",
+      `Checkpoint with ${secret}`,
+      "--status",
+      `Status has token=${secret}`,
+      "--next",
+      `Do not leak ${secret}`
+    ]);
+
+    const resume = run(dir, ["resume", "--preset", "deep"]);
+    const replay = run(dir, ["replay"]);
+    const sourceStatus = run(dir, ["source", "status"]);
+    const sourceStatusJson = run(dir, ["source", "status", "--json"]);
+    run(dir, ["export", "--to", "chatgpt", "--preset", "deep"]);
+
+    const packText = [
+      resume,
+      replay,
+      sourceStatus,
+      sourceStatusJson,
+      readFileSync(path.join(dir, ".agentpack", "state.json"), "utf8"),
+      readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8"),
+      readFileSync(path.join(dir, ".agentpack", "sources.json"), "utf8"),
+      readFileSync(path.join(dir, ".agentpack", "exports", "chatgpt-handoff.md"), "utf8"),
+      ...readdirSync(path.join(dir, ".agentpack", "checkpoints"))
+        .flatMap((checkpointId) => ["checkpoint.json", "resume.md", "diff.patch"].map((fileName) => (
+          path.join(dir, ".agentpack", "checkpoints", checkpointId, fileName)
+        )))
+        .filter((filePath) => existsSync(filePath))
+        .map((filePath) => readFileSync(filePath, "utf8")),
+      ...readdirSync(path.join(dir, ".agentpack", "evidence"))
+        .map((fileName) => readFileSync(path.join(dir, ".agentpack", "evidence", fileName), "utf8"))
+    ].join("\n");
+
+    assert.equal(packText.includes(secret), false);
+    assert.equal(packText.includes("hunter2"), false);
+    assert.match(packText, /\[REDACTED/);
+  } finally {
+    if (priorEnv === undefined) {
+      delete process.env.AGENTPACK_TEST_TOKEN;
+    } else {
+      process.env.AGENTPACK_TEST_TOKEN = priorEnv;
+    }
+  }
 });
 
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {

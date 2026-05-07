@@ -4,6 +4,7 @@ import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
+import { redactForRoot } from "../core/redaction.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -279,7 +280,7 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "record_decision") {
     const event = appendEvent(root, "decision", {
-      text: text(args.text),
+      text: redactForRoot(root, text(args.text)),
       files: stringArray(args.files),
       evidence: stringArray(args.evidence)
     });
@@ -288,8 +289,8 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "record_dead_end") {
     const event = appendEvent(root, "dead-end", {
-      text: text(args.text),
-      reason: text(args.reason),
+      text: redactForRoot(root, text(args.text)),
+      reason: redactForRoot(root, text(args.reason)),
       files: stringArray(args.files)
     });
     return toolText(`Recorded dead end ${event.id}.`);
@@ -316,7 +317,7 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "source_status") {
     if (booleanValue(args.json, false)) {
-      return toolText(JSON.stringify(getSourceStatuses(root), null, 2));
+      return toolText(redactForRoot(root, JSON.stringify(getSourceStatuses(root), null, 2)));
     }
     return toolText(formatSourceStatuses(root));
   }
@@ -331,11 +332,13 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "diff") {
-    return toolText(diffCheckpoints(root, text(args.from) || undefined, text(args.to) || undefined));
+    const diff = diffCheckpoints(root, text(args.from) || undefined, text(args.to) || undefined);
+    return toolText(redactForRoot(root, diff));
   }
 
   if (name === "replay") {
-    return toolText(replayEvents(root, numberValue(args.limit, 30)));
+    const replay = replayEvents(root, numberValue(args.limit, 30));
+    return toolText(redactForRoot(root, replay));
   }
 
   throw new Error(`Unknown tool: ${name}`);

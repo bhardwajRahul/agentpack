@@ -5,6 +5,7 @@ import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildResume } from "../core/resume.js";
 import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import { buildDoctorReport } from "../core/doctor.js";
+import { redactForRoot } from "../core/redaction.js";
 import {
   appendEvent,
   getPackPath,
@@ -119,13 +120,15 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "diff") {
     const parsed = parseArgs(rest);
-    process.stdout.write(`${diffCheckpoints(root, parsed.positionals[0], parsed.positionals[1])}\n`);
+    const diff = diffCheckpoints(root, parsed.positionals[0], parsed.positionals[1]);
+    process.stdout.write(`${redactForRoot(root, diff)}\n`);
     return;
   }
 
   if (command === "replay") {
     const parsed = parseArgs(rest);
-    process.stdout.write(`${replayEvents(root, numberOption(parsed.options.limit) || 50)}\n`);
+    const replay = replayEvents(root, numberOption(parsed.options.limit) || 50);
+    process.stdout.write(`${redactForRoot(root, replay)}\n`);
     return;
   }
 
@@ -192,8 +195,8 @@ function recordCommand(root: string, rest: string[]): void {
   }
 
   const event = appendEvent(root, type, {
-    text,
-    reason: stringOption(parsed.options.reason) || "",
+    text: redactForRoot(root, text),
+    reason: redactForRoot(root, stringOption(parsed.options.reason) || ""),
     files: toArray(parsed.options.file),
     evidence: toArray(parsed.options.evidence)
   });
@@ -209,7 +212,7 @@ function noteCommand(root: string, rest: string[]): void {
     throw new Error("note requires text");
   }
 
-  const event = appendEvent(root, "note", { text });
+  const event = appendEvent(root, "note", { text: redactForRoot(root, text) });
   process.stdout.write(`Recorded note ${event.id}\n`);
 }
 
@@ -220,7 +223,8 @@ function sourceCommand(root: string, rest: string[]): void {
   if (subcommand === "status") {
     const parsed = parseArgs(args);
     if (parsed.options.json) {
-      process.stdout.write(`${JSON.stringify(getSourceStatuses(root), null, 2)}\n`);
+      const statuses = JSON.stringify(getSourceStatuses(root), null, 2);
+      process.stdout.write(`${redactForRoot(root, statuses)}\n`);
     } else {
       process.stdout.write(`${formatSourceStatuses(root)}\n`);
     }
@@ -319,11 +323,13 @@ function setCommand(root: string, rest: string[]): void {
   const text = parsed.positionals.join(" ");
 
   if (field === "goal") {
-    state.goal = text;
+    state.goal = redactForRoot(root, text);
   } else if (field === "status") {
-    state.currentStatus = text;
+    state.currentStatus = redactForRoot(root, text);
   } else if (field === "next") {
-    state.nextActions = [text, ...toArray(parsed.options.next)].filter(Boolean);
+    state.nextActions = [text, ...toArray(parsed.options.next)]
+      .filter(Boolean)
+      .map((item) => redactForRoot(root, item));
   } else {
     throw new Error("set supports goal, status, or next");
   }

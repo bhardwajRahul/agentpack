@@ -11,6 +11,7 @@ import {
   writeJson,
   writeState
 } from "./store.js";
+import { redactForRoot } from "./redaction.js";
 import type { AgentpackConfig, GitInfo } from "./types.js";
 
 interface CheckpointOptions {
@@ -33,16 +34,16 @@ export function createCheckpoint(root: string, options: CheckpointOptions = {}) 
   const git = getGitInfo(root);
   const id = checkpointId();
   const checkpointPath = getPackPath(root, "checkpoints", id);
-  const summary = options.summary || "Checkpoint created.";
+  const summary = redactForRoot(root, options.summary || "Checkpoint created.");
 
   mkdirSync(checkpointPath, { recursive: true });
 
   if (options.status) {
-    state.currentStatus = options.status;
+    state.currentStatus = redactForRoot(root, options.status);
   }
 
   if (options.nextActions && options.nextActions.length > 0) {
-    state.nextActions = options.nextActions;
+    state.nextActions = options.nextActions.map((item) => redactForRoot(root, item));
   }
 
   state.currentCheckpoint = id;
@@ -63,10 +64,10 @@ export function createCheckpoint(root: string, options: CheckpointOptions = {}) 
   };
 
   writeJson(path.join(checkpointPath, "checkpoint.json"), manifest);
-  writeFileSync(path.join(checkpointPath, "git-status.txt"), git.status || "", "utf8");
+  writeFileSync(path.join(checkpointPath, "git-status.txt"), redactForRoot(root, git.status || ""), "utf8");
 
   if (config.includeGitDiff !== false) {
-    writeFileSync(path.join(checkpointPath, "diff.patch"), git.diff || "", "utf8");
+    writeFileSync(path.join(checkpointPath, "diff.patch"), redactForRoot(root, git.diff || ""), "utf8");
   }
 
   const resume = buildResume(root, { budget: config.defaultBudget || 4000 });
