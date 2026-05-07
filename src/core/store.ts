@@ -1,10 +1,16 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createId } from "./ids.js";
 import type { AgentpackEvent, AgentpackState, SourcesFile } from "./types.js";
 
 export const PACK_DIR = ".agentpack";
 export const SCHEMA_VERSION = 1;
+
+const LOCK_TIMEOUT_MS = 10_000;
+const STALE_LOCK_MS = 5 * 60_000;
+const heldLocks = new Set<string>();
+const sleepBuffer = new SharedArrayBuffer(4);
+const sleepArray = new Int32Array(sleepBuffer);
 
 export function findPackRoot(startDir: string): string | null {
   let current = path.resolve(startDir);
@@ -102,7 +108,7 @@ export function readJson<T>(filePath: string, fallback: T): T {
 }
 
 export function writeJson(filePath: string, value: unknown): void {
-  writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  writeTextFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 export function writeJsonIfMissing(filePath: string, value: unknown): void {
@@ -120,9 +126,11 @@ export function readState(root: string): AgentpackState {
 }
 
 export function writeState(root: string, state: AgentpackState): void {
-  writeJson(getPackPath(root, "state.json"), {
-    ...state,
-    updatedAt: new Date().toISOString()
+  withPackWriteLock(root, () => {
+    writeJson(getPackPath(root, "state.json"), {
+      ...state,
+      updatedAt: new Date().toISOString()
+    });
   });
 }
 
@@ -131,7 +139,9 @@ export function readSources(root: string): SourcesFile {
 }
 
 export function writeSources(root: string, sources: SourcesFile): void {
-  writeJson(getPackPath(root, "sources.json"), sources);
+  withPackWriteLock(root, () => {
+    writeJson(getPackPath(root, "sources.json"), sources);
+  });
 }
 
 export function appendEvent(root: string, type: string, payload: Record<string, unknown> = {}): AgentpackEvent {
@@ -142,9 +152,11 @@ export function appendEvent(root: string, type: string, payload: Record<string, 
     ...payload
   };
 
-  writeFileSync(getPackPath(root, "events.jsonl"), `${JSON.stringify(event)}\n`, {
-    encoding: "utf8",
-    flag: "a"
+  withPackWriteLock(root, () => {
+    writeFileSync(getPackPath(root, "events.jsonl"), `${JSON.stringify(event)}\n`, {
+      encoding: "utf8",
+      flag: "a"
+    });
   });
 
   return event;
@@ -168,4 +180,90 @@ export function listCheckpoints(root: string): string[] {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+}
+
+export function withPackWriteLock<T>(root: string, fn: () => T): T {
+  const lockPath = getPackPath(root, ".lock");
+
+  if (heldLocks.has(lockPath)) {
+    return fn();
+  }
+
+  acquireLock(lockPath);
+  heldLocks.add(lockPath);
+
+  try {
+    return fn();
+  } finally {
+    heldLocks.delete(lockPath);
+    releaseLock(lockPath);
+  }
+}
+
+function writeTextFileAtomic(filePath: string, content: string): void {
+  const dir = path.dirname(filePath);
+  const tempPath = path.join(
+    dir,
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`
+  );
+
+  try {
+    writeFileSync(tempPath, content, "utf8");
+    renameSync(tempPath, filePath);
+  } catch (error) {
+    try {
+      unlinkSync(tempPath);
+    } catch {
+      // Best effort cleanup; preserve the original write error.
+    }
+    throw error;
+  }
+}
+
+function acquireLock(lockPath: string): void {
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      return;
+    } catch (error) {
+      if (!isErrnoException(error) || error.code !== "EEXIST") {
+        throw error;
+      }
+
+      removeStaleLock(lockPath);
+
+      if (Date.now() - startedAt > LOCK_TIMEOUT_MS) {
+        throw new Error(`Timed out waiting for Agentpack state lock: ${lockPath}`);
+      }
+
+      sleepSync(25);
+    }
+  }
+}
+
+function releaseLock(lockPath: string): void {
+  rmSync(lockPath, { recursive: true, force: true });
+}
+
+function removeStaleLock(lockPath: string): void {
+  try {
+    const ageMs = Date.now() - statSync(lockPath).mtimeMs;
+    if (ageMs > STALE_LOCK_MS) {
+      rmSync(lockPath, { recursive: true, force: true });
+    }
+  } catch (error) {
+    if (!isErrnoException(error) || error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(sleepArray, 0, 0, ms);
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }

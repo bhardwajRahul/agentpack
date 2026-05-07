@@ -8,6 +8,7 @@ import {
   listCheckpoints,
   readJson,
   readState,
+  withPackWriteLock,
   writeJson,
   writeState
 } from "./store.js";
@@ -29,57 +30,59 @@ interface CheckpointManifest {
 }
 
 export function createCheckpoint(root: string, options: CheckpointOptions = {}) {
-  const state = readState(root);
-  const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
-  const git = getGitInfo(root);
-  const id = checkpointId();
-  const checkpointPath = getPackPath(root, "checkpoints", id);
-  const summary = redactForRoot(root, options.summary || "Checkpoint created.");
+  return withPackWriteLock(root, () => {
+    const state = readState(root);
+    const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
+    const git = getGitInfo(root);
+    const id = checkpointId();
+    const checkpointPath = getPackPath(root, "checkpoints", id);
+    const summary = redactForRoot(root, options.summary || "Checkpoint created.");
 
-  mkdirSync(checkpointPath, { recursive: true });
+    mkdirSync(checkpointPath, { recursive: true });
 
-  if (options.status) {
-    state.currentStatus = redactForRoot(root, options.status);
-  }
-
-  if (options.nextActions && options.nextActions.length > 0) {
-    state.nextActions = options.nextActions.map((item) => redactForRoot(root, item));
-  }
-
-  state.currentCheckpoint = id;
-  writeState(root, state);
-
-  const manifest = {
-    schemaVersion: 1,
-    id,
-    createdAt: new Date().toISOString(),
-    summary,
-    status: state.currentStatus,
-    nextActions: state.nextActions || [],
-    git: {
-      available: git.available,
-      branch: git.branch,
-      head: git.head
+    if (options.status) {
+      state.currentStatus = redactForRoot(root, options.status);
     }
-  };
 
-  writeJson(path.join(checkpointPath, "checkpoint.json"), manifest);
-  writeFileSync(path.join(checkpointPath, "git-status.txt"), redactForRoot(root, git.status || ""), "utf8");
+    if (options.nextActions && options.nextActions.length > 0) {
+      state.nextActions = options.nextActions.map((item) => redactForRoot(root, item));
+    }
 
-  if (config.includeGitDiff !== false) {
-    writeFileSync(path.join(checkpointPath, "diff.patch"), redactForRoot(root, git.diff || ""), "utf8");
-  }
+    state.currentCheckpoint = id;
+    writeState(root, state);
 
-  const resume = buildResume(root, { budget: config.defaultBudget || 4000 });
-  writeFileSync(path.join(checkpointPath, "resume.md"), resume.markdown, "utf8");
+    const manifest = {
+      schemaVersion: 1,
+      id,
+      createdAt: new Date().toISOString(),
+      summary,
+      status: state.currentStatus,
+      nextActions: state.nextActions || [],
+      git: {
+        available: git.available,
+        branch: git.branch,
+        head: git.head
+      }
+    };
 
-  appendEvent(root, "checkpoint", {
-    checkpointId: id,
-    summary,
-    status: state.currentStatus
+    writeJson(path.join(checkpointPath, "checkpoint.json"), manifest);
+    writeFileSync(path.join(checkpointPath, "git-status.txt"), redactForRoot(root, git.status || ""), "utf8");
+
+    if (config.includeGitDiff !== false) {
+      writeFileSync(path.join(checkpointPath, "diff.patch"), redactForRoot(root, git.diff || ""), "utf8");
+    }
+
+    const resume = buildResume(root, { budget: config.defaultBudget || 4000 });
+    writeFileSync(path.join(checkpointPath, "resume.md"), resume.markdown, "utf8");
+
+    appendEvent(root, "checkpoint", {
+      checkpointId: id,
+      summary,
+      status: state.currentStatus
+    });
+
+    return { id, path: checkpointPath, manifest };
   });
-
-  return { id, path: checkpointPath, manifest };
 }
 
 export function diffCheckpoints(root: string, fromId?: string, toId?: string): string {

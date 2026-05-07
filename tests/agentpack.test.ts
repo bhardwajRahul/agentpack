@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -191,6 +191,36 @@ test("redacts secrets from stored context and handoff outputs", () => {
   }
 });
 
+test("serializes concurrent source record writes", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-concurrent-source-test-"));
+  const files = Array.from({ length: 16 }, (_, index) => `file-${index}.js`);
+
+  for (const file of files) {
+    writeFileSync(path.join(dir, file), `console.log(${JSON.stringify(file)})\n`, "utf8");
+  }
+
+  run(dir, ["init"]);
+
+  await Promise.all(files.map((file) => runAsync(dir, [
+    "source",
+    "add",
+    file,
+    "--summary",
+    `Reviewed ${file}.`
+  ])));
+
+  const sourceDb = JSON.parse(readFileSync(path.join(dir, ".agentpack", "sources.json"), "utf8"));
+  const sourcePaths = sourceDb.sources.map((source: { path: string }) => source.path).sort();
+  assert.deepEqual(sourcePaths, [...files].sort());
+
+  const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string });
+  assert.equal(events.filter((event) => event.type === "source").length, files.length);
+  assert.equal(existsSync(path.join(dir, ".agentpack", ".lock")), false);
+});
+
 test("previews and writes project-local MCP client install files", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-test-"));
   run(dir, ["init"]);
@@ -328,6 +358,18 @@ function run(cwd: string, args: string[]): string {
   return execFileSync(process.execPath, [cli, ...args], {
     cwd,
     encoding: "utf8"
+  });
+}
+
+function runAsync(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(process.execPath, [cli, ...args], { cwd, encoding: "utf8" }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`${error.message}\n${stderr}`));
+        return;
+      }
+      resolve(stdout);
+    });
   });
 }
 

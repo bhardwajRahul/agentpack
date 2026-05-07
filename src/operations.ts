@@ -7,6 +7,7 @@ import {
   getPackPath,
   readEvents,
   readSources,
+  withPackWriteLock,
   writeSources
 } from "./core/store.js";
 import { createId } from "./core/ids.js";
@@ -39,26 +40,28 @@ export interface SourceStatus {
 }
 
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
-  const source = getFileRecord(root, filePath, {
-    summary: redactForRoot(root, options.summary || "Reviewed source."),
-    snippet: redactForRoot(root, options.snippet || "")
-  });
-  const state = readSources(root);
-  const existing = state.sources.findIndex((item) => item.path === source.path);
+  return withPackWriteLock(root, () => {
+    const source = getFileRecord(root, filePath, {
+      summary: redactForRoot(root, options.summary || "Reviewed source."),
+      snippet: redactForRoot(root, options.snippet || "")
+    });
+    const state = readSources(root);
+    const existing = state.sources.findIndex((item) => item.path === source.path);
 
-  if (existing >= 0) {
-    state.sources[existing] = source;
-  } else {
-    state.sources.push(source);
-  }
+    if (existing >= 0) {
+      state.sources[existing] = source;
+    } else {
+      state.sources.push(source);
+    }
 
-  writeSources(root, state);
-  appendEvent(root, "source", {
-    path: source.path,
-    hash: source.hash,
-    summary: source.summary
+    writeSources(root, state);
+    appendEvent(root, "source", {
+      path: source.path,
+      hash: source.hash,
+      summary: source.summary
+    });
+    return source;
   });
-  return source;
 }
 
 export function addEvidence(root: string, options: EvidenceOptions = {}): AgentpackEvent {

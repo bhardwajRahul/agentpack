@@ -12,6 +12,7 @@ import {
   initPack,
   readState,
   requirePackRoot,
+  withPackWriteLock,
   writeState
 } from "../core/store.js";
 import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
@@ -322,22 +323,25 @@ function setCommand(root: string, rest: string[]): void {
   const field = rest[0];
   const args = rest.slice(1);
   const parsed = parseArgs(args);
-  const state = readState(root);
   const text = parsed.positionals.join(" ");
 
-  if (field === "goal") {
-    state.goal = redactForRoot(root, text);
-  } else if (field === "status") {
-    state.currentStatus = redactForRoot(root, text);
-  } else if (field === "next") {
-    state.nextActions = [text, ...toArray(parsed.options.next)]
-      .filter(Boolean)
-      .map((item) => redactForRoot(root, item));
-  } else {
-    throw new Error("set supports goal, status, or next");
-  }
+  withPackWriteLock(root, () => {
+    const state = readState(root);
 
-  writeState(root, state);
+    if (field === "goal") {
+      state.goal = redactForRoot(root, text);
+    } else if (field === "status") {
+      state.currentStatus = redactForRoot(root, text);
+    } else if (field === "next") {
+      state.nextActions = [text, ...toArray(parsed.options.next)]
+        .filter(Boolean)
+        .map((item) => redactForRoot(root, item));
+    } else {
+      throw new Error("set supports goal, status, or next");
+    }
+
+    writeState(root, state);
+  });
   process.stdout.write(`Updated ${field}\n`);
 }
 
