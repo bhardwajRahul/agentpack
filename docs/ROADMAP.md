@@ -52,6 +52,8 @@ Goal: agents record task state while they work.
 
 Goal: show the wow effect.
 
+Before polishing the public demo, dogfood the workflow in this repo with the protocol in `AGENTS.md` and `docs/DOGFOOD.md`.
+
 Demo story:
 
 1. Agent starts a bugfix.

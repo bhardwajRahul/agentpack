@@ -183,7 +183,7 @@ test("previews and writes project-local MCP client install files", () => {
   });
 
   run(dir, ["install", "cursor", "--write"]);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Use Agentpack/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
   assert.deepEqual(cursorMcp.mcpServers.agentpack, {
     type: "stdio",

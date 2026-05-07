@@ -74,6 +74,8 @@ eval "$(fnm env --use-on-cd --shell zsh)"
 
 See [docs/SETUP.md](docs/SETUP.md) for the full setup guide.
 
+This repo uses Agentpack itself through MCP. See [docs/DOGFOOD.md](docs/DOGFOOD.md) for the working protocol.
+
 To verify the local MCP server without configuring an agent client yet:
 
 ```bash
