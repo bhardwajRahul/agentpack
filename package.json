@@ -1,6 +1,6 @@
 {
   "name": "agentpack-cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Portable savegames and context budgets for AI coding agents.",
   "type": "module",
   "repository": {
