@@ -125,12 +125,16 @@ function formatSources(root: string, sources: SourceRecord[]): string[] {
     const guidance = status === "unchanged"
       ? "Do not re-open unless needed or unless hash changed."
       : "Re-open before relying on prior conclusions.";
+    const meaning = status === "unchanged"
+      ? "Matches recorded source hash; git may still have uncommitted changes."
+      : "Does not match recorded source hash.";
 
     return [
       `- ${source.path}`,
       `  - status: ${status}`,
       `  - summary: ${source.summary || "No summary recorded."}`,
       source.snippet ? `  - snippet: ${source.snippet}` : null,
+      `  - meaning: ${meaning}`,
       `  - guidance: ${guidance}`
     ].filter(Boolean).join("\n");
   });

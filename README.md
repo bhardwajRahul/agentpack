@@ -86,6 +86,22 @@ The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, and Cursor setup.
 
+## Handoff Demo
+
+Agentpack's public demo is the handoff loop:
+
+```bash
+agentpack source status
+agentpack export --to chatgpt --preset chat
+agentpack resume --preset agent
+```
+
+The first command tells the next agent which recorded source conclusions are still valid and which files need to be reopened. `source status` compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. An `UNCHANGED` source can still be uncommitted in git if the agent recorded it after editing, and git changes that were never recorded as sources are listed separately.
+
+For manual ChatGPT handoff, `export --to chatgpt --preset chat` writes `.agentpack/exports/chatgpt-handoff.md`. For a coding-agent continuation, `resume --preset agent` prints a larger task savegame directly in the terminal or MCP response.
+
+In a new session, start by loading that handoff or Agentpack MCP context, then inspect only the files marked changed or missing. During work, record durable decisions, failed approaches, evidence, and source conclusions. End a coherent step with a checkpoint so the next agent inherits a compact state instead of a pile of chat history.
+
 ## Security Posture
 
 Agentpack keeps the v0 supply chain deliberately small:

@@ -20,6 +20,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   run(dir, ["set", "goal", "Ship a tiny Agentpack MVP"]);
   run(dir, ["source", "add", "index.js", "--summary", "Entry point already inspected."]);
   assert.match(run(dir, ["source", "status"]), /UNCHANGED index\.js/);
+  assert.match(run(dir, ["source", "status"]), /git may still have uncommitted changes/);
   run(dir, ["record", "decision", "Use local JSON and JSONL storage for v0."]);
   run(dir, ["note", "This is a local task-state note."]);
   run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
@@ -40,6 +41,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(resume, /Open MCP contract/);
   assert.match(resume, /Source Cache/);
   assert.match(resume, /Do not re-open unless needed or unless hash changed/);
+  assert.match(resume, /git may still have uncommitted changes/);
   assert.match(resume, /command-output/);
   assert.match(resume, /exit code: 0/);
 
@@ -82,6 +84,37 @@ test("exposes expected MCP tools", () => {
     "resume",
     "source_status"
   ]);
+});
+
+test("distinguishes source-cache status from git working tree status", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-git-test-"));
+  writeFileSync(path.join(dir, "index.js"), "console.log('initial')\n", "utf8");
+
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  runGit(dir, ["add", "index.js", ".gitignore"]);
+  runGit(dir, [
+    "-c",
+    "user.name=Agentpack Test",
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    "initial"
+  ]);
+
+  writeFileSync(path.join(dir, "index.js"), "console.log('changed but recorded')\n", "utf8");
+  writeFileSync(path.join(dir, "other.js"), "console.log('unrecorded')\n", "utf8");
+  run(dir, ["source", "add", "index.js", "--summary", "Current changed version was inspected."]);
+
+  const status = run(dir, ["source", "status"]);
+  assert.match(status, /Agentpack source status tracks recorded source conclusions, not the full git working tree/);
+  assert.match(status, /UNCHANGED index\.js/);
+  assert.match(status, /git: modified/);
+  assert.match(status, /Git changes not recorded as Agentpack sources/);
+  assert.match(status, /untracked other\.js/);
 });
 
 test("redacts secrets from stored context and handoff outputs", () => {
@@ -271,6 +304,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.match(sourceStatus.result.content[0].text, /UNCHANGED index\.js/);
   assert.match(sourceStatus.result.content[0].text, /do not re-open unless needed/);
+  assert.match(sourceStatus.result.content[0].text, /git may still have uncommitted changes/);
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
@@ -292,6 +326,13 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
 function run(cwd: string, args: string[]): string {
   return execFileSync(process.execPath, [cli, ...args], {
+    cwd,
+    encoding: "utf8"
+  });
+}
+
+function runGit(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
     cwd,
     encoding: "utf8"
   });

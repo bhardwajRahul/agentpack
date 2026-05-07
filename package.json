@@ -3,6 +3,14 @@
   "version": "0.0.0",
   "description": "Portable savegames and context budgets for AI coding agents.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ihorponom/agentpack.git"
+  },
+  "homepage": "https://github.com/ihorponom/agentpack#readme",
+  "bugs": {
+    "url": "https://github.com/ihorponom/agentpack/issues"
+  },
   "bin": {
     "agentpack": "./dist/src/agentpack.js"
   },
@@ -30,6 +38,7 @@
     "scripts/mcp-smoke.mjs",
     "docs",
     "README.md",
+    "SECURITY.md",
     "LICENSE",
     "assets/agentpack-logo.jpg"
   ],

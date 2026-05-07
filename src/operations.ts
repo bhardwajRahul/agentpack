@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getFileRecord, sha256File } from "./core/hash.js";
+import { getGitInfo } from "./core/git.js";
 import {
   appendEvent,
   getPackPath,
@@ -34,6 +35,7 @@ export interface SourceStatus {
   recordedHash: string;
   currentHash: string | null;
   recordedAt: string;
+  gitStatus: string | null;
 }
 
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
@@ -81,6 +83,7 @@ export function addEvidence(root: string, options: EvidenceOptions = {}): Agentp
 
 export function getSourceStatuses(root: string): SourceStatus[] {
   const sources = readSources(root).sources || [];
+  const gitStatuses = getGitStatuses(root);
 
   return sources.map((source) => {
     const absolutePath = path.join(root, source.path);
@@ -97,30 +100,56 @@ export function getSourceStatuses(root: string): SourceStatus[] {
       summary: source.summary || "",
       recordedHash: source.hash,
       currentHash,
-      recordedAt: source.recordedAt
+      recordedAt: source.recordedAt,
+      gitStatus: gitStatuses.get(source.path) || null
     };
   });
 }
 
 export function formatSourceStatuses(root: string): string {
   const statuses = getSourceStatuses(root);
+  const gitStatuses = getGitStatuses(root);
 
   if (statuses.length === 0) {
-    return "No source records yet. Use `agentpack source add <file> --summary <text>` after inspecting important files.";
+    return formatNoSourceRecords(gitStatuses);
   }
 
-  return redactForRoot(root, statuses.map((source) => {
+  const recordedPaths = new Set(statuses.map((source) => source.path));
+  const unrecordedGitChanges = [...gitStatuses.entries()]
+    .filter(([filePath]) => !recordedPaths.has(filePath))
+    .map(([filePath, status]) => `- ${status} ${filePath}`);
+
+  const sourceBlocks = statuses.map((source) => {
     const guidance = source.status === "unchanged"
       ? "do not re-open unless needed"
       : "re-open before relying on prior conclusions";
+    const meaning = source.status === "unchanged"
+      ? "content matches the recorded source hash; git may still have uncommitted changes"
+      : "content no longer matches the recorded source hash";
 
     return [
       `${source.status.toUpperCase()} ${source.path}`,
       `  summary: ${source.summary || "No summary recorded."}`,
       `  recorded: ${source.recordedAt}`,
+      `  meaning: ${meaning}`,
+      `  git: ${source.gitStatus || "clean or not tracked by git status"}`,
       `  guidance: ${guidance}`
     ].join("\n");
-  }).join("\n\n"));
+  });
+
+  const blocks = [
+    "Agentpack source status tracks recorded source conclusions, not the full git working tree.",
+    ...sourceBlocks
+  ];
+
+  if (unrecordedGitChanges.length > 0) {
+    blocks.push([
+      "Git changes not recorded as Agentpack sources:",
+      ...unrecordedGitChanges
+    ].join("\n"));
+  }
+
+  return redactForRoot(root, blocks.join("\n\n"));
 }
 
 export function replayEvents(root: string, limit = 50): string {
@@ -147,4 +176,71 @@ function readEvidenceContent(root: string, options: EvidenceOptions): string {
   }
 
   return String(options.content || options.text || "");
+}
+
+function formatNoSourceRecords(gitStatuses: Map<string, string>): string {
+  const lines = [
+    "No source records yet. Use `agentpack source add <file> --summary <text>` after inspecting important files."
+  ];
+
+  if (gitStatuses.size > 0) {
+    lines.push(
+      "",
+      "Git changes not recorded as Agentpack sources:",
+      ...[...gitStatuses.entries()].map(([filePath, status]) => `- ${status} ${filePath}`)
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function getGitStatuses(root: string): Map<string, string> {
+  const git = getGitInfo(root);
+  const statuses = new Map<string, string>();
+
+  if (!git.available || !git.status) {
+    return statuses;
+  }
+
+  for (const line of git.status.split("\n")) {
+    const parsed = parseGitStatusLine(line);
+    if (parsed) {
+      statuses.set(parsed.path, parsed.status);
+    }
+  }
+
+  return statuses;
+}
+
+function parseGitStatusLine(line: string): { path: string; status: string } | null {
+  if (line.length < 4) {
+    return null;
+  }
+
+  const code = line.slice(0, 2);
+  const rawPath = line.slice(3).trim();
+  const filePath = rawPath.includes(" -> ") ? rawPath.split(" -> ").pop() || rawPath : rawPath;
+  return {
+    path: filePath,
+    status: gitStatusLabel(code)
+  };
+}
+
+function gitStatusLabel(code: string): string {
+  if (code.includes("?")) {
+    return "untracked";
+  }
+  if (code.includes("D")) {
+    return "deleted";
+  }
+  if (code.includes("R")) {
+    return "renamed";
+  }
+  if (code.includes("A")) {
+    return "added";
+  }
+  if (code.includes("M")) {
+    return "modified";
+  }
+  return "changed";
 }
