@@ -26,13 +26,20 @@ export function clipToTokenBudget(text: string, budget: number): string {
   return `${clipped.slice(0, boundary).trimEnd()}\n\n[Truncated to fit budget]`;
 }
 
-export function packSections(header: string, sections: ResumeSection[], budget: number): { markdown: string; omittedSections: string[] } {
+export interface PackedSections {
+  markdown: string;
+  omittedSections: string[];
+  truncatedSections: string[];
+}
+
+export function packSections(header: string, sections: ResumeSection[], budget: number): PackedSections {
   if (!budget) {
     const markdown = [header, ...sections.map((section) => section.text)].join("\n\n").trimEnd();
-    return { markdown, omittedSections: [] };
+    return { markdown, omittedSections: [], truncatedSections: [] };
   }
 
-  const omittedSections = [];
+  const omittedSections: string[] = [];
+  const truncatedSections: string[] = [];
   let output = header.trimEnd();
   let used = estimateTokens(output);
 
@@ -53,6 +60,7 @@ export function packSections(header: string, sections: ResumeSection[], budget: 
 
     if (section.required) {
       output = `${output}\n\n${clipToTokenBudget(section.text, remaining)}`;
+      truncatedSections.push(section.title);
       used = estimateTokens(output);
     } else {
       omittedSections.push(section.title);
@@ -66,5 +74,5 @@ export function packSections(header: string, sections: ResumeSection[], budget: 
     }
   }
 
-  return { markdown: output.trimEnd(), omittedSections };
+  return { markdown: output.trimEnd(), omittedSections, truncatedSections };
 }

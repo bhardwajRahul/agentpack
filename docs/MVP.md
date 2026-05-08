@@ -64,6 +64,8 @@ Budget packing is deterministic and approximate. The v0 token estimate is intent
 estimated_tokens = ceil(characters / 4)
 ```
 
+Generated resumes include the requested budget, estimated usage, and a budget status line. If the requested budget is too small, Agentpack reports which required sections were truncated and which optional sections were omitted instead of silently dropping context.
+
 Resume sections are prioritized:
 
 1. Goal, status, and next actions.

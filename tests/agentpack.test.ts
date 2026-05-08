@@ -19,8 +19,10 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(readFileSync(path.join(dir, ".gitignore"), "utf8"), /\.agentpack\//);
   run(dir, ["set", "goal", "Ship a tiny Agentpack MVP"]);
   run(dir, ["source", "add", "index.js", "--summary", "Entry point already inspected."]);
-  assert.match(run(dir, ["source", "status"]), /UNCHANGED index\.js/);
-  assert.match(run(dir, ["source", "status"]), /git may still have uncommitted changes/);
+  const initialSourceStatus = run(dir, ["source", "status"]);
+  assert.match(initialSourceStatus, /UNCHANGED index\.js/);
+  assert.match(initialSourceStatus, /hash: matches recorded hash/);
+  assert.match(initialSourceStatus, /meaning: recorded summary is valid for the current file content/);
   run(dir, ["record", "decision", "Use local JSON and JSONL storage for v0."]);
   run(dir, ["note", "This is a local task-state note."]);
   run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
@@ -39,11 +41,17 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(resume, /Ship a tiny Agentpack MVP/);
   assert.match(resume, /Ready for handoff/);
   assert.match(resume, /Open MCP contract/);
+  assert.match(resume, /Estimated usage: ~\d+ tokens/);
+  assert.match(resume, /Budget status: within target/);
   assert.match(resume, /Source Cache/);
   assert.match(resume, /Do not re-open unless needed or unless hash changed/);
-  assert.match(resume, /git may still have uncommitted changes/);
+  assert.match(resume, /Summary is current for this file content/);
   assert.match(resume, /command-output/);
   assert.match(resume, /exit code: 0/);
+
+  const tinyResume = run(dir, ["resume", "--budget", "80"]);
+  assert.match(tinyResume, /Estimated usage: ~\d+ tokens/);
+  assert.match(tinyResume, /Budget status: limited/);
 
   const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "agent"]);
   assert.match(exported, /chatgpt-handoff\.md/);
@@ -112,6 +120,7 @@ test("distinguishes source-cache status from git working tree status", () => {
   const status = run(dir, ["source", "status"]);
   assert.match(status, /Agentpack source status tracks recorded source conclusions, not the full git working tree/);
   assert.match(status, /UNCHANGED index\.js/);
+  assert.match(status, /hash: matches recorded hash/);
   assert.match(status, /git: modified/);
   assert.match(status, /Git changes not recorded as Agentpack sources/);
   assert.match(status, /untracked other\.js/);
@@ -334,7 +343,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.match(sourceStatus.result.content[0].text, /UNCHANGED index\.js/);
   assert.match(sourceStatus.result.content[0].text, /do not re-open unless needed/);
-  assert.match(sourceStatus.result.content[0].text, /git may still have uncommitted changes/);
+  assert.match(sourceStatus.result.content[0].text, /hash: matches recorded hash/);
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
@@ -348,6 +357,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     }
   });
   assert.match(resume.result.content[0].text, /Exercise MCP smoke flow/);
+  assert.match(resume.result.content[0].text, /Estimated usage: ~\d+ tokens/);
   assert.match(resume.result.content[0].text, /MCP can record decisions/);
 
   const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8");

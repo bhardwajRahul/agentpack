@@ -126,16 +126,14 @@ export function formatSourceStatuses(root: string): string {
     const guidance = source.status === "unchanged"
       ? "do not re-open unless needed"
       : "re-open before relying on prior conclusions";
-    const meaning = source.status === "unchanged"
-      ? "content matches the recorded source hash; git may still have uncommitted changes"
-      : "content no longer matches the recorded source hash";
 
     return [
       `${source.status.toUpperCase()} ${source.path}`,
       `  summary: ${source.summary || "No summary recorded."}`,
       `  recorded: ${source.recordedAt}`,
-      `  meaning: ${meaning}`,
-      `  git: ${source.gitStatus || "clean or not tracked by git status"}`,
+      `  hash: ${formatHashStatus(source.status)}`,
+      `  git: ${source.gitStatus || "clean"}`,
+      `  meaning: ${formatSourceMeaning(source.status)}`,
       `  guidance: ${guidance}`
     ].join("\n");
   });
@@ -195,6 +193,26 @@ function formatNoSourceRecords(gitStatuses: Map<string, string>): string {
   }
 
   return lines.join("\n");
+}
+
+function formatHashStatus(status: SourceStatus["status"]): string {
+  if (status === "unchanged") {
+    return "matches recorded hash";
+  }
+  if (status === "missing") {
+    return "file missing";
+  }
+  return "differs from recorded hash";
+}
+
+function formatSourceMeaning(status: SourceStatus["status"]): string {
+  if (status === "unchanged") {
+    return "recorded summary is valid for the current file content";
+  }
+  if (status === "missing") {
+    return "recorded file is missing; prior summary may only be useful as history";
+  }
+  return "recorded summary may be stale because file content changed";
 }
 
 function getGitStatuses(root: string): Map<string, string> {

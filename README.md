@@ -96,7 +96,7 @@ agentpack export --to chatgpt --preset chat
 agentpack resume --preset agent
 ```
 
-The first command tells the next agent which recorded source conclusions are still valid and which files need to be reopened. `source status` compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. An `UNCHANGED` source can still be uncommitted in git if the agent recorded it after editing, and git changes that were never recorded as sources are listed separately.
+The first command tells the next agent which recorded source conclusions are still valid and which files need to be reopened. `source status` compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
 
 For manual ChatGPT handoff, `export --to chatgpt --preset chat` writes `.agentpack/exports/chatgpt-handoff.md`. For a coding-agent continuation, `resume --preset agent` prints a larger task savegame directly in the terminal or MCP response.
 
@@ -132,7 +132,7 @@ The source cache is deliberately lightweight. Agentpack stores metadata, hashes,
 
 ## Context Budgets
 
-`--budget` is an approximate token target for generated handoff context. v0 uses a simple estimate, so the number is a practical ceiling, not a guarantee.
+`--budget` is an approximate token target for generated handoff context. v0 uses a simple estimate, so the number is a practical target, not an exact API token count. Resume output includes estimated usage and a budget status line that says whether any sections were omitted or truncated.
 
 Suggested defaults:
 

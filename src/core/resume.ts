@@ -78,13 +78,16 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
     }
   ];
 
-  const { markdown, omittedSections } = packSections(header, sections, budget);
-  const redacted = redact(markdown, config);
+  const { markdown, omittedSections, truncatedSections } = packSections(header, sections, budget);
+  const redacted = withStableBudgetMetadata(markdown, config, budget, omittedSections, truncatedSections);
 
   return {
     markdown: redacted,
     estimatedTokens: estimateTokens(redacted),
-    omittedSections
+    budget,
+    omittedSections,
+    truncatedSections,
+    truncated: truncatedSections.length > 0 || omittedSections.length > 0
   };
 }
 
@@ -126,7 +129,7 @@ function formatSources(root: string, sources: SourceRecord[]): string[] {
       ? "Do not re-open unless needed or unless hash changed."
       : "Re-open before relying on prior conclusions.";
     const meaning = status === "unchanged"
-      ? "Matches recorded source hash; git may still have uncommitted changes."
+      ? "Matches recorded source hash. Summary is current for this file content."
       : "Does not match recorded source hash.";
 
     return [
@@ -203,4 +206,64 @@ function previewText(value: string): string {
     .slice(0, 360)
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function withStableBudgetMetadata(
+  markdown: string,
+  config: Partial<AgentpackConfig>,
+  budget: number,
+  omittedSections: string[],
+  truncatedSections: string[]
+): string {
+  let estimatedTokens = estimateTokens(redact(markdown, config));
+  let redacted = "";
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    redacted = redact(addBudgetMetadata(markdown, budget, estimatedTokens, omittedSections, truncatedSections), config);
+    const nextEstimate = estimateTokens(redacted);
+    if (nextEstimate === estimatedTokens) {
+      return redacted;
+    }
+    estimatedTokens = nextEstimate;
+  }
+
+  return redacted;
+}
+
+function addBudgetMetadata(
+  markdown: string,
+  budget: number,
+  estimatedTokens: number,
+  omittedSections: string[],
+  truncatedSections: string[]
+): string {
+  const lines = markdown.split("\n");
+  const budgetLineIndex = lines.findIndex((line) => line.startsWith("Budget: "));
+  if (budgetLineIndex < 0) {
+    return markdown;
+  }
+
+  const usage = budget
+    ? `Estimated usage: ~${estimatedTokens} tokens (${Math.round((estimatedTokens / budget) * 100)}% of target)`
+    : `Estimated usage: ~${estimatedTokens} tokens`;
+  const status = formatBudgetStatus(budget, omittedSections, truncatedSections);
+
+  lines.splice(budgetLineIndex + 1, 0, usage, `Budget status: ${status}`);
+  return lines.join("\n");
+}
+
+function formatBudgetStatus(budget: number, omittedSections: string[], truncatedSections: string[]): string {
+  if (!budget) {
+    return "unbounded";
+  }
+
+  const details = [];
+  if (truncatedSections.length > 0) {
+    details.push(`truncated ${truncatedSections.join(", ")}`);
+  }
+  if (omittedSections.length > 0) {
+    details.push(`omitted ${omittedSections.join(", ")}`);
+  }
+
+  return details.length > 0 ? `limited; ${details.join("; ")}` : "within target";
 }
