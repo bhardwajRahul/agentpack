@@ -273,9 +273,11 @@ test("filters source cache summaries by query while preserving source stubs", ()
   assert.match(filtered, /Authentication middleware validates sessions/);
   assert.match(filtered, /src\/billing\.ts/);
   assert.match(filtered, /docs\/setup\.md/);
+  assert.match(filtered, /topic: Billing worker calculates invoices/);
+  assert.match(filtered, /topic: Developer setup docs/);
   assert.match(filtered, /summary: omitted by query filter/);
-  assert.doesNotMatch(filtered, /Billing worker calculates invoices/);
-  assert.doesNotMatch(filtered, /Developer setup docs/);
+  assert.doesNotMatch(filtered, /summary: Billing worker calculates invoices/);
+  assert.doesNotMatch(filtered, /summary: Developer setup docs/);
 
   const unfiltered = run(dir, ["resume", "--preset", "deep"]);
   assert.match(unfiltered, /Billing worker calculates invoices/);
@@ -463,7 +465,8 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.match(resume.result.content[0].text, /Estimated usage: ~\d+ tokens/);
   assert.match(resume.result.content[0].text, /Query filter: full summaries for 1 relevant or stale source\(s\), compact stubs for 1 unchanged source\(s\)/);
   assert.match(resume.result.content[0].text, /MCP smoke source/);
-  assert.doesNotMatch(resume.result.content[0].text, /Unrelated billing source/);
+  assert.match(resume.result.content[0].text, /topic: Unrelated billing source/);
+  assert.doesNotMatch(resume.result.content[0].text, /summary: Unrelated billing source/);
   assert.match(resume.result.content[0].text, /MCP can record decisions/);
 
   const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8");

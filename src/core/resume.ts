@@ -171,7 +171,8 @@ function formatSources(root: string, sources: SourceRecord[], query = ""): strin
   return [
     `- Query filter: full summaries for ${matched.length} relevant or stale source(s), compact stubs for ${unmatched.length} unchanged source(s).`,
     staleCount > 0 ? `- Stale source records shown in full: ${staleCount} changed/missing.` : null,
-    "- Compact stubs keep path/status/guidance but omit summaries to preserve budget.",
+    "- Compact stubs keep path/status/topic/guidance but omit full summaries to preserve budget.",
+    "- For full omitted summaries, call `source_status` or rerun without `--query`.",
     ...matched.map((entry) => formatSourceEntry(entry, "full")),
     ...unmatched.map((entry) => formatSourceEntry(entry, "stub"))
   ].filter((line): line is string => Boolean(line));
@@ -181,6 +182,7 @@ function formatSourceEntry(entry: SourceEntry, mode: "full" | "stub"): string {
   const lines = [
     `- ${entry.source.path}`,
     `  - status: ${entry.status}`,
+    mode === "stub" ? `  - topic: ${topicHint(entry.source.summary)}` : null,
     mode === "full"
       ? `  - summary: ${entry.source.summary || "No summary recorded."}`
       : "  - summary: omitted by query filter",
@@ -277,6 +279,16 @@ function uniqueTokens(value: string): string[] {
 
 function normalizedText(value: string): string {
   return String(value || "").toLowerCase();
+}
+
+function topicHint(summary: string): string {
+  const normalized = summary.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return "No summary recorded.";
+  }
+
+  const sentenceMatch = normalized.match(/^(.+?[.!?])(?:\s|$)/u);
+  return truncateOneLine(sentenceMatch?.[1] || normalized, 80);
 }
 
 function formatEvents(events: AgentpackEvent[], type: string): string[] {

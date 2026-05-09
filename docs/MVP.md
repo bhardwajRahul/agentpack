@@ -39,7 +39,7 @@ agentpack install cursor
 
 ## v0 File Format
 
-`--query` is optional. Without it, resume/export include the full Source Cache. With it, Agentpack uses local lexical matching to include full source summaries for relevant records, always keeps changed/missing records in full, and uses compact stubs for unrelated unchanged records. If nothing matches, the full Source Cache is retained.
+`--query` is optional. Without it, resume/export include the full Source Cache. With it, Agentpack uses local lexical matching to include full source summaries for relevant records, always keeps changed/missing records in full, and uses compact path/status/topic stubs for unrelated unchanged records. If nothing matches, the full Source Cache is retained.
 
 ```text
 .agentpack/
