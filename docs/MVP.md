@@ -34,6 +34,7 @@ agentpack doctor
 agentpack mcp
 agentpack install codex
 agentpack install claude
+agentpack install claude-desktop
 agentpack install cursor
 ```
 

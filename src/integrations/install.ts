@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getPackPath, readJson } from "../core/store.js";
 
-const INSTALL_TARGETS = ["codex", "claude", "cursor"] as const;
+const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor"] as const;
 
 const INSTRUCTIONS = `# Agentpack
 
@@ -102,6 +102,32 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       notes: [
         "Only project-local files are modified.",
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json."
+      ]
+    };
+  }
+
+  if (target === "claude-desktop") {
+    const desktopSnippetPath = getPackPath(root, "instructions", "claude-desktop-mcp.example.json");
+    return {
+      target,
+      files: [
+        writeFilePlan(
+          root,
+          ".agentpack/instructions/claude-desktop.md",
+          "Write Claude Desktop-specific Agentpack setup notes.",
+          claudeDesktopInstructions(root, desktopSnippetPath)
+        ),
+        writeFilePlan(
+          root,
+          ".agentpack/instructions/claude-desktop-mcp.example.json",
+          "Write a Claude Desktop MCP config snippet for manual review.",
+          claudeDesktopJsonSnippet(root)
+        )
+      ],
+      notes: [
+        "No Claude Desktop global config is modified.",
+        "Claude Desktop does not read project .mcp.json or CLAUDE.md.",
+        `To enable local MCP in Claude Desktop manually, review ${relativePath(root, desktopSnippetPath)} and merge it into ~/Library/Application Support/Claude/claude_desktop_config.json on macOS.`
       ]
     };
   }
@@ -219,6 +245,50 @@ function claudeMcpServer(): Record<string, unknown> {
     command: "agentpack",
     args: ["mcp"]
   };
+}
+
+function claudeDesktopMcpServer(root: string): Record<string, unknown> {
+  return {
+    command: "agentpack",
+    args: ["mcp", "--root", root]
+  };
+}
+
+function claudeDesktopJsonSnippet(root: string): string {
+  return JSON.stringify({
+    mcpServers: {
+      agentpack: claudeDesktopMcpServer(root)
+    }
+  }, null, 2);
+}
+
+function claudeDesktopInstructions(root: string, snippetPath: string): string {
+  return [
+    "# Agentpack for Claude Desktop",
+    "",
+    "Claude Desktop does not read project-local `.mcp.json` or `CLAUDE.md`.",
+    "Use Claude Code's `.mcp.json` for Claude Code only.",
+    "",
+    "For Claude Desktop local MCP, prefer Desktop Extensions/MCP bundles when Agentpack ships one.",
+    "Until then, review the generated JSON snippet and merge it into your Claude Desktop config manually.",
+    "",
+    "macOS config path:",
+    "",
+    "```text",
+    "~/Library/Application Support/Claude/claude_desktop_config.json",
+    "```",
+    "",
+    "Generated snippet:",
+    "",
+    "```text",
+    relativePath(root, snippetPath),
+    "```",
+    "",
+    "After editing the Claude Desktop config, restart Claude Desktop.",
+    "",
+    "If Claude Desktop cannot find `agentpack`, replace the `command` value with an absolute executable path.",
+    "Keep the `--root` argument pointed at the project whose `.agentpack/` state you want Claude Desktop to use."
+  ].join("\n");
 }
 
 function cursorMcpServer(): Record<string, unknown> {

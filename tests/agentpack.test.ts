@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -342,6 +342,27 @@ test("previews and writes project-local MCP client install files", () => {
     command: "agentpack",
     args: ["mcp"]
   });
+
+  const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
+  assert.match(claudeDesktopPreview, /claude-desktop install plan/);
+  assert.match(claudeDesktopPreview, /No Claude Desktop global config is modified/);
+  assert.equal(existsSync(path.join(dir, ".agentpack", "instructions", "claude-desktop-mcp.example.json")), false);
+
+  const claudeDesktopInstall = run(dir, ["install", "claude-desktop", "--write"]);
+  assert.match(claudeDesktopInstall, /Installed Agentpack claude-desktop integration/);
+  assert.match(claudeDesktopInstall, /claude_desktop_config\.json/);
+  const claudeDesktopSnippet = JSON.parse(readFileSync(
+    path.join(dir, ".agentpack", "instructions", "claude-desktop-mcp.example.json"),
+    "utf8"
+  ));
+  assert.deepEqual(claudeDesktopSnippet.mcpServers.agentpack, {
+    command: "agentpack",
+    args: ["mcp", "--root", realpathSync(dir)]
+  });
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
+    /Claude Desktop does not read project-local `\.mcp\.json`/
+  );
 
   run(dir, ["install", "cursor", "--write"]);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);

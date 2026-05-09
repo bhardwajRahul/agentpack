@@ -138,7 +138,7 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
   if (command === "install") {
     const target = rest[0];
     if (!target) {
-      throw new Error("install requires target: codex, claude, or cursor");
+      throw new Error("install requires target: codex, claude, claude-desktop, or cursor");
     }
     const parsed = parseArgs(rest.slice(1));
     const dryRun = installDryRun(parsed.options);
@@ -179,7 +179,7 @@ Usage:
   agentpack replay
   agentpack doctor
   agentpack mcp [--root <path>]
-  agentpack install codex|claude|cursor [--dry-run|--write]
+  agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
 
 Budget presets: ${formatBudgetPresets()}
 `);

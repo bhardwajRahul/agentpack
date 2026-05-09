@@ -54,6 +54,7 @@ Use dry-run install first:
 ```bash
 agentpack install codex
 agentpack install claude
+agentpack install claude-desktop
 agentpack install cursor
 ```
 
@@ -62,6 +63,7 @@ Apply only after reviewing the plan:
 ```bash
 agentpack install codex --write
 agentpack install claude --write
+agentpack install claude-desktop --write
 agentpack install cursor --write
 ```
 
