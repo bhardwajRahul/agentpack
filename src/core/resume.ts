@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { estimateTokens, packSections } from "./budget.js";
 import { getGitInfo } from "./git.js";
@@ -38,6 +39,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
   const header = [
     "# Agentpack Resume",
     "",
+    `Pack root: ${formatPackRoot(root)}`,
     `Generated: ${generatedAt}`,
     budget ? `Budget: ~${budget} tokens` : "Budget: unbounded",
     options.query ? `Query: ${options.query}` : null
@@ -102,6 +104,17 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
 function section(title: string, lines: Array<string | null | undefined>): string {
   const body = lines.filter((line) => line !== null && line !== undefined).join("\n").trimEnd();
   return `## ${title}\n${body || "- No entries yet."}`;
+}
+
+function formatPackRoot(root: string): string {
+  const home = os.homedir();
+  const relativeToHome = path.relative(home, root);
+
+  if (relativeToHome && !relativeToHome.startsWith("..") && !path.isAbsolute(relativeToHome)) {
+    return path.join("~", relativeToHome);
+  }
+
+  return root;
 }
 
 function formatGit(git: GitInfo): string[] {

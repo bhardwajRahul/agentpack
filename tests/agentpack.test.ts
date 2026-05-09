@@ -38,6 +38,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   ]);
 
   const resume = run(dir, ["resume", "--preset", "agent"]);
+  assert.match(resume, /Pack root: .+agentpack-test-/);
   assert.match(resume, /Ship a tiny Agentpack MVP/);
   assert.match(resume, /Ready for handoff/);
   assert.match(resume, /Open MCP contract/);
