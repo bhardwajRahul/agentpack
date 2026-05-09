@@ -48,6 +48,10 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(resume, /Summary is current for this file content/);
   assert.match(resume, /command-output/);
   assert.match(resume, /exit code: 0/);
+  const timeline = resume.split("## Recent Timeline")[1] || "";
+  assert.match(timeline, /Total events:/);
+  assert.match(timeline, /Full chronology: `agentpack replay`/);
+  assert.doesNotMatch(timeline, /Entry point already inspected/);
 
   const tinyResume = run(dir, ["resume", "--budget", "80"]);
   assert.match(tinyResume, /Estimated usage: ~\d+ tokens/);
@@ -198,6 +202,38 @@ test("redacts secrets from stored context and handoff outputs", () => {
       process.env.AGENTPACK_TEST_TOKEN = priorEnv;
     }
   }
+});
+
+test("keeps recent timeline compact without duplicating source summaries", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-timeline-test-"));
+  run(dir, ["init"]);
+
+  for (let index = 0; index < 12; index += 1) {
+    const fileName = `source-${index}.js`;
+    writeFileSync(path.join(dir, fileName), `console.log(${index})\n`, "utf8");
+    run(dir, [
+      "source",
+      "add",
+      fileName,
+      "--summary",
+      `Detailed source summary ${index} that belongs in Source Cache but not in Recent Timeline.`
+    ]);
+  }
+
+  run(dir, ["record", "decision", "Keep timeline as a compact digest."]);
+  run(dir, ["checkpoint", "-m", "Timeline compaction checkpoint."]);
+
+  const resume = run(dir, ["resume", "--preset", "deep"]);
+  const timeline = resume.split("## Recent Timeline")[1] || "";
+
+  assert.match(timeline, /Total events:/);
+  assert.match(timeline, /source: 12/);
+  assert.match(timeline, /Recent source records:/);
+  assert.match(timeline, /Recent non-source events:/);
+  assert.match(timeline, /Full chronology: `agentpack replay`/);
+  assert.doesNotMatch(timeline, /Detailed source summary/);
+  assert.equal((timeline.match(/\[checkpoint\]/g) || []).length, 0);
+  assert.match(resume, /Detailed source summary 11/);
 });
 
 test("serializes concurrent source record writes", async () => {

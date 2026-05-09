@@ -74,7 +74,9 @@ Resume sections are prioritized:
 4. Decisions.
 5. Dead ends.
 6. Evidence.
-7. Recent timeline.
+7. Compact recent timeline digest.
+
+The timeline digest is intentionally compact. Full event history stays available through `agentpack replay`; resume output should avoid repeating source summaries, decisions, and evidence previews that already appear in dedicated sections.
 
 Suggested presets:
 

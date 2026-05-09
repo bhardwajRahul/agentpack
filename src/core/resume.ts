@@ -187,10 +187,33 @@ function formatTimeline(events: AgentpackEvent[]): string[] {
     return ["- No events yet."];
   }
 
-  return events.slice(-30).map((event) => {
-    const label = text(event.text) || text(event.summary) || text(event.kind) || text(event.checkpointId);
-    return `- ${event.ts} [${event.type}] ${label}`.trim();
-  });
+  const counts = eventTypeCounts(events);
+  const recentCheckpoints = events
+    .filter((event) => event.type === "checkpoint")
+    .slice(-3)
+    .map((event) => `  - ${event.ts}: ${shortLabel(event)}`);
+  const recentNonSourceEvents = events
+    .filter((event) => event.type !== "source" && event.type !== "checkpoint")
+    .slice(-8)
+    .map((event) => `  - ${event.ts} [${event.type}] ${shortLabel(event)}`);
+  const recentSourcePaths = uniqueRecent(
+    events
+      .filter((event) => event.type === "source")
+      .map((event) => text(event.path))
+      .filter(Boolean),
+    8
+  );
+
+  return [
+    `- Total events: ${events.length} (${counts}).`,
+    "- Source details are in Source Cache; evidence details are in Evidence.",
+    recentSourcePaths.length ? `- Recent source records: ${recentSourcePaths.join(", ")}` : null,
+    recentCheckpoints.length ? "Recent checkpoints:" : null,
+    ...recentCheckpoints,
+    recentNonSourceEvents.length ? "Recent non-source events:" : null,
+    ...recentNonSourceEvents,
+    "- Full chronology: `agentpack replay`."
+  ].filter((line): line is string => Boolean(line));
 }
 
 function text(value: unknown): string {
@@ -206,6 +229,55 @@ function previewText(value: string): string {
     .slice(0, 360)
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function eventTypeCounts(events: AgentpackEvent[]): string {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    counts.set(event.type, (counts.get(event.type) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([type, count]) => `${type}: ${count}`)
+    .join(", ");
+}
+
+function shortLabel(event: AgentpackEvent): string {
+  const label = text(event.text)
+    || text(event.summary)
+    || text(event.kind)
+    || text(event.path)
+    || text(event.checkpointId)
+    || "No label";
+
+  return truncateOneLine(label, 140);
+}
+
+function uniqueRecent(values: string[], limit: number): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+
+  for (const value of [...values].reverse()) {
+    if (!seen.has(value)) {
+      seen.add(value);
+      output.push(value);
+    }
+    if (output.length >= limit) {
+      break;
+    }
+  }
+
+  return output.reverse();
+}
+
+function truncateOneLine(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
 function withStableBudgetMetadata(
