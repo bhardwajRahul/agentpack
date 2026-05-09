@@ -15,7 +15,7 @@ Use `agent` instead of `quick` when the task needs more history.
 
 ## During Work
 
-Record only durable context. Do not log every thought.
+Record only durable context. Agentpack is not an activity logger, and it should not log every thought, file read, or edit.
 
 Default cadence:
 
@@ -24,7 +24,7 @@ Default cadence:
 - At the end of a coherent step, record the useful sources/evidence, update status and next actions, then checkpoint.
 - Use full safe mode for risky or release-like changes: record important findings as they happen and run the full verification loop.
 
-This keeps Agentpack useful without turning every micro-step into ledger traffic.
+This keeps Agentpack useful without turning every micro-step into ledger traffic. The intended default cost is one context load near the start and one durable save near the end.
 
 ```text
 record_source(path, summary)

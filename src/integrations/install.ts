@@ -7,6 +7,7 @@ const INSTALL_TARGETS = ["codex", "claude", "cursor"] as const;
 const INSTRUCTIONS = `# Agentpack
 
 Use Agentpack as the task-state ledger for this repo.
+Agentpack is not an activity logger; do not record every thought, file read, or edit.
 
 At the start of a task:
 - call \`load_context\` with a small preset first
