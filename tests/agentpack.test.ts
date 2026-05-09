@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -236,6 +236,57 @@ test("keeps recent timeline compact without duplicating source summaries", () =>
   assert.match(resume, /Detailed source summary 11/);
 });
 
+test("filters source cache summaries by query while preserving source stubs", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-query-test-"));
+  mkdirSync(path.join(dir, "src"), { recursive: true });
+  mkdirSync(path.join(dir, "docs"), { recursive: true });
+  writeFileSync(path.join(dir, "src", "auth.ts"), "export const auth = true;\n", "utf8");
+  writeFileSync(path.join(dir, "src", "billing.ts"), "export const billing = true;\n", "utf8");
+  writeFileSync(path.join(dir, "docs", "setup.md"), "# Setup\n", "utf8");
+
+  run(dir, ["init"]);
+  run(dir, [
+    "source",
+    "add",
+    "src/auth.ts",
+    "--summary",
+    "Authentication middleware validates sessions and refresh tokens."
+  ]);
+  run(dir, [
+    "source",
+    "add",
+    "src/billing.ts",
+    "--summary",
+    "Billing worker calculates invoices and payment retries."
+  ]);
+  run(dir, [
+    "source",
+    "add",
+    "docs/setup.md",
+    "--summary",
+    "Developer setup docs for local MCP install."
+  ]);
+
+  const filtered = run(dir, ["resume", "--preset", "deep", "--query", "auth session"]);
+  assert.match(filtered, /Query filter: full summaries for 1 relevant or stale source\(s\), compact stubs for 2 unchanged source\(s\)/);
+  assert.match(filtered, /src\/auth\.ts/);
+  assert.match(filtered, /Authentication middleware validates sessions/);
+  assert.match(filtered, /src\/billing\.ts/);
+  assert.match(filtered, /docs\/setup\.md/);
+  assert.match(filtered, /summary: omitted by query filter/);
+  assert.doesNotMatch(filtered, /Billing worker calculates invoices/);
+  assert.doesNotMatch(filtered, /Developer setup docs/);
+
+  const unfiltered = run(dir, ["resume", "--preset", "deep"]);
+  assert.match(unfiltered, /Billing worker calculates invoices/);
+  assert.match(unfiltered, /Developer setup docs/);
+
+  const noMatch = run(dir, ["resume", "--preset", "deep", "--query", "vector database"]);
+  assert.match(noMatch, /full Source Cache retained to avoid false-negative filtering/);
+  assert.match(noMatch, /Billing worker calculates invoices/);
+  assert.match(noMatch, /Developer setup docs/);
+});
+
 test("serializes concurrent source record writes", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-concurrent-source-test-"));
   const files = Array.from({ length: 16 }, (_, index) => `file-${index}.js`);
@@ -310,6 +361,7 @@ test("previews and writes project-local MCP client install files", () => {
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('mcp')\n", "utf8");
+  writeFileSync(path.join(dir, "other.js"), "console.log('other')\n", "utf8");
   run(dir, ["init"]);
   run(dir, ["set", "goal", "Exercise MCP smoke flow"]);
 
@@ -368,9 +420,23 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.match(source.result.content[0].text, /Recorded source index\.js/);
 
-  const sourceStatus = await mcp.send({
+  const otherSource = await mcp.send({
     jsonrpc: "2.0",
     id: 5,
+    method: "tools/call",
+    params: {
+      name: "record_source",
+      arguments: {
+        path: "other.js",
+        summary: "Unrelated billing source for query filter coverage."
+      }
+    }
+  });
+  assert.match(otherSource.result.content[0].text, /Recorded source other\.js/);
+
+  const sourceStatus = await mcp.send({
+    jsonrpc: "2.0",
+    id: 6,
     method: "tools/call",
     params: {
       name: "source_status",
@@ -383,17 +449,21 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
-    id: 6,
+    id: 7,
     method: "tools/call",
     params: {
       name: "resume",
       arguments: {
-        preset: "quick"
+        preset: "deep",
+        query: "smoke flow"
       }
     }
   });
   assert.match(resume.result.content[0].text, /Exercise MCP smoke flow/);
   assert.match(resume.result.content[0].text, /Estimated usage: ~\d+ tokens/);
+  assert.match(resume.result.content[0].text, /Query filter: full summaries for 1 relevant or stale source\(s\), compact stubs for 1 unchanged source\(s\)/);
+  assert.match(resume.result.content[0].text, /MCP smoke source/);
+  assert.doesNotMatch(resume.result.content[0].text, /Unrelated billing source/);
   assert.match(resume.result.content[0].text, /MCP can record decisions/);
 
   const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8");

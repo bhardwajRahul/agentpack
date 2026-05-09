@@ -112,7 +112,8 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     const parsed = parseArgs(rest);
     const target = stringOption(parsed.options.to) || parsed.positionals[0] || "chatgpt";
     const resume = buildResume(root, {
-      budget: budgetOption(parsed.options, 4000)
+      budget: budgetOption(parsed.options, 4000),
+      query: stringOption(parsed.options.query)
     });
     const filePath = exportPath(root, target);
     writeFileSync(filePath, resume.markdown, "utf8");
@@ -172,8 +173,8 @@ Usage:
   agentpack evidence add --kind test-output --file test.log
   agentpack run "npm test"
   agentpack checkpoint -m <summary> --status <text> --next <item>
-  agentpack resume --preset chat
-  agentpack export --to chatgpt --preset chat
+  agentpack resume --preset chat [--query <text>]
+  agentpack export --to chatgpt --preset chat [--query <text>]
   agentpack diff [from] [to]
   agentpack replay
   agentpack doctor

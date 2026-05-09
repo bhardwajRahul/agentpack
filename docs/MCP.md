@@ -19,6 +19,8 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 - `diff`
 - `replay`
 
+`load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
+
 ## Manual Smoke
 
 In normal use, a client such as Codex, Claude Code, or Cursor starts `agentpack mcp`. For development, run the local smoke command:

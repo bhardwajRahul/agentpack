@@ -18,6 +18,14 @@ interface ResumeOptions {
   query?: string;
 }
 
+interface SourceEntry {
+  source: SourceRecord;
+  status: string;
+  meaning: string;
+  guidance: string;
+  score: number;
+}
+
 export function buildResume(root: string, options: ResumeOptions = {}) {
   const budget = Number(options.budget || 0);
   const state = readState(root);
@@ -58,7 +66,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
     {
       title: "Source Cache",
       required: true,
-      text: section("Source Cache", formatSources(root, sources))
+      text: section("Source Cache", formatSources(root, sources, options.query))
     },
     {
       title: "Decisions",
@@ -110,7 +118,7 @@ function formatGit(git: GitInfo): string[] {
   ];
 }
 
-function formatSources(root: string, sources: SourceRecord[]): string[] {
+function formatSources(root: string, sources: SourceRecord[], query = ""): string[] {
   if (!sources.length) {
     return [
       "- No inspected sources recorded yet.",
@@ -118,7 +126,8 @@ function formatSources(root: string, sources: SourceRecord[]): string[] {
     ];
   }
 
-  return sources.map((source) => {
+  const queryTerms = tokenizeQuery(query);
+  const entries = sources.map((source) => {
     const absolutePath = path.join(root, source.path);
     let status = "missing";
     if (existsSync(absolutePath)) {
@@ -132,15 +141,142 @@ function formatSources(root: string, sources: SourceRecord[]): string[] {
       ? "Matches recorded source hash. Summary is current for this file content."
       : "Does not match recorded source hash.";
 
-    return [
-      `- ${source.path}`,
-      `  - status: ${status}`,
-      `  - summary: ${source.summary || "No summary recorded."}`,
-      source.snippet ? `  - snippet: ${source.snippet}` : null,
-      `  - meaning: ${meaning}`,
-      `  - guidance: ${guidance}`
-    ].filter(Boolean).join("\n");
+    return {
+      source,
+      status,
+      meaning,
+      guidance,
+      score: queryTerms.length > 0 ? scoreSource(source, queryTerms) : 0
+    };
   });
+
+  if (!queryTerms.length) {
+    return entries.map((entry) => formatSourceEntry(entry, "full"));
+  }
+
+  const matched = entries
+    .filter((entry) => entry.score > 0 || entry.status !== "unchanged")
+    .sort((left, right) => right.score - left.score || left.source.path.localeCompare(right.source.path));
+  const matchedPaths = new Set(matched.map((entry) => entry.source.path));
+  const unmatched = entries.filter((entry) => !matchedPaths.has(entry.source.path));
+  const staleCount = matched.filter((entry) => entry.status !== "unchanged").length;
+
+  if (!matched.length) {
+    return [
+      `- Query filter: no source summaries matched \`${query}\`; full Source Cache retained to avoid false-negative filtering.`,
+      ...entries.map((entry) => formatSourceEntry(entry, "full"))
+    ];
+  }
+
+  return [
+    `- Query filter: full summaries for ${matched.length} relevant or stale source(s), compact stubs for ${unmatched.length} unchanged source(s).`,
+    staleCount > 0 ? `- Stale source records shown in full: ${staleCount} changed/missing.` : null,
+    "- Compact stubs keep path/status/guidance but omit summaries to preserve budget.",
+    ...matched.map((entry) => formatSourceEntry(entry, "full")),
+    ...unmatched.map((entry) => formatSourceEntry(entry, "stub"))
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatSourceEntry(entry: SourceEntry, mode: "full" | "stub"): string {
+  const lines = [
+    `- ${entry.source.path}`,
+    `  - status: ${entry.status}`,
+    mode === "full"
+      ? `  - summary: ${entry.source.summary || "No summary recorded."}`
+      : "  - summary: omitted by query filter",
+    mode === "full" && entry.source.snippet ? `  - snippet: ${entry.source.snippet}` : null,
+    `  - meaning: ${entry.meaning}`,
+    `  - guidance: ${entry.guidance}`
+  ];
+
+  return lines.filter(Boolean).join("\n");
+}
+
+const QUERY_STOPWORDS = new Set([
+  "about",
+  "after",
+  "agent",
+  "agents",
+  "agentpack",
+  "cache",
+  "code",
+  "context",
+  "contexts",
+  "current",
+  "file",
+  "files",
+  "from",
+  "into",
+  "source",
+  "sources",
+  "task",
+  "tasks",
+  "that",
+  "this",
+  "with",
+  "work",
+  "working"
+]);
+
+function tokenizeQuery(query: string): string[] {
+  return uniqueTokens(query).filter((term) => !QUERY_STOPWORDS.has(term));
+}
+
+function scoreSource(source: SourceRecord, queryTerms: string[]): number {
+  const basename = path.basename(source.path);
+  const pathText = normalizedText(source.path);
+  const basenameText = normalizedText(basename);
+  const summaryText = normalizedText(source.summary);
+  const snippetText = normalizedText(source.snippet);
+  const pathTokens = uniqueTokens(source.path);
+  const basenameTokens = uniqueTokens(basename);
+  const summaryTokens = uniqueTokens(source.summary);
+  const snippetTokens = uniqueTokens(source.snippet);
+  let score = 0;
+
+  for (const term of queryTerms) {
+    score += scoreField(term, basenameText, basenameTokens, 8, 4);
+    score += scoreField(term, pathText, pathTokens, 6, 3);
+    score += scoreField(term, summaryText, summaryTokens, 3, 1);
+    score += scoreField(term, snippetText, snippetTokens, 1, 1);
+  }
+
+  return score;
+}
+
+function scoreField(
+  term: string,
+  textValue: string,
+  tokens: string[],
+  exactScore: number,
+  fuzzyScore: number
+): number {
+  if (tokens.includes(term)) {
+    return exactScore;
+  }
+
+  if (term.length >= 4 && tokens.some((token) => token.startsWith(term) || term.startsWith(token))) {
+    return fuzzyScore;
+  }
+
+  return term.length >= 5 && textValue.includes(term) ? Math.max(1, fuzzyScore) : 0;
+}
+
+function uniqueTokens(value: string): string[] {
+  const seen = new Set<string>();
+  const tokens = normalizedText(value)
+    .split(/[^a-z0-9]+/u)
+    .filter((term) => term.length >= 3);
+
+  for (const token of tokens) {
+    seen.add(token);
+  }
+
+  return [...seen];
+}
+
+function normalizedText(value: string): string {
+  return String(value || "").toLowerCase();
 }
 
 function formatEvents(events: AgentpackEvent[], type: string): string[] {

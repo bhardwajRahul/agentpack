@@ -93,12 +93,12 @@ Agentpack's public demo is the handoff loop:
 ```bash
 agentpack source status
 agentpack export --to chatgpt --preset chat
-agentpack resume --preset agent
+agentpack resume --preset agent --query "MCP install"
 ```
 
 The first command tells the next agent which recorded source conclusions are still valid and which files need to be reopened. `source status` compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
 
-For manual ChatGPT handoff, `export --to chatgpt --preset chat` writes `.agentpack/exports/chatgpt-handoff.md`. For a coding-agent continuation, `resume --preset agent` prints a larger task savegame directly in the terminal or MCP response.
+For manual ChatGPT handoff, `export --to chatgpt --preset chat` writes `.agentpack/exports/chatgpt-handoff.md`. For a coding-agent continuation, `resume --preset agent` prints a larger task savegame directly in the terminal or MCP response. Add `--query` when you want Source Cache to include full summaries for sources relevant to the next task, always include changed/missing source records in full, and keep compact path/status stubs for the rest.
 
 In a new session, start by loading that handoff or Agentpack MCP context, then inspect only the files marked changed or missing. During work, record durable decisions, failed approaches, evidence, and source conclusions. End a coherent step with a checkpoint so the next agent inherits a compact state instead of a pile of chat history.
 
@@ -134,6 +134,8 @@ The source cache is deliberately lightweight. Agentpack stores metadata, hashes,
 
 `--budget` is an approximate token target for generated handoff context. v0 uses a simple estimate, so the number is a practical target, not an exact API token count. Resume output includes estimated usage and a budget status line that says whether any sections were omitted or truncated.
 
+`--query` is an optional local filter for Source Cache. It uses deterministic lexical matching, not embeddings or network calls. Matching sources keep their summaries and snippets; changed or missing source records are always shown in full; non-matching unchanged sources stay visible as compact stubs with path, hash status, meaning, and guidance. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering.
+
 Suggested defaults:
 
 - `1200`: quick status ping
@@ -144,8 +146,8 @@ Suggested defaults:
 When unsure, start with:
 
 ```bash
-agentpack resume --preset chat
-agentpack export --to chatgpt --preset chat
+agentpack resume --preset chat --query "MCP install"
+agentpack export --to chatgpt --preset chat --query "MCP install"
 ```
 
 ## MCP

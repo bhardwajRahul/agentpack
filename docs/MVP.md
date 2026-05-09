@@ -26,8 +26,8 @@ agentpack evidence add --kind test-output --file <path>
 agentpack note <text>
 agentpack run <command>
 agentpack checkpoint -m <summary> --status <text> --next <item>
-agentpack resume --preset chat
-agentpack export --to chatgpt --preset chat
+agentpack resume --preset chat --query <text>
+agentpack export --to chatgpt --preset chat --query <text>
 agentpack diff
 agentpack replay
 agentpack doctor
@@ -38,6 +38,8 @@ agentpack install cursor
 ```
 
 ## v0 File Format
+
+`--query` is optional. Without it, resume/export include the full Source Cache. With it, Agentpack uses local lexical matching to include full source summaries for relevant records, always keeps changed/missing records in full, and uses compact stubs for unrelated unchanged records. If nothing matches, the full Source Cache is retained.
 
 ```text
 .agentpack/
