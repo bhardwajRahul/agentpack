@@ -6,7 +6,7 @@ Agentpack integrates through project files, CLI, and MCP. It does not write hidd
 
 | Client | Instruction file | MCP config surface | Status |
 | --- | --- | --- | --- |
-| Codex | `AGENTS.md` | User-local `~/.codex/config.toml`, copied from generated `.agentpack/instructions/codex-mcp.example.toml` | Tested |
+| Codex | `AGENTS.md` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | Tested |
 | Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | Tested |
 | Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Generated, not tested yet |
 | Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Generated, not tested yet |
@@ -23,6 +23,7 @@ In the current project:
 - `CLAUDE.md`: repo-root project instructions for Claude Code.
 - `.mcp.json`: repo-root project MCP config for Claude Code.
 - `AGENTS.md`: repo-root project instructions for Codex.
+- `.codex/config.toml`: repo-local Codex MCP config created by `agentpack install codex --write`.
 - `.agentpack/instructions/codex-mcp.example.toml`: local Codex config snippet, created by `agentpack install codex --write`.
 - `.agentpack/instructions/claude-desktop-mcp.example.json`: local Claude Desktop config snippet, created by `agentpack install claude-desktop --write`.
 
@@ -67,10 +68,21 @@ agentpack install codex --write
 This writes:
 
 - `AGENTS.md`
+- `.codex/config.toml`
 - `.agentpack/instructions/codex.md`
 - `.agentpack/instructions/codex-mcp.example.toml`
 
-Agentpack does not edit `~/.codex/config.toml`. To enable MCP in Codex, review `.agentpack/instructions/codex-mcp.example.toml` and paste the snippet into your Codex config manually.
+Agentpack does not edit `~/.codex/config.toml`. The project-local `.codex/config.toml` entry starts MCP with:
+
+```toml
+[mcp_servers.agentpack]
+command = "agentpack"
+args = ["mcp"]
+```
+
+Do not keep an older global `~/.codex/config.toml` entry with `args = ["mcp", "--root", "/some/project"]` or `cwd = "/some/project"`. That makes every Codex session reuse that old repo's `.agentpack/` state even after you run `agentpack init` in a new repo.
+
+If Agentpack still reports the wrong Pack root in Codex, remove the stale global `mcp_servers.agentpack` block, keep the project-local `.codex/config.toml`, then restart or reconnect the MCP server.
 
 Official reference: [Codex configuration reference](https://developers.openai.com/codex/config-reference).
 
@@ -128,6 +140,8 @@ If the config file does not exist yet, create it with the generated snippet cont
 ```
 
 Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep the `--root` argument pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
+
+Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update the global `mcpServers.agentpack.args` `--root` value to the new repo and restart Claude Desktop.
 
 For a future low-friction Desktop install, Agentpack should ship a Desktop Extension/MCP bundle instead of asking users to edit JSON manually.
 

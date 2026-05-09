@@ -57,7 +57,7 @@ agentpack install cursor
 
 `events.jsonl` is the append-only task ledger. `sources.json` records file hashes, summaries, and optional snippets. `checkpoints/` stores materialized resume snapshots plus git metadata.
 
-`.agentpack/` is ignored by git by default. `agentpack init` adds `.agentpack/` to the project `.gitignore` when needed. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
+`.agentpack/` is ignored by git by default. `agentpack init` appends `.agentpack/` to the project `.gitignore` when needed and preserves existing project rules. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
 
 ## Budget Policy
 

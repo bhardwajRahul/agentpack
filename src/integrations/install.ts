@@ -82,11 +82,14 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       files: [
         writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", INSTRUCTIONS),
-        writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(root))
+        tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", "mcp_servers.agentpack", codexMcpTomlTable()),
+        writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet())
       ],
       notes: [
         "No global Codex config is modified.",
-        `To enable MCP in Codex, review ${relativePath(root, codexSnippetPath)} and paste it into ~/.codex/config.toml.`
+        "Codex should use the project-local .codex/config.toml entry for this repo.",
+        "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
+        `For manual review, see ${relativePath(root, codexSnippetPath)}.`
       ]
     };
   }
@@ -213,6 +216,16 @@ function jsonMergePlan(root: string, relativeFilePath: string, description: stri
   };
 }
 
+function tomlTablePlan(root: string, relativeFilePath: string, description: string, tableName: string, tableBody: string): InstallFile {
+  const filePath = path.join(root, relativeFilePath);
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  return {
+    filePath,
+    description,
+    content: upsertTomlTable(existing, tableName, tableBody)
+  };
+}
+
 function upsertManagedBlock(existing: string, block: string): string {
   const marker = "<!-- agentpack:start -->";
   const endMarker = "<!-- agentpack:end -->";
@@ -225,14 +238,46 @@ function upsertManagedBlock(existing: string, block: string): string {
   return `${existing.trimEnd()}\n\n${wrapped}`.trimStart();
 }
 
-function codexTomlSnippet(root: string): string {
+function upsertTomlTable(existing: string, tableName: string, tableBody: string): string {
+  const tableHeader = `[${tableName}]`;
+  const lines = existing.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === tableHeader);
+  const bodyLines = tableBody.trimEnd().split("\n");
+
+  if (start === -1) {
+    const prefix = existing.trimEnd();
+    return ensureTrailingNewline(prefix ? `${prefix}\n\n${tableBody}` : tableBody);
+  }
+
+  let end = start + 1;
+  const nestedPrefix = `[${tableName}.`;
+  while (end < lines.length) {
+    const trimmed = (lines[end] || "").trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]") && !trimmed.startsWith(nestedPrefix)) {
+      break;
+    }
+    end += 1;
+  }
+
+  lines.splice(start, end - start, ...bodyLines);
+  return ensureTrailingNewline(lines.join("\n").trimEnd());
+}
+
+function codexTomlSnippet(): string {
   return [
-    "# Add this to ~/.codex/config.toml after reviewing it.",
-    "# Agentpack does not write global Codex configuration automatically.",
+    "# Add this to the repo's .codex/config.toml after reviewing it.",
+    "# Do not put a project-specific --root or cwd in ~/.codex/config.toml.",
+    "# A hard-coded global root makes Agentpack read the wrong repo.",
+    codexMcpTomlTable(),
+    ""
+  ].join("\n");
+}
+
+function codexMcpTomlTable(): string {
+  return [
     "[mcp_servers.agentpack]",
     "command = \"agentpack\"",
-    `args = ["mcp", "--root", ${tomlString(root)}]`,
-    `cwd = ${tomlString(root)}`,
+    "args = [\"mcp\"]",
     "startup_timeout_sec = 10",
     "tool_timeout_sec = 60",
     ""
@@ -300,7 +345,8 @@ function claudeDesktopInstructions(root: string, snippetPath: string): string {
     "After editing the Claude Desktop config, restart Claude Desktop.",
     "",
     "If Claude Desktop cannot find `agentpack`, replace the `command` value with an absolute executable path.",
-    "Keep the `--root` argument pointed at the project whose `.agentpack/` state you want Claude Desktop to use."
+    "Keep the `--root` argument pointed at the project whose `.agentpack/` state you want Claude Desktop to use.",
+    "When switching Claude Desktop to another repo, update the global `mcpServers.agentpack.args` `--root` value and restart Claude Desktop."
   ].join("\n");
 }
 
@@ -336,10 +382,6 @@ function ensureTrailingNewline(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function tomlString(value: string): string {
-  return JSON.stringify(value);
 }
 
 function escapeRegExp(value: string): string {

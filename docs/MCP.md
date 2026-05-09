@@ -69,6 +69,10 @@ agentpack install cursor --write
 
 See [INTEGRATIONS.md](INTEGRATIONS.md) for target-specific files and manual global config steps.
 
+After changing Agentpack itself and running `npm run build`, reconnect or restart any already-running MCP client. Stdio MCP clients keep the server process alive, so they do not automatically load the newly built `dist/` files.
+
+If `load_context` reports the wrong Pack root, check for a stale global client config that starts Agentpack with a hard-coded `--root` or `cwd`. Project-local configs should start Codex and Claude Code with `agentpack mcp` so the server resolves the repo-local `.agentpack/` root.
+
 ## Security Notes
 
 - The server operates only on the nearest `.agentpack/` root.

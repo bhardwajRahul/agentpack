@@ -42,7 +42,7 @@ src/integrations/install.ts: install uses a dry-run plan by default and writes o
 Good dead ends prevent repeated work:
 
 ```text
-Do not auto-edit ~/.codex/config.toml. It is safer to generate a reviewed snippet for manual install.
+Do not put a project-specific --root or cwd in the global ~/.codex/config.toml Agentpack entry; use repo-local .codex/config.toml so each repo resolves its own .agentpack state.
 ```
 
 ## End A Meaningful Step

@@ -99,6 +99,23 @@ test("exposes expected MCP tools", () => {
   ]);
 });
 
+test("init appends to existing gitignore without overwriting project rules", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-gitignore-test-"));
+  const gitignorePath = path.join(dir, ".gitignore");
+  const existingGitignore = [
+    "# Project rules",
+    "dist/",
+    "*.log"
+  ].join("\n");
+  writeFileSync(gitignorePath, existingGitignore, "utf8");
+
+  run(dir, ["init"]);
+  assert.equal(readFileSync(gitignorePath, "utf8"), `${existingGitignore}\n.agentpack/\n`);
+
+  run(dir, ["init"]);
+  assert.equal(readFileSync(gitignorePath, "utf8"), `${existingGitignore}\n.agentpack/\n`);
+});
+
 test("distinguishes source-cache status from git working tree status", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-git-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('initial')\n", "utf8");
@@ -380,10 +397,19 @@ test("previews and writes project-local MCP client install files", () => {
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
+  assert.match(codexInstall, /project-local \.codex\/config\.toml/);
+  assert.match(codexInstall, /Remove any old ~\/\.codex\/config\.toml agentpack server/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
+  const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
+  assert.match(codexConfig, /\[mcp_servers\.agentpack\]/);
+  assert.match(codexConfig, /args = \["mcp"\]/);
+  assert.doesNotMatch(codexConfig, /--root/);
+  assert.doesNotMatch(codexConfig, /cwd =/);
   const codexSnippet = readFileSync(path.join(dir, ".agentpack", "instructions", "codex-mcp.example.toml"), "utf8");
   assert.match(codexSnippet, /\[mcp_servers\.agentpack\]/);
-  assert.match(codexSnippet, /args = \["mcp", "--root"/);
+  assert.match(codexSnippet, /args = \["mcp"\]/);
+  assert.doesNotMatch(codexSnippet, /args = \["mcp", "--root"/);
+  assert.doesNotMatch(codexSnippet, /cwd =/);
 });
 
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
