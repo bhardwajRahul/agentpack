@@ -17,6 +17,15 @@ Use `agent` instead of `quick` when the task needs more history.
 
 Record only durable context. Do not log every thought.
 
+Default cadence:
+
+- At task start, load Agentpack context and source status.
+- During normal coding, keep working locally; record only durable decisions, dead ends, source conclusions, and evidence.
+- At the end of a coherent step, record the useful sources/evidence, update status and next actions, then checkpoint.
+- Use full safe mode for risky or release-like changes: record important findings as they happen and run the full verification loop.
+
+This keeps Agentpack useful without turning every micro-step into ledger traffic.
+
 ```text
 record_source(path, summary)
 record_decision(text, files, evidence)
