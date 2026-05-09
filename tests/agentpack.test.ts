@@ -363,6 +363,10 @@ test("previews and writes project-local MCP client install files", () => {
     readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
     /Claude Desktop does not read project-local `\.mcp\.json`/
   );
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
+    /Do not copy the generated snippet over the Desktop config file/
+  );
 
   run(dir, ["install", "cursor", "--write"]);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);

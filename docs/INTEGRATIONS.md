@@ -107,6 +107,26 @@ Claude Desktop does not read this repo's `.mcp.json` or `CLAUDE.md`. To enable A
 ~/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
+Do not copy the generated snippet over the Desktop config file. That can delete existing Claude Desktop MCP servers. Merge only the `mcpServers.agentpack` entry.
+
+Safe manual flow:
+
+```bash
+agentpack install claude-desktop --write
+cat .agentpack/instructions/claude-desktop-mcp.example.json
+mkdir -p "$HOME/Library/Application Support/Claude"
+open -e "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
+```
+
+If the config file does not exist yet, create it with the generated snippet content. If it already exists, add only this entry under its existing `mcpServers` object:
+
+```json
+"agentpack": {
+  "command": "agentpack",
+  "args": ["mcp", "--root", "/absolute/path/to/your/project"]
+}
+```
+
 Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep the `--root` argument pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
 
 For a future low-friction Desktop install, Agentpack should ship a Desktop Extension/MCP bundle instead of asking users to edit JSON manually.
