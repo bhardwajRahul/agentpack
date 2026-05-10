@@ -295,7 +295,7 @@ function claudeMcpServer(): Record<string, unknown> {
 function claudeDesktopMcpServer(root: string): Record<string, unknown> {
   return {
     command: "agentpack",
-    args: ["mcp"],
+    args: ["mcp", "--root", root],
     env: {
       AGENTPACK_ROOT: root
     }
@@ -348,8 +348,8 @@ function claudeDesktopInstructions(root: string, snippetPath: string): string {
     "After editing the Claude Desktop config, restart Claude Desktop.",
     "",
     "If Claude Desktop cannot find `agentpack`, replace the `command` value with an absolute executable path.",
-    "Keep the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.",
-    "When switching Claude Desktop to another repo, update the global `mcpServers.agentpack.env.AGENTPACK_ROOT` value and restart Claude Desktop."
+    "Keep both the `--root` argument and `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.",
+    "When switching Claude Desktop to another repo, update both the global `mcpServers.agentpack.args` `--root` value and `mcpServers.agentpack.env.AGENTPACK_ROOT`, then restart Claude Desktop."
   ].join("\n");
 }
 

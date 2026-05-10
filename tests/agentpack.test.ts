@@ -395,7 +395,7 @@ test("previews and writes project-local MCP client install files", () => {
   ));
   assert.deepEqual(claudeDesktopSnippet.mcpServers.agentpack, {
     command: "agentpack",
-    args: ["mcp"],
+    args: ["mcp", "--root", realpathSync(dir)],
     env: {
       AGENTPACK_ROOT: realpathSync(dir)
     }

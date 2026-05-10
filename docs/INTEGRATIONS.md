@@ -135,16 +135,16 @@ If the config file does not exist yet, create it with the generated snippet cont
 ```json
 "agentpack": {
   "command": "agentpack",
-  "args": ["mcp"],
+  "args": ["mcp", "--root", "/absolute/path/to/your/project"],
   "env": {
     "AGENTPACK_ROOT": "/absolute/path/to/your/project"
   }
 }
 ```
 
-Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
+Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep both the `--root` argument and the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
 
-Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update the global `mcpServers.agentpack.env.AGENTPACK_ROOT` value to the new repo and restart Claude Desktop.
+Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update both the global `mcpServers.agentpack.args` `--root` value and `mcpServers.agentpack.env.AGENTPACK_ROOT`, then restart Claude Desktop.
 
 One Claude Desktop server entry points to one Agentpack repo at a time. To expose multiple repos at once, add multiple `mcpServers` entries with different names and different `AGENTPACK_ROOT` values, but expect duplicated Agentpack tool names in the client UI.
 
