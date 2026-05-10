@@ -14,9 +14,9 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 
 All clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live.
 
-Generated integration files are local developer setup by default. Until Agentpack has an explicit shared/team mode, keep `.agentpack/`, `.codex/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, and similar client config files out of origin unless a repo deliberately chooses to version its own agent policy.
+Generated integration files are local developer setup by default. Until Agentpack has an explicit shared/team mode, keep `.agentpack/`, `.codex/`, `.claude/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, and similar client config files out of origin unless a repo deliberately chooses to version its own agent policy.
 
-Generated files under `.agentpack/instructions/` are local helper snippets. They are created only when you run the matching installer, and `.agentpack/` is ignored by git by default.
+Generated files under `.agentpack/instructions/` are local helper snippets. They are created only when you run the matching installer, and `agentpack init` adds the Agentpack local-only patterns to `.gitignore` without replacing existing project rules.
 
 ## Where Files Live
 

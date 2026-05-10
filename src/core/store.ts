@@ -5,6 +5,14 @@ import type { AgentpackEvent, AgentpackState, SourcesFile } from "./types.js";
 
 export const PACK_DIR = ".agentpack";
 export const SCHEMA_VERSION = 1;
+export const AGENTPACK_IGNORE_PATTERNS = [
+  `${PACK_DIR}/`,
+  ".codex",
+  ".claude",
+  ".mcp.json",
+  "AGENTS.md",
+  "CLAUDE.md"
+];
 
 const LOCK_TIMEOUT_MS = 10_000;
 const STALE_LOCK_MS = 5 * 60_000;
@@ -84,16 +92,24 @@ export function initPack(root: string): string {
 
 export function ensurePackIgnored(root: string): void {
   const gitignorePath = path.join(root, ".gitignore");
-  const entry = `${PACK_DIR}/`;
   const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
   const lines = existing.split(/\r?\n/).map((line) => line.trim());
+  const missing = AGENTPACK_IGNORE_PATTERNS.filter((pattern) => !hasIgnorePattern(lines, pattern));
 
-  if (lines.includes(entry) || lines.includes(PACK_DIR)) {
+  if (!missing.length) {
     return;
   }
 
   const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
-  writeFileSync(gitignorePath, `${existing}${prefix}${entry}\n`, "utf8");
+  writeFileSync(gitignorePath, `${existing}${prefix}${missing.join("\n")}\n`, "utf8");
+}
+
+function hasIgnorePattern(lines: string[], pattern: string): boolean {
+  const normalized = pattern.endsWith("/") ? pattern.slice(0, -1) : pattern;
+  return lines.some((line) => {
+    const normalizedLine = line.endsWith("/") ? line.slice(0, -1) : line;
+    return normalizedLine === normalized;
+  });
 }
 
 export function getPackPath(root: string, ...parts: string[]): string {

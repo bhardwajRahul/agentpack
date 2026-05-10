@@ -7,6 +7,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { resolveMcpStartDir } from "../src/cli/index.js";
+import { buildDoctorReport } from "../src/core/doctor.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -111,10 +112,76 @@ test("init appends to existing gitignore without overwriting project rules", () 
   writeFileSync(gitignorePath, existingGitignore, "utf8");
 
   run(dir, ["init"]);
-  assert.equal(readFileSync(gitignorePath, "utf8"), `${existingGitignore}\n.agentpack/\n`);
+  const expectedGitignore = [
+    existingGitignore,
+    ".agentpack/",
+    ".codex",
+    ".claude",
+    ".mcp.json",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ""
+  ].join("\n");
+  assert.equal(readFileSync(gitignorePath, "utf8"), expectedGitignore);
 
   run(dir, ["init"]);
-  assert.equal(readFileSync(gitignorePath, "utf8"), `${existingGitignore}\n.agentpack/\n`);
+  assert.equal(readFileSync(gitignorePath, "utf8"), expectedGitignore);
+});
+
+test("doctor warns about local-only ignore gaps and generic project MCP names", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "supportcrud-doctor-test-"));
+  run(dir, ["init"]);
+  writeFileSync(path.join(dir, ".gitignore"), ".agentpack/\n", "utf8");
+  writeFileSync(path.join(dir, ".mcp.json"), JSON.stringify({
+    mcpServers: {
+      agentpack: {
+        type: "stdio",
+        command: "agentpack",
+        args: ["mcp"]
+      }
+    }
+  }, null, 2), "utf8");
+
+  const doctor = run(dir, ["doctor"]);
+  assert.match(doctor, /\[warn\] Local ignores: .*\.mcp\.json/);
+  assert.match(doctor, /\[warn\] Project MCP: generic server key "agentpack" can collide across repos/);
+});
+
+test("doctor warns about stale project roots and overwritten Claude Desktop config", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "get-cluster-doctor-test-"));
+  const staleRoot = mkdtempSync(path.join(os.tmpdir(), "stale-agentpack-root-"));
+  const fakeHome = mkdtempSync(path.join(os.tmpdir(), "agentpack-home-test-"));
+  mkdirSync(path.join(fakeHome, "Library", "Application Support", "Claude"), { recursive: true });
+
+  run(dir, ["init"]);
+  writeFileSync(path.join(dir, ".mcp.json"), JSON.stringify({
+    mcpServers: {
+      "agentpack-get-cluster-doctor-test": {
+        type: "stdio",
+        command: "agentpack",
+        args: ["mcp", "--root", staleRoot]
+      }
+    }
+  }, null, 2), "utf8");
+  writeFileSync(
+    path.join(fakeHome, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+    JSON.stringify({ preferences: { coworkWebSearchEnabled: true } }, null, 2),
+    "utf8"
+  );
+
+  const originalHome = process.env.HOME;
+  try {
+    process.env.HOME = fakeHome;
+    const doctor = buildDoctorReport(dir).text;
+    assert.match(doctor, /\[warn\] Project MCP: .*stale --root/);
+    assert.match(doctor, /\[warn\] Claude Desktop: config has no mcpServers/);
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
 });
 
 test("mcp root resolution prefers --root, then AGENTPACK_ROOT, then cwd", () => {

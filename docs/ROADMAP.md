@@ -14,7 +14,7 @@ Agentpack is not an orchestrator. It is the portable context ledger for humans, 
 - Zero runtime dependencies while practical.
 - Git stores code state; Agentpack stores task context.
 - `.agentpack/` is local state and ignored by git by default.
-- Client integration files are local by default for v0; do not require teams to commit `.mcp.json`, `.codex/`, `AGENTS.md`, or `CLAUDE.md`.
+- Client integration files are local by default for v0; do not require teams to commit `.mcp.json`, `.codex/`, `.claude/`, `AGENTS.md`, or `CLAUDE.md`.
 - Prefer simple file formats over hidden databases until the need is obvious.
 - Avoid framework lock-in; integrate through CLI, files, MCP, and project instructions.
 - Install Agentpack once, initialize it per repo, and keep chats/sessions out of the core model.
