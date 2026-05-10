@@ -59,6 +59,8 @@ agentpack install claude --dry-run
 
 Agentpack only writes project-local files and `.agentpack/instructions/*`. It does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
 
+Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-supportcrud`.
+
 ## Codex
 
 ```bash
@@ -75,7 +77,7 @@ This writes:
 Agentpack does not edit `~/.codex/config.toml`. The project-local `.codex/config.toml` entry starts MCP with:
 
 ```toml
-[mcp_servers.agentpack]
+[mcp_servers.agentpack-supportcrud]
 command = "agentpack"
 args = ["mcp"]
 ```
@@ -98,7 +100,7 @@ This writes:
 - `.mcp.json`
 - `.agentpack/instructions/claude.md`
 
-The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers.
+The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-supportcrud`, so it does not shadow a global `agentpack` server.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp).
 
@@ -133,7 +135,7 @@ open -e "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 If the config file does not exist yet, create it with the generated snippet content. If it already exists, add only this entry under its existing `mcpServers` object:
 
 ```json
-"agentpack": {
+"agentpack-supportcrud": {
   "command": "agentpack",
   "args": ["mcp", "--root", "/absolute/path/to/your/project"],
   "env": {
@@ -144,7 +146,7 @@ If the config file does not exist yet, create it with the generated snippet cont
 
 Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep both the `--root` argument and the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
 
-Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update both the global `mcpServers.agentpack.args` `--root` value and `mcpServers.agentpack.env.AGENTPACK_ROOT`, then restart Claude Desktop.
+Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update both the relevant server's `--root` value and `AGENTPACK_ROOT`, then restart Claude Desktop.
 
 One Claude Desktop server entry points to one Agentpack repo at a time. To expose multiple repos at once, add multiple `mcpServers` entries with different names and different `AGENTPACK_ROOT` values, but expect duplicated Agentpack tool names in the client UI.
 

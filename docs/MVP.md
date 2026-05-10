@@ -59,6 +59,8 @@ agentpack install cursor
 
 `.agentpack/` is ignored by git by default. `agentpack init` appends `.agentpack/` to the project `.gitignore` when needed and preserves existing project rules. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
 
+Client install commands use the repo name when writing MCP server keys, for example `agentpack-supportcrud`, so ignored local configs in different repos do not shadow a global `agentpack` server.
+
 ## Budget Policy
 
 Budget packing is deterministic and approximate. The v0 token estimate is intentionally simple:

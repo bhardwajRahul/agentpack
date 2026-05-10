@@ -74,6 +74,7 @@ export function installIntegration(root: string, targetValue: string, options: I
 
 function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   mkdirSync(getPackPath(root, "instructions"), { recursive: true });
+  const serverName = mcpServerName(root);
 
   if (target === "codex") {
     const codexSnippetPath = getPackPath(root, "instructions", "codex-mcp.example.toml");
@@ -82,12 +83,12 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       files: [
         writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", INSTRUCTIONS),
-        tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", "mcp_servers.agentpack", codexMcpTomlTable()),
-        writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet())
+        tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", `mcp_servers.${serverName}`, codexMcpTomlTable(serverName), "mcp_servers.agentpack"),
+        writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(serverName))
       ],
       notes: [
         "No global Codex config is modified.",
-        "Codex should use the project-local .codex/config.toml entry for this repo.",
+        `Codex should use the project-local .codex/config.toml entry named ${serverName} for this repo.`,
         "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
         `For manual review, see ${relativePath(root, codexSnippetPath)}.`
       ]
@@ -100,10 +101,11 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       files: [
         writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", INSTRUCTIONS),
-        jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", claudeMcpServer())
+        jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer())
       ],
       notes: [
         "Only project-local files are modified.",
+        `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json."
       ]
     };
@@ -124,7 +126,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
           root,
           ".agentpack/instructions/claude-desktop-mcp.example.json",
           "Write a Claude Desktop MCP config snippet for manual review.",
-          claudeDesktopJsonSnippet(root)
+          claudeDesktopJsonSnippet(root, serverName)
         )
       ],
       notes: [
@@ -140,7 +142,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     files: [
       writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", INSTRUCTIONS),
       writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", INSTRUCTIONS),
-      jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", cursorMcpServer())
+      jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer())
     ],
     notes: [
       "Only project-local files are modified.",
@@ -197,16 +199,22 @@ function managedBlockPlan(root: string, relativeFilePath: string, description: s
   };
 }
 
-function jsonMergePlan(root: string, relativeFilePath: string, description: string, server: Record<string, unknown>): InstallFile {
+function jsonMergePlan(root: string, relativeFilePath: string, description: string, serverName: string, server: Record<string, unknown>): InstallFile {
   const filePath = path.join(root, relativeFilePath);
   const existing = readJson<McpConfig>(filePath, {});
   const mcpServers = isRecord(existing.mcpServers) ? existing.mcpServers : {};
+  const nextMcpServers = {
+    ...mcpServers,
+    [serverName]: server
+  };
+
+  if (serverName !== "agentpack" && JSON.stringify(mcpServers.agentpack) === JSON.stringify(server)) {
+    delete nextMcpServers.agentpack;
+  }
+
   const next = {
     ...existing,
-    mcpServers: {
-      ...mcpServers,
-      agentpack: server
-    }
+    mcpServers: nextMcpServers
   };
 
   return {
@@ -216,13 +224,16 @@ function jsonMergePlan(root: string, relativeFilePath: string, description: stri
   };
 }
 
-function tomlTablePlan(root: string, relativeFilePath: string, description: string, tableName: string, tableBody: string): InstallFile {
+function tomlTablePlan(root: string, relativeFilePath: string, description: string, tableName: string, tableBody: string, legacyTableName?: string): InstallFile {
   const filePath = path.join(root, relativeFilePath);
   const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const withoutLegacy = legacyTableName && legacyTableName !== tableName
+    ? removeTomlTable(existing, legacyTableName)
+    : existing;
   return {
     filePath,
     description,
-    content: upsertTomlTable(existing, tableName, tableBody)
+    content: upsertTomlTable(withoutLegacy, tableName, tableBody)
   };
 }
 
@@ -263,19 +274,42 @@ function upsertTomlTable(existing: string, tableName: string, tableBody: string)
   return ensureTrailingNewline(lines.join("\n").trimEnd());
 }
 
-function codexTomlSnippet(): string {
+function removeTomlTable(existing: string, tableName: string): string {
+  const tableHeader = `[${tableName}]`;
+  const lines = existing.split(/\r?\n/);
+  const start = lines.findIndex((line) => line.trim() === tableHeader);
+
+  if (start === -1) {
+    return existing;
+  }
+
+  let end = start + 1;
+  const nestedPrefix = `[${tableName}.`;
+  while (end < lines.length) {
+    const trimmed = (lines[end] || "").trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]") && !trimmed.startsWith(nestedPrefix)) {
+      break;
+    }
+    end += 1;
+  }
+
+  lines.splice(start, end - start);
+  return ensureTrailingNewline(lines.join("\n").trimEnd());
+}
+
+function codexTomlSnippet(serverName: string): string {
   return [
     "# Add this to the repo's .codex/config.toml after reviewing it.",
     "# Do not put a project-specific --root or cwd in ~/.codex/config.toml.",
     "# A hard-coded global root makes Agentpack read the wrong repo.",
-    codexMcpTomlTable(),
+    codexMcpTomlTable(serverName),
     ""
   ].join("\n");
 }
 
-function codexMcpTomlTable(): string {
+function codexMcpTomlTable(serverName: string): string {
   return [
-    "[mcp_servers.agentpack]",
+    `[mcp_servers.${serverName}]`,
     "command = \"agentpack\"",
     "args = [\"mcp\"]",
     "startup_timeout_sec = 10",
@@ -302,10 +336,10 @@ function claudeDesktopMcpServer(root: string): Record<string, unknown> {
   };
 }
 
-function claudeDesktopJsonSnippet(root: string): string {
+function claudeDesktopJsonSnippet(root: string, serverName: string): string {
   return JSON.stringify({
     mcpServers: {
-      agentpack: claudeDesktopMcpServer(root)
+      [serverName]: claudeDesktopMcpServer(root)
     }
   }, null, 2);
 }
@@ -359,6 +393,21 @@ function cursorMcpServer(): Record<string, unknown> {
     command: "agentpack",
     args: ["mcp", "--root", "${workspaceFolder}"]
   };
+}
+
+function mcpServerName(root: string): string {
+  const projectName = path.basename(root);
+  const slug = projectName
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  if (!slug || slug === "agentpack") {
+    return "agentpack";
+  }
+
+  return `agentpack-${slug}`;
 }
 
 function parseTarget(target: string): InstallTarget {

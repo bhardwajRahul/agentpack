@@ -359,6 +359,7 @@ test("serializes concurrent source record writes", async () => {
 
 test("previews and writes project-local MCP client install files", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-test-"));
+  const serverName = expectedMcpServerName(dir);
   run(dir, ["init"]);
 
   const defaultPreview = run(dir, ["install", "cursor"]);
@@ -375,11 +376,12 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(claudeInstall, /Installed Agentpack claude integration/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /agentpack:start/);
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
-  assert.deepEqual(claudeMcp.mcpServers.agentpack, {
+  assert.deepEqual(claudeMcp.mcpServers[serverName], {
     type: "stdio",
     command: "agentpack",
     args: ["mcp"]
   });
+  assert.equal(claudeMcp.mcpServers.agentpack, undefined);
 
   const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
   assert.match(claudeDesktopPreview, /claude-desktop install plan/);
@@ -393,7 +395,7 @@ test("previews and writes project-local MCP client install files", () => {
     path.join(dir, ".agentpack", "instructions", "claude-desktop-mcp.example.json"),
     "utf8"
   ));
-  assert.deepEqual(claudeDesktopSnippet.mcpServers.agentpack, {
+  assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName], {
     command: "agentpack",
     args: ["mcp", "--root", realpathSync(dir)],
     env: {
@@ -412,11 +414,12 @@ test("previews and writes project-local MCP client install files", () => {
   run(dir, ["install", "cursor", "--write"]);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
-  assert.deepEqual(cursorMcp.mcpServers.agentpack, {
+  assert.deepEqual(cursorMcp.mcpServers[serverName], {
     type: "stdio",
     command: "agentpack",
     args: ["mcp", "--root", "${workspaceFolder}"]
   });
+  assert.equal(cursorMcp.mcpServers.agentpack, undefined);
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
@@ -424,12 +427,13 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexInstall, /Remove any old ~\/\.codex\/config\.toml agentpack server/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
   const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
-  assert.match(codexConfig, /\[mcp_servers\.agentpack\]/);
+  assert.match(codexConfig, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
+  assert.doesNotMatch(codexConfig, /\[mcp_servers\.agentpack\]/);
   assert.match(codexConfig, /args = \["mcp"\]/);
   assert.doesNotMatch(codexConfig, /--root/);
   assert.doesNotMatch(codexConfig, /cwd =/);
   const codexSnippet = readFileSync(path.join(dir, ".agentpack", "instructions", "codex-mcp.example.toml"), "utf8");
-  assert.match(codexSnippet, /\[mcp_servers\.agentpack\]/);
+  assert.match(codexSnippet, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.match(codexSnippet, /args = \["mcp"\]/);
   assert.doesNotMatch(codexSnippet, /args = \["mcp", "--root"/);
   assert.doesNotMatch(codexSnippet, /cwd =/);
@@ -632,4 +636,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
   });
+}
+
+function expectedMcpServerName(root: string): string {
+  const slug = path.basename(root)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+
+  return !slug || slug === "agentpack" ? "agentpack" : `agentpack-${slug}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
