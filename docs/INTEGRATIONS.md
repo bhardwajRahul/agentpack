@@ -1,6 +1,6 @@
 # Integrations
 
-Agentpack integrates through project files, CLI, and MCP. It does not write hidden global configuration by default.
+Agentpack integrates through local project files, CLI, and MCP. It does not write hidden global configuration by default.
 
 ## Client Matrix
 
@@ -14,11 +14,13 @@ Agentpack integrates through project files, CLI, and MCP. It does not write hidd
 
 All clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live.
 
+Generated integration files are local developer setup by default. Until Agentpack has an explicit shared/team mode, keep `.agentpack/`, `.codex/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, and similar client config files out of origin unless a repo deliberately chooses to version its own agent policy.
+
 Generated files under `.agentpack/instructions/` are local helper snippets. They are created only when you run the matching installer, and `.agentpack/` is ignored by git by default.
 
 ## Where Files Live
 
-In the current project:
+In a local project setup:
 
 - `CLAUDE.md`: repo-root project instructions for Claude Code.
 - `.mcp.json`: repo-root project MCP config for Claude Code.
@@ -57,7 +59,7 @@ Force preview explicitly:
 agentpack install claude --dry-run
 ```
 
-Agentpack only writes project-local files and `.agentpack/instructions/*`. It does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
+Agentpack only writes project-local files and `.agentpack/instructions/*`. These files are intended to be ignored/local for v0. Agentpack does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
 
 Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-supportcrud`.
 

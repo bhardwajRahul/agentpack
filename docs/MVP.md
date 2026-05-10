@@ -57,9 +57,11 @@ agentpack install cursor
 
 `events.jsonl` is the append-only task ledger. `sources.json` records file hashes, summaries, and optional snippets. `checkpoints/` stores materialized resume snapshots plus git metadata.
 
-`.agentpack/` is ignored by git by default. `agentpack init` appends `.agentpack/` to the project `.gitignore` when needed and preserves existing project rules. It is local working state, not a repository artifact. Share state through budgeted exports first; add sanitized examples later under `examples/` if needed.
+`.agentpack/` is ignored by git by default. `agentpack init` appends `.agentpack/` to the project `.gitignore` when needed and preserves existing project rules. It is local working state, not a repository artifact. Client integration files such as `.mcp.json`, `.codex/`, `AGENTS.md`, and `CLAUDE.md` are also local developer setup for v0 and should normally stay ignored.
 
 Client install commands use the repo name when writing MCP server keys, for example `agentpack-supportcrud`, so ignored local configs in different repos do not shadow a global `agentpack` server.
+
+Team sharing is intentionally out of scope until after local-only workflows stabilize. The first sharing surface should be explicit export/import bundles, not committing live ledger state or local client config.
 
 ## Budget Policy
 

@@ -8,3 +8,6 @@ npm-debug.log*
 coverage/
 .codex
 .claude
+.mcp.json
+AGENTS.md
+CLAUDE.md
