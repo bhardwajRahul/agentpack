@@ -19,7 +19,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import { installIntegration } from "../integrations/install.js";
 import { startMcpServer } from "../mcp/server.js";
 
-type ArgValue = string | boolean | string[];
+export type ArgValue = string | boolean | string[];
 
 interface ParsedArgs {
   options: Record<string, ArgValue>;
@@ -43,7 +43,7 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "mcp") {
     const parsed = parseArgs(rest);
-    startMcpServer(stringOption(parsed.options.root) || cwd);
+    startMcpServer(resolveMcpStartDir(parsed.options, cwd));
     return;
   }
 
@@ -155,6 +155,10 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
   throw new Error(`Unknown command: ${command}`);
 }
 
+export function resolveMcpStartDir(options: Record<string, ArgValue>, cwd: string): string {
+  return stringOption(options.root) || process.env.AGENTPACK_ROOT || cwd;
+}
+
 function printHelp(): void {
   process.stdout.write(`Agentpack
 
@@ -181,6 +185,7 @@ Usage:
   agentpack mcp [--root <path>]
   agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
 
+MCP root resolution: --root, then AGENTPACK_ROOT, then current working directory.
 Budget presets: ${formatBudgetPresets()}
 `);
 }

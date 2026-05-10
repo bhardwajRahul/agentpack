@@ -6,6 +6,7 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolveMcpStartDir } from "../src/cli/index.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -114,6 +115,25 @@ test("init appends to existing gitignore without overwriting project rules", () 
 
   run(dir, ["init"]);
   assert.equal(readFileSync(gitignorePath, "utf8"), `${existingGitignore}\n.agentpack/\n`);
+});
+
+test("mcp root resolution prefers --root, then AGENTPACK_ROOT, then cwd", () => {
+  const originalRoot = process.env.AGENTPACK_ROOT;
+
+  try {
+    process.env.AGENTPACK_ROOT = "/env/repo";
+    assert.equal(resolveMcpStartDir({ root: "/flag/repo" }, "/cwd/repo"), "/flag/repo");
+    assert.equal(resolveMcpStartDir({}, "/cwd/repo"), "/env/repo");
+
+    delete process.env.AGENTPACK_ROOT;
+    assert.equal(resolveMcpStartDir({}, "/cwd/repo"), "/cwd/repo");
+  } finally {
+    if (originalRoot === undefined) {
+      delete process.env.AGENTPACK_ROOT;
+    } else {
+      process.env.AGENTPACK_ROOT = originalRoot;
+    }
+  }
 });
 
 test("distinguishes source-cache status from git working tree status", () => {
@@ -375,7 +395,10 @@ test("previews and writes project-local MCP client install files", () => {
   ));
   assert.deepEqual(claudeDesktopSnippet.mcpServers.agentpack, {
     command: "agentpack",
-    args: ["mcp", "--root", realpathSync(dir)]
+    args: ["mcp"],
+    env: {
+      AGENTPACK_ROOT: realpathSync(dir)
+    }
   });
   assert.match(
     readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
