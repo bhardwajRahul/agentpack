@@ -34,14 +34,14 @@ The first version is intentionally small:
 ```bash
 npm install -g agentpack-cli
 agentpack init
-agentpack source add src/index.ts --summary "Main CLI entrypoint. Re-open only if hash changed."
-agentpack source status
-agentpack record decision "Use file-first JSON/JSONL storage for the MVP."
-agentpack run "npm test"
-agentpack checkpoint -m "CLI skeleton works; MCP server is next." --status "Ready for MCP polish" --next "Test MCP JSON-RPC flow"
-agentpack resume --preset agent --query "MCP server"
-agentpack doctor
+agentpack install codex --write
+# or: agentpack install claude --write
+# or: agentpack install cursor --write
 ```
+
+Restart or reconnect the coding-agent client. The generated project instructions tell the agent to load Agentpack context at the start, record durable decisions/sources/evidence while working, and checkpoint meaningful progress.
+
+Use `agentpack doctor` to verify the local setup. Use `agentpack resume --preset agent --query "<topic>"` when you want to inspect the task state yourself.
 
 For local development in this repo:
 
