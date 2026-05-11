@@ -10,9 +10,9 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 | Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | Tested |
 | Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Generated, not tested yet |
 | Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Generated, not tested yet |
-| ChatGPT web / Claude web | Markdown handoff | No local stdio MCP support in v0; use `agentpack export` | Manual handoff |
+| Web chats | Markdown handoff | No local stdio MCP support in v0; use `agentpack export` | Manual fallback |
 
-All clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live.
+Coding-agent clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live. Web chats are fallback targets for pasted markdown handoffs; they are not the primary v0 integration surface.
 
 Generated integration files are local developer setup by default. Until Agentpack has an explicit shared/team mode, keep `.agentpack/`, `.codex/`, `.claude/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, and similar client config files out of origin unless a repo deliberately chooses to version its own agent policy.
 

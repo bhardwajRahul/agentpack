@@ -4,22 +4,22 @@
 
 # Agentpack
 
-Portable savegames and context budgets for AI coding agents.
+Local task-state ledger for AI coding agents.
 
-> Agents forget. Agentpack lets work continue.
+> Coding agents forget. Agentpack gives them the task state they need to continue.
 
-Agentpack helps AI agents continue work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
+Agentpack helps coding agents continue long-running repo work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
 
 ## Product Contract
 
-Agentpack is a local-first open-source tool. It does not connect to an agent's hidden memory or chat history. Instead, it keeps a portable task state in `.agentpack/` and exposes that state through simple surfaces:
+Agentpack is a local-first open-source tool for repo-scoped coding work. It is not a general AI memory, a knowledge graph, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
 
 - files in `.agentpack/`
 - CLI commands
 - a local MCP server
 - project instructions such as `AGENTS.md`, `CLAUDE.md`, and Cursor rules
 
-`.agentpack/` is local task state and is ignored by git by default. Export or bundle sanitized context when you want to hand work to another agent or chat.
+`.agentpack/` is local task state and is ignored by git by default. Agentpack is designed first for coding agents such as Codex, Claude Code, Cursor, and other MCP clients. Markdown export exists as a fallback for manual handoff, not as the primary workflow.
 
 ## v0 Scope
 
@@ -30,8 +30,8 @@ The first version is intentionally small:
 - store file hashes so agents can avoid re-reading unchanged files
 - check whether recorded sources are unchanged, changed, or missing
 - create checkpoints with git status, git diff, and generated resume context
-- export a budgeted handoff for ChatGPT or another manual target
-- run a minimal local MCP server for agent clients
+- run a minimal local MCP server for coding-agent clients
+- export a budgeted markdown handoff for manual fallback workflows
 
 ## Quick Start
 
@@ -43,8 +43,7 @@ agentpack source status
 agentpack record decision "Use file-first JSON/JSONL storage for the MVP."
 agentpack run "npm test"
 agentpack checkpoint -m "CLI skeleton works; MCP server is next." --status "Ready for MCP polish" --next "Test MCP JSON-RPC flow"
-agentpack resume --preset chat
-agentpack export --to chatgpt --preset chat
+agentpack resume --preset agent --query "MCP server"
 agentpack doctor
 ```
 
@@ -85,22 +84,23 @@ npm run mcp:smoke
 The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize`, `tools/list`, and a short `resume` flow, then deletes the temporary workspace.
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, and Cursor setup.
+See [docs/agentpack-flow.html](docs/agentpack-flow.html) for a visual execution flow.
 
-## Handoff Demo
+## Coding-Agent Loop
 
-Agentpack's public demo is the handoff loop:
+Agentpack's core loop is built for coding agents working in the same repo over long sessions, compaction, restarts, or handoffs:
 
 ```bash
-agentpack source status
-agentpack export --to chatgpt --preset chat
 agentpack resume --preset agent --query "MCP install"
+agentpack source status
+agentpack checkpoint -m "MCP install tested" --status "Ready for docs polish" --next "Update integration docs"
 ```
 
-The first command tells the next agent which recorded source conclusions are still valid and which files need to be reopened. `source status` compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
+`resume --preset agent` gives the next coding agent the current goal, status, next actions, git state, durable decisions, dead ends, evidence, and source-cache guidance under a rough context budget. `source status` tells the agent which recorded source conclusions are still valid and which files need to be reopened. It compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
 
-For manual ChatGPT handoff, `export --to chatgpt --preset chat` writes `.agentpack/exports/chatgpt-handoff.md`. For a coding-agent continuation, `resume --preset agent` prints a larger task savegame directly in the terminal or MCP response. Add `--query` when you want Source Cache to include full summaries for sources relevant to the next task, always include changed/missing source records in full, and keep compact path/status/topic stubs for the rest.
+For manual web-chat fallback, `export --to markdown --preset chat` writes a handoff file under `.agentpack/exports/`. For the normal coding-agent workflow, `resume --preset agent` prints a larger task state directly in the terminal or MCP response. Add `--query` when you want Source Cache to include full summaries for sources relevant to the next task, always include changed/missing source records in full, and keep compact path/status/topic stubs for the rest.
 
-In a new session, start by loading that handoff or Agentpack MCP context, then inspect only the files marked changed or missing. During work, record durable decisions, failed approaches, evidence, and source conclusions. End a coherent step with a checkpoint so the next agent inherits a compact state instead of a pile of chat history.
+In a new session, start by loading Agentpack MCP context, or by pasting a markdown handoff when MCP is not available. Then inspect only the files marked changed or missing. During work, record durable decisions, failed approaches, evidence, and source conclusions. End a coherent step with a checkpoint so the next agent inherits a compact state instead of a pile of chat history.
 
 ## Security Posture
 
@@ -139,15 +139,15 @@ The source cache is deliberately lightweight. Agentpack stores metadata, hashes,
 Suggested defaults:
 
 - `1200`: quick status ping
-- `4000`: normal chat handoff
+- `4000`: compact manual handoff
 - `8000`: deeper coding-agent handoff
 - `16000`: large debugging session or review
 
 When unsure, start with:
 
 ```bash
-agentpack resume --preset chat --query "MCP install"
-agentpack export --to chatgpt --preset chat --query "MCP install"
+agentpack resume --preset quick --query "MCP install"
+agentpack resume --preset agent --query "MCP install"
 ```
 
 ## MCP
@@ -170,8 +170,8 @@ See [docs/MCP.md](docs/MCP.md) for the current MCP contract and smoke-test flow.
 ## Roadmap
 
 ```text
-v0: CLI + markdown/json export + local source cache
-v1: local MCP server + client installers
+v0: CLI + local source cache + markdown fallback export
+v1: local MCP server + coding-agent installers
 v2: stronger repo/file hashes, richer retrieval, and smarter budget packing
 v3: shareable .agentpack bundle
 v4: optional hosted sync/share

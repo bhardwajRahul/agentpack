@@ -63,6 +63,9 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "agent"]);
   assert.match(exported, /chatgpt-handoff\.md/);
   assert.equal(existsSync(path.join(dir, ".agentpack", "exports", "chatgpt-handoff.md")), true);
+  const defaultExport = run(dir, ["export", "--preset", "agent"]);
+  assert.match(defaultExport, /markdown-handoff\.md/);
+  assert.equal(existsSync(path.join(dir, ".agentpack", "exports", "markdown-handoff.md")), true);
 
   const replay = run(dir, ["replay"]);
   assert.match(replay, /decision/);

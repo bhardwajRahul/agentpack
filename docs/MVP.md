@@ -2,7 +2,7 @@
 
 ## Positioning
 
-Agentpack helps AI agents continue work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
+Agentpack helps coding agents continue repo work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
 
 The project is local-first and open-source by default. Optional hosted sync can come later, but the core value must work fully on a developer machine.
 
@@ -26,8 +26,8 @@ agentpack evidence add --kind test-output --file <path>
 agentpack note <text>
 agentpack run <command>
 agentpack checkpoint -m <summary> --status <text> --next <item>
-agentpack resume --preset chat --query <text>
-agentpack export --to chatgpt --preset chat --query <text>
+agentpack resume --preset agent --query <text>
+agentpack export --to markdown --preset chat --query <text>
 agentpack diff
 agentpack replay
 agentpack doctor
@@ -89,7 +89,7 @@ Suggested presets:
 
 ```text
 1200: quick status ping
-4000: normal chat handoff
+4000: compact manual handoff
 8000: deeper coding-agent handoff
 16000: large debugging session or review
 ```

@@ -2,7 +2,7 @@
 
 ## North Star
 
-Agentpack is a local task-state layer for AI-assisted development. It captures useful working context that usually gets lost in chats: decisions, dead ends, inspected sources, evidence, checkpoints, and budgeted resumes.
+Agentpack is a local task-state layer for AI coding agents. It captures useful working context that usually gets lost in long sessions, restarts, and compaction: decisions, dead ends, inspected sources, evidence, checkpoints, and budgeted resumes.
 
 Agentpack is not an orchestrator. It is the portable context ledger for humans, single agents, and agent teams working on a repo.
 
@@ -28,7 +28,7 @@ Agentpack has four layers:
 3. Repo source cache: inspected source conclusions and file hashes can be reused across tasks in the same repo.
 4. Task ledger: goal, status, decisions, dead ends, evidence, checkpoints, and exports belong to a workstream, not to a chat.
 
-Chats and agent sessions are transport surfaces. They should be able to resume, write, and hand off a task, but they are not first-class Agentpack state.
+Agent sessions and web chats are transport surfaces. They should be able to resume, write, and hand off a task, but they are not first-class Agentpack state.
 
 Sharing ledger state across machines or teammates is intentionally post-local-stability work. Prefer explicit sanitized export/import bundles before considering committed or synced shared state.
 
@@ -93,7 +93,7 @@ Goal: agents record task state while they work.
 - `install cursor`.
 - Project instructions that tell agents when to call tools.
 
-## v0.4: Handoff Demo
+## v0.4: Coding-Agent Demo
 
 Goal: show the wow effect.
 

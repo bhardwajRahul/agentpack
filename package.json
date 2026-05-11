@@ -1,7 +1,7 @@
 {
   "name": "agentpack-cli",
   "version": "0.1.0",
-  "description": "Portable savegames and context budgets for AI coding agents.",
+  "description": "Local task-state ledger for AI coding agents.",
   "type": "module",
   "repository": {
     "type": "git",
@@ -29,6 +29,8 @@
     "agents",
     "ai",
     "coding-agents",
+    "agent-state",
+    "agent-memory",
     "mcp",
     "local-first"
   ],

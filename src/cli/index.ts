@@ -110,7 +110,7 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "export") {
     const parsed = parseArgs(rest);
-    const target = stringOption(parsed.options.to) || parsed.positionals[0] || "chatgpt";
+    const target = stringOption(parsed.options.to) || parsed.positionals[0] || "markdown";
     const resume = buildResume(root, {
       budget: budgetOption(parsed.options, 4000),
       query: stringOption(parsed.options.query)
@@ -162,7 +162,7 @@ export function resolveMcpStartDir(options: Record<string, ArgValue>, cwd: strin
 function printHelp(): void {
   process.stdout.write(`Agentpack
 
-Portable savegames and context budgets for AI coding agents.
+Local task-state ledger for AI coding agents.
 
 Usage:
   agentpack init
@@ -177,8 +177,8 @@ Usage:
   agentpack evidence add --kind test-output --file test.log
   agentpack run "npm test"
   agentpack checkpoint -m <summary> --status <text> --next <item>
-  agentpack resume --preset chat [--query <text>]
-  agentpack export --to chatgpt --preset chat [--query <text>]
+  agentpack resume --preset agent [--query <text>]
+  agentpack export --to markdown --preset chat [--query <text>]
   agentpack diff [from] [to]
   agentpack replay
   agentpack doctor
