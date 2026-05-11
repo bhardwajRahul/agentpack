@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/agentpack-logo.jpg" alt="Agentpack logo" width="180">
-</p>
-
 # Agentpack
 
 Local task-state ledger for AI coding agents.
