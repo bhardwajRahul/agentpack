@@ -61,7 +61,7 @@ agentpack install claude --dry-run
 
 Agentpack only writes project-local files and `.agentpack/instructions/*`. These files are intended to be ignored/local for v0. Agentpack does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
 
-Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-supportcrud`.
+Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-example-app`.
 
 ## Codex
 
@@ -79,7 +79,7 @@ This writes:
 Agentpack does not edit `~/.codex/config.toml`. The project-local `.codex/config.toml` entry starts MCP with:
 
 ```toml
-[mcp_servers.agentpack-supportcrud]
+[mcp_servers.agentpack-example-app]
 command = "agentpack"
 args = ["mcp"]
 ```
@@ -102,7 +102,7 @@ This writes:
 - `.mcp.json`
 - `.agentpack/instructions/claude.md`
 
-The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-supportcrud`, so it does not shadow a global `agentpack` server.
+The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-example-app`, so it does not shadow a global `agentpack` server.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp).
 
@@ -137,7 +137,7 @@ open -e "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
 If the config file does not exist yet, create it with the generated snippet content. If it already exists, add only this entry under its existing `mcpServers` object:
 
 ```json
-"agentpack-supportcrud": {
+"agentpack-example-app": {
   "command": "agentpack",
   "args": ["mcp", "--root", "/absolute/path/to/your/project"],
   "env": {

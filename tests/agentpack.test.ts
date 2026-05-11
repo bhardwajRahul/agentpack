@@ -132,7 +132,7 @@ test("init appends to existing gitignore without overwriting project rules", () 
 });
 
 test("doctor warns about local-only ignore gaps and generic project MCP names", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "supportcrud-doctor-test-"));
+  const dir = mkdtempSync(path.join(os.tmpdir(), "example-app-doctor-test-"));
   run(dir, ["init"]);
   writeFileSync(path.join(dir, ".gitignore"), ".agentpack/\n", "utf8");
   writeFileSync(path.join(dir, ".mcp.json"), JSON.stringify({

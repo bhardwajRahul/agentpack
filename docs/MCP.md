@@ -73,7 +73,7 @@ After changing Agentpack itself and running `npm run build`, reconnect or restar
 
 If `load_context` reports the wrong Pack root, check for a stale global client config that starts Agentpack with a hard-coded `--root` or `cwd`. Project-local configs should start Codex and Claude Code with `agentpack mcp` so the server resolves the repo-local `.agentpack/` root. Global clients such as Claude Desktop should set an explicit `--root` and matching `AGENTPACK_ROOT` because they do not have a project cwd.
 
-Avoid reusing the same MCP server name across global and project-local configs. Agentpack installers use `agentpack` for the Agentpack repo itself and `agentpack-<repo-name>` for other repos, so a project-local server such as `agentpack-supportcrud` does not shadow a global `agentpack` server.
+Avoid reusing the same MCP server name across global and project-local configs. Agentpack installers use `agentpack` for the Agentpack repo itself and `agentpack-<repo-name>` for other repos, so a project-local server such as `agentpack-example-app` does not shadow a global `agentpack` server.
 
 ## Security Notes
 
