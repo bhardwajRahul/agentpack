@@ -12,7 +12,7 @@
     "url": "https://github.com/ihorponom/agentpack/issues"
   },
   "bin": {
-    "agentpack": "./dist/src/agentpack.js"
+    "agentpack": "dist/src/agentpack.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

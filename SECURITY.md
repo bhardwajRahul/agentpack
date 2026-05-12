@@ -17,14 +17,27 @@ Agentpack is designed as a local-first developer tool. The default threat model 
 
 The project uses a conservative npm setup:
 
+- zero runtime dependencies
 - exact dependency versions
 - committed lockfile
 - `ignore-scripts=true` for installs
-- TypeScript compiler only for builds
-- npm provenance enabled for future public releases
-- trusted publishing preferred over long-lived npm tokens
+- TypeScript compiler is the only build dependency
+- releases are published from GitHub Actions via a Trusted Publisher OIDC binding
+- every published version ships with [npm provenance](https://docs.npmjs.com/generating-provenance-statements) — no long-lived npm tokens are stored anywhere
 
-Before publishing, maintainers should run:
+## Verifying a release
+
+To verify a downloaded version of `agentpack-cli`:
+
+```bash
+npm audit signatures
+```
+
+The npmjs.com page for the package also shows a **Provenance** tab linking back to the exact commit, workflow run, and build environment that produced the tarball.
+
+## Maintainer pre-publish checklist
+
+Before cutting a new release, maintainers should run:
 
 ```bash
 npm ci
@@ -33,12 +46,18 @@ npm test
 npm pack --dry-run
 ```
 
+The full release flow is documented in [docs/RELEASING.md](docs/RELEASING.md).
+
 ## Sensitive Data
 
 Agentpack redacts common secret-looking values and configured environment variable values from generated context and key local records such as source summaries, evidence, checkpoints, replay output, and MCP context responses.
 
 Redaction is best-effort, not a guarantee. Users should treat `.agentpack/` as project-sensitive data and review exported handoff files before sharing them.
 
-## Reporting
+## Reporting a vulnerability
 
-Until a public repository security contact exists, report issues privately to the project maintainer.
+Please report security issues privately through GitHub Security Advisories:
+
+<https://github.com/ihorponom/agentpack/security/advisories/new>
+
+This keeps the report hidden until a fix is ready and gives credit to the reporter. Do not open a regular issue for security problems.

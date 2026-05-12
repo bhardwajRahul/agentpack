@@ -1,0 +1,79 @@
+name: Publish to npm
+
+# Two triggers:
+#   - release: published — fires when a GitHub Release is published. Use this
+#     for the normal flow after `npm version <bump> && git push --follow-tags`
+#     followed by `gh release create vX.Y.Z`.
+#   - workflow_dispatch — manual "Run workflow" button in the Actions tab.
+#     Useful as a fallback if a Release publish fires but Actions was paused,
+#     or to re-attempt a failed publish without bumping the version.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: 'Run npm publish --dry-run only (no actual publish)'
+        type: boolean
+        default: false
+
+# Permissions required for npm provenance via GitHub OIDC.
+# id-token: write   → lets the runner request a short-lived OIDC token that
+#                     npm verifies against the configured Trusted Publisher.
+# contents: read    → checkout the repo at the released tag.
+permissions:
+  id-token: write
+  contents: read
+
+# Prevent two publish runs from racing each other if a Release is edited.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, test, publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          # registry-url is required so npm knows where to publish and where
+          # to send the OIDC token for Trusted Publisher verification.
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Tests
+        run: npm test
+
+      - name: Verify version matches release tag
+        if: github.event_name == 'release'
+        run: |
+          PKG_VERSION="v$(node -p "require('./package.json').version")"
+          TAG_VERSION="${{ github.event.release.tag_name }}"
+          if [[ "$PKG_VERSION" != "$TAG_VERSION" ]]; then
+            echo "::error::package.json version ($PKG_VERSION) does not match release tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "Version check ok: $PKG_VERSION"
+
+      - name: Publish (dry-run)
+        if: ${{ inputs.dry-run == true }}
+        run: npm publish --dry-run --provenance --access public
+
+      - name: Publish
+        if: ${{ inputs.dry-run != true }}
+        # publishConfig.provenance is already true in package.json; the explicit
+        # --provenance flag is redundant but makes the intent obvious here.
+        run: npm publish --provenance --access public
