@@ -12,3 +12,5 @@ coverage/
 AGENTS.md
 CLAUDE.md
 .cursor
+.backups/
+*.tgz
