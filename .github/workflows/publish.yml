@@ -44,9 +44,17 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          # registry-url is required so npm knows where to publish and where
-          # to send the OIDC token for Trusted Publisher verification.
-          registry-url: 'https://registry.npmjs.org'
+          # IMPORTANT: do NOT set registry-url here. setup-node would then write
+          # an .npmrc that pins always-auth=true with an empty NODE_AUTH_TOKEN
+          # placeholder, which short-circuits the OIDC Trusted Publisher flow
+          # and makes npm upload fall back to bearer-token auth with an empty
+          # token. The registry rejects that with HTTP 404 (intentionally
+          # opaque). For Trusted Publisher publishing, leave the .npmrc clean
+          # and let npm derive auth from the OIDC token on its own.
+
+      # Use a recent npm so the OIDC Trusted Publisher flow is supported.
+      - name: Upgrade npm
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
