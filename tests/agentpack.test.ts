@@ -13,6 +13,22 @@ import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cli = path.join(repoRoot, "src", "agentpack.js");
 
+test("--version and --help run without an initialized pack", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-noinit-"));
+  // repoRoot points at the compiled dist/ when tests run, so the real package.json sits one level above.
+  const pkg = JSON.parse(readFileSync(path.join(repoRoot, "..", "package.json"), "utf8")) as { version: string };
+
+  const version = run(dir, ["--version"]).trim();
+  assert.equal(version, pkg.version);
+
+  const versionShort = run(dir, ["-v"]).trim();
+  assert.equal(versionShort, pkg.version);
+
+  const help = run(dir, ["--help"]);
+  assert.match(help, /Agentpack/);
+  assert.match(help, /--version/);
+});
+
 test("creates a pack, records source context, checkpoints, and exports handoff", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('hello agentpack')\n", "utf8");

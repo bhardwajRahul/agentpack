@@ -1,5 +1,6 @@
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildResume } from "../core/resume.js";
@@ -32,6 +33,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (!command || command === "--help" || command === "-h") {
     printHelp();
+    return;
+  }
+
+  if (command === "--version" || command === "-v") {
+    process.stdout.write(`${readPackageVersion()}\n`);
     return;
   }
 
@@ -184,6 +190,8 @@ Usage:
   agentpack doctor
   agentpack mcp [--root <path>]
   agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
+  agentpack --version
+  agentpack --help
 
 MCP root resolution: --root, then AGENTPACK_ROOT, then current working directory.
 Budget presets: ${formatBudgetPresets()}
@@ -463,4 +471,18 @@ function budgetOption(options: Record<string, ArgValue>, fallback = 0): number {
 
 function isRecordType(value: string | undefined): value is "decision" | "dead-end" | "note" {
   return value === "decision" || value === "dead-end" || value === "note";
+}
+
+function readPackageVersion(): string {
+  // Resolve package.json relative to the compiled CLI file (dist/src/cli/index.js).
+  // Works both in the source tree and after `npm install -g`, because the package
+  // root is always three levels above this file.
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const pkgPath = path.resolve(here, "..", "..", "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
 }
