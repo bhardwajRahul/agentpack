@@ -17,7 +17,7 @@ on:
         type: boolean
         default: false
 
-# Permissions required for npm provenance via GitHub OIDC.
+# Permissions required for npm Trusted Publishing via GitHub OIDC.
 # id-token: write   → lets the runner request a short-lived OIDC token that
 #                     npm verifies against the configured Trusted Publisher.
 # contents: read    → checkout the repo at the released tag.
@@ -37,24 +37,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Setup Node 22
-        uses: actions/setup-node@v4
+      - name: Setup Node 24
+        uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'npm'
-          # IMPORTANT: do NOT set registry-url here. setup-node would then write
-          # an .npmrc that pins always-auth=true with an empty NODE_AUTH_TOKEN
-          # placeholder, which short-circuits the OIDC Trusted Publisher flow
-          # and makes npm upload fall back to bearer-token auth with an empty
-          # token. The registry rejects that with HTTP 404 (intentionally
-          # opaque). For Trusted Publisher publishing, leave the .npmrc clean
-          # and let npm derive auth from the OIDC token on its own.
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+          # npm Trusted Publishing requires npm 11.5.1+ and must not use an
+          # npm token. Node 24 ships a new enough npm without self-upgrading
+          # npm while it is running.
 
-      # Use a recent npm so the OIDC Trusted Publisher flow is supported.
-      - name: Upgrade npm
-        run: npm install -g npm@latest
+      - name: Verify npm version
+        run: |
+          echo "node: $(node --version)"
+          echo "npm:  $(npm --version)"
 
       - name: Install dependencies
         run: npm ci
@@ -78,10 +76,8 @@ jobs:
 
       - name: Publish (dry-run)
         if: ${{ inputs.dry-run == true }}
-        run: npm publish --dry-run --provenance --access public
+        run: npm publish --dry-run --access public
 
       - name: Publish
         if: ${{ inputs.dry-run != true }}
-        # publishConfig.provenance is already true in package.json; the explicit
-        # --provenance flag is redundant but makes the intent obvious here.
-        run: npm publish --provenance --access public
+        run: npm publish --access public

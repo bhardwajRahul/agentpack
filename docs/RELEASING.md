@@ -12,16 +12,18 @@ npm provenance via a Trusted Publisher. No `NPM_TOKEN` is stored in the repo.
 - `.github/workflows/publish.yml` requests `id-token: write` so it can present
   a short-lived OIDC token that npm verifies against the Trusted Publisher
   binding.
-- `publishConfig.provenance: true` in `package.json` makes every publish
+- The publish workflow uses Node 24 so the bundled npm is new enough for
+  Trusted Publishing without upgrading npm while npm is running.
+- `publishConfig.provenance: true` in `package.json` makes workflow publishes
   include the provenance attestation.
 
 ## Cutting a release
 
 ```bash
 # 1. Decide the bump and update package.json + create the git tag.
-npm version patch      # 0.1.0 -> 0.1.1
-# or: npm version minor # 0.1.0 -> 0.2.0
-# or: npm version major # 0.1.0 -> 1.0.0
+npm version patch      # 0.1.x -> 0.1.(x+1)
+# or: npm version minor # 0.1.x -> 0.2.0
+# or: npm version major # 0.x.y -> 1.0.0
 
 # 2. Push the new commit and the tag.
 git push --follow-tags
@@ -40,7 +42,7 @@ That's it. The workflow will:
 3. Build (`npm run build`).
 4. Run tests (`npm test`).
 5. Verify `package.json` version matches the release tag.
-6. Publish with `npm publish --provenance --access public`.
+6. Publish with `npm publish --access public`.
 
 Watch the run at <https://github.com/ihorponom/agentpack/actions>. When it
 finishes, npm shows the green `Provenance` badge on the package page.

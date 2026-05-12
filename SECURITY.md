@@ -22,8 +22,8 @@ The project uses a conservative npm setup:
 - committed lockfile
 - `ignore-scripts=true` for installs
 - TypeScript compiler is the only build dependency
-- releases are published from GitHub Actions via a Trusted Publisher OIDC binding
-- every published version ships with [npm provenance](https://docs.npmjs.com/generating-provenance-statements) — no long-lived npm tokens are stored anywhere
+- the release workflow publishes from GitHub Actions via a Trusted Publisher OIDC binding
+- versions published by that workflow ship with [npm provenance](https://docs.npmjs.com/generating-provenance-statements) — no long-lived npm tokens are stored anywhere
 
 ## Verifying a release
 
@@ -33,7 +33,7 @@ To verify a downloaded version of `agentpack-cli`:
 npm audit signatures
 ```
 
-The npmjs.com page for the package also shows a **Provenance** tab linking back to the exact commit, workflow run, and build environment that produced the tarball.
+For workflow-published versions, the npmjs.com page for the package also shows a **Provenance** tab linking back to the exact commit, workflow run, and build environment that produced the tarball.
 
 ## Maintainer pre-publish checklist
 
