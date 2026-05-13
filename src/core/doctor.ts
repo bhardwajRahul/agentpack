@@ -44,6 +44,7 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
   checks.push(checkLocalIgnores(root));
   checks.push(checkProjectMcpConfig(root));
   checks.push(checkCodexConfig(root));
+  checks.push(checkCursorConfig(root));
   checks.push(checkClaudeDesktopConfig(root));
 
   const git = getGitInfo(root);
@@ -212,6 +213,87 @@ function checkCodexConfig(root: string): DoctorCheck {
     status: issues.length ? "warn" : "ok",
     name: "Codex MCP",
     detail: issues.length ? issues.join("; ") : `server key "${expectedName}" is scoped to this repo`
+  };
+}
+
+function checkCursorConfig(root: string): DoctorCheck {
+  const configPath = path.join(root, ".cursor", "mcp.json");
+  if (!existsSync(configPath)) {
+    return {
+      status: "ok",
+      name: "Cursor MCP",
+      detail: "not installed"
+    };
+  }
+
+  const parsed = readJson(configPath);
+  if (!parsed.ok) {
+    return {
+      status: "fail",
+      name: "Cursor MCP",
+      detail: `.cursor/mcp.json is not valid JSON: ${parsed.error}`
+    };
+  }
+
+  const mcpServers = getRecord(parsed.value, "mcpServers");
+  if (!mcpServers) {
+    return {
+      status: "warn",
+      name: "Cursor MCP",
+      detail: ".cursor/mcp.json has no mcpServers object"
+    };
+  }
+
+  const expectedName = getAgentpackServerName(root);
+  const server = mcpServers[expectedName];
+  const issues: string[] = [];
+
+  if (expectedName !== "agentpack" && isRecord(mcpServers.agentpack)) {
+    issues.push(`generic server key "agentpack" can collide across repos; use "${expectedName}"`);
+  }
+
+  if (!isRecord(server)) {
+    issues.push(`expected server key "${expectedName}" is missing`);
+  } else {
+    const type = typeof server.type === "string" ? server.type : undefined;
+    const command = typeof server.command === "string" ? server.command : undefined;
+    const args = Array.isArray(server.args) ? server.args.filter((arg): arg is string => typeof arg === "string") : [];
+
+    if (type && type !== "stdio") {
+      issues.push(`${expectedName} should use type "stdio"`);
+    }
+
+    if (!command) {
+      issues.push(`${expectedName} is missing command`);
+    } else if (command === "agentpack") {
+      issues.push(`${expectedName} uses command "agentpack"; Cursor GUI may not inherit your shell PATH, rerun \`agentpack install cursor --write\``);
+    } else if (path.isAbsolute(command) && !existsSync(command)) {
+      issues.push(`${expectedName} command does not exist: ${command}`);
+    }
+
+    if (!args.includes("mcp")) {
+      issues.push(`${expectedName} args should include "mcp"`);
+    }
+
+    const entrypoint = args[0];
+    if (entrypoint && path.isAbsolute(entrypoint) && !existsSync(entrypoint)) {
+      issues.push(`${expectedName} Agentpack entrypoint does not exist: ${entrypoint}; rerun \`agentpack install cursor --write\``);
+    }
+
+    const rootArg = readRootArg(args);
+    if (!rootArg) {
+      issues.push(`${expectedName} should pass --root "\${workspaceFolder}"`);
+    } else if (rootArg !== "${workspaceFolder}" && !samePath(rootArg, root)) {
+      issues.push(`${expectedName} has stale --root ${rootArg}`);
+    }
+  }
+
+  return {
+    status: issues.length ? "warn" : "ok",
+    name: "Cursor MCP",
+    detail: issues.length
+      ? issues.join("; ")
+      : `server key "${expectedName}" configured; open this folder as the Cursor workspace and reload MCP tools`
   };
 }
 

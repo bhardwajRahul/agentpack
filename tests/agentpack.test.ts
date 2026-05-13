@@ -160,10 +160,21 @@ test("doctor warns about local-only ignore gaps and generic project MCP names", 
       }
     }
   }, null, 2), "utf8");
+  mkdirSync(path.join(dir, ".cursor"), { recursive: true });
+  writeFileSync(path.join(dir, ".cursor", "mcp.json"), JSON.stringify({
+    mcpServers: {
+      [expectedMcpServerName(dir)]: {
+        type: "stdio",
+        command: "agentpack",
+        args: ["mcp", "--root", "${workspaceFolder}"]
+      }
+    }
+  }, null, 2), "utf8");
 
   const doctor = run(dir, ["doctor"]);
   assert.match(doctor, /\[warn\] Local ignores: .*\.mcp\.json/);
   assert.match(doctor, /\[warn\] Project MCP: generic server key "agentpack" can collide across repos/);
+  assert.match(doctor, /\[warn\] Cursor MCP: .*Cursor GUI may not inherit your shell PATH/);
 });
 
 test("doctor warns about stale project roots and overwritten Claude Desktop config", () => {
@@ -499,12 +510,13 @@ test("previews and writes project-local MCP client install files", () => {
 
   run(dir, ["install", "cursor", "--write"]);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
-  assert.deepEqual(cursorMcp.mcpServers[serverName], {
-    type: "stdio",
-    command: "agentpack",
-    args: ["mcp", "--root", "${workspaceFolder}"]
-  });
+  assert.equal(cursorMcp.mcpServers[serverName].type, "stdio");
+  assert.equal(cursorMcp.mcpServers[serverName].command, process.execPath);
+  assert.ok(path.isAbsolute(cursorMcp.mcpServers[serverName].args[0]));
+  assert.match(cursorMcp.mcpServers[serverName].args[0], /agentpack\.js$/);
+  assert.deepEqual(cursorMcp.mcpServers[serverName].args.slice(1), ["mcp", "--root", "${workspaceFolder}"]);
   assert.equal(cursorMcp.mcpServers.agentpack, undefined);
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);

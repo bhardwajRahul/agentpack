@@ -140,13 +140,15 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   return {
     target,
     files: [
-      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", INSTRUCTIONS),
-      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", INSTRUCTIONS),
+      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
+      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
       jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer())
     ],
     notes: [
       "Only project-local files are modified.",
-      "Cursor reads project-specific MCP servers from .cursor/mcp.json."
+      "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
+      "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
+      "The Cursor MCP entry uses an absolute Node launcher so Cursor does not depend on your shell/fnm/nvm PATH."
     ]
   };
 }
@@ -387,12 +389,29 @@ function claudeDesktopInstructions(root: string, snippetPath: string): string {
   ].join("\n");
 }
 
+function cursorInstructions(): string {
+  return [
+    INSTRUCTIONS.trimEnd(),
+    "",
+    "Cursor-specific notes:",
+    "- Project MCP only applies when Cursor opens this folder as the workspace root.",
+    "- After `agentpack install cursor --write`, reload the Cursor window so `.cursor/mcp.json` is re-read.",
+    "- In Cursor, open MCP Servers and enable the `agentpack` server if it appears toggled off.",
+    "- If Agentpack MCP tools are not visible in Cursor, run `agentpack doctor` and check Cursor's MCP/server logs.",
+    "- If MCP is unavailable, use the CLI equivalents: `agentpack resume --preset agent`, `agentpack source status`, and `agentpack checkpoint ...`."
+  ].join("\n");
+}
+
 function cursorMcpServer(): Record<string, unknown> {
   return {
     type: "stdio",
-    command: "agentpack",
-    args: ["mcp", "--root", "${workspaceFolder}"]
+    command: process.execPath,
+    args: [agentpackEntrypoint(), "mcp", "--root", "${workspaceFolder}"]
   };
+}
+
+function agentpackEntrypoint(): string {
+  return path.resolve(process.argv[1] || "agentpack");
 }
 
 function mcpServerName(root: string): string {

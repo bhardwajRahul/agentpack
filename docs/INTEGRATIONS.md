@@ -169,6 +169,23 @@ This writes:
 - `.agentpack/instructions/cursor.md`
 
 The Cursor MCP config uses `${workspaceFolder}` so it can point Agentpack at the current project root without hard-coding your local filesystem path.
+The generated MCP entry launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Cursor's GUI `PATH`.
+
+After writing the config, open this folder as the Cursor workspace and reload the Cursor window so project MCP is re-read. Then open Cursor's MCP Servers menu and enable `agentpack` if it appears toggled off. Cursor empty-window sessions do not load project `.cursor/mcp.json`.
+
+If Agentpack tools still do not appear in Cursor, run:
+
+```bash
+agentpack doctor
+```
+
+Look for the `Cursor MCP` check. If Cursor still does not expose Agentpack tools, use the CLI equivalents while debugging Cursor's MCP connection:
+
+```bash
+agentpack resume --preset agent
+agentpack source status
+agentpack checkpoint -m "<summary>" --status "<status>" --next "<next action>"
+```
 
 Official reference: [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
 
