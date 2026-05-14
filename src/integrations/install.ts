@@ -120,7 +120,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
           root,
           ".agentpack/instructions/claude-desktop.md",
           "Write Claude Desktop-specific Agentpack setup notes.",
-          claudeDesktopInstructions(root, desktopSnippetPath)
+          claudeDesktopInstructions(root, desktopSnippetPath, serverName)
         ),
         writeFilePlan(
           root,
@@ -132,6 +132,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       notes: [
         "No Claude Desktop global config is modified.",
         "Claude Desktop does not read project .mcp.json or CLAUDE.md.",
+        `The generated Claude Desktop server key for this repo is ${serverName}.`,
         `To enable local MCP in Claude Desktop manually, review ${relativePath(root, desktopSnippetPath)} and merge it into ~/Library/Application Support/Claude/claude_desktop_config.json on macOS.`
       ]
     };
@@ -330,8 +331,8 @@ function claudeMcpServer(): Record<string, unknown> {
 
 function claudeDesktopMcpServer(root: string): Record<string, unknown> {
   return {
-    command: "agentpack",
-    args: ["mcp", "--root", root],
+    command: process.execPath,
+    args: [agentpackEntrypoint(), "mcp", "--root", root],
     env: {
       AGENTPACK_ROOT: root
     }
@@ -346,12 +347,15 @@ function claudeDesktopJsonSnippet(root: string, serverName: string): string {
   }, null, 2);
 }
 
-function claudeDesktopInstructions(root: string, snippetPath: string): string {
+function claudeDesktopInstructions(root: string, snippetPath: string, serverName: string): string {
   return [
     "# Agentpack for Claude Desktop",
     "",
     "Claude Desktop does not read project-local `.mcp.json` or `CLAUDE.md`.",
     "Use Claude Code's `.mcp.json` for Claude Code only.",
+    "",
+    `Generated server key for this repo: \`${serverName}\`.`,
+    "If Claude Desktop has several Agentpack servers, use the server/tool group with this repo-specific key for this repo.",
     "",
     "For Claude Desktop local MCP, prefer Desktop Extensions/MCP bundles when Agentpack ships one.",
     "Until then, review the generated JSON snippet and merge it into your Claude Desktop config manually.",
@@ -379,13 +383,14 @@ function claudeDesktopInstructions(root: string, snippetPath: string): string {
     "```",
     "",
     "If the config file does not exist yet, create it with the generated snippet content.",
-    "If it already exists, merge only the `mcpServers.agentpack` entry into the existing JSON.",
+    `If it already exists, merge only the generated \`mcpServers.${serverName}\` entry into the existing JSON.`,
     "",
     "After editing the Claude Desktop config, restart Claude Desktop.",
     "",
-    "If Claude Desktop cannot find `agentpack`, replace the `command` value with an absolute executable path.",
+    "The generated snippet launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Claude Desktop's GUI `PATH`.",
+    "If Claude Desktop reports that the MCP server disconnected or cannot start, rerun `agentpack install claude-desktop --write`, merge the refreshed snippet, then restart Claude Desktop.",
     "Keep both the `--root` argument and `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.",
-    "When switching Claude Desktop to another repo, update both the global `mcpServers.agentpack.args` `--root` value and `mcpServers.agentpack.env.AGENTPACK_ROOT`, then restart Claude Desktop."
+    `When switching this Claude Desktop server to another repo, update both \`mcpServers.${serverName}.args\` \`--root\` and \`mcpServers.${serverName}.env.AGENTPACK_ROOT\`, then restart Claude Desktop.`
   ].join("\n");
 }
 

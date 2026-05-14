@@ -6,10 +6,13 @@ Agentpack helps coding agents continue repo work without rediscovering context, 
 
 The project is local-first and open-source by default. Optional hosted sync can come later, but the core value must work fully on a developer machine.
 
+Agentpack is a task-state ledger, not an automatic memory engine. Humans can record and export state manually through the CLI; MCP-connected coding agents can follow generated project instructions and call the same tools while they work.
+
 ## Non-goals
 
 - Do not store full chat transcripts by default.
 - Do not pretend to access hidden agent memory.
+- Do not auto-capture every tool call or agent action in v0.
 - Do not upload code or task state anywhere.
 - Do not require embeddings or hosted LLM calls in v0.
 - Do not implement deterministic environment replay in v0.

@@ -8,7 +8,7 @@ Agentpack helps coding agents continue long-running repo work without rediscover
 
 ## Product Contract
 
-Agentpack is a local-first open-source tool for repo-scoped coding work. It is not a general AI memory, a knowledge graph, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
+Agentpack is a local-first open-source tool for repo-scoped coding work. It is not a general AI memory, a knowledge graph, an automatic activity logger, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
 
 - files in `.agentpack/`
 - CLI commands
@@ -16,6 +16,21 @@ Agentpack is a local-first open-source tool for repo-scoped coding work. It is n
 - project instructions such as `AGENTS.md`, `CLAUDE.md`, and Cursor rules
 
 `.agentpack/` is local task state and is ignored by git by default. Agentpack is designed first for coding agents such as Codex, Claude Code, Cursor, and other MCP clients. Markdown export exists as a fallback for manual handoff, not as the primary workflow.
+
+The core contract is simple: Git stores code state; Agentpack stores reviewed task state. It captures the decisions, source conclusions, evidence, and checkpoints that help the next agent continue correctly.
+
+## When Agentpack Helps
+
+Agentpack is for durable task continuity. It helps when:
+
+- Claude compacts context and the next agent needs the useful state back
+- you start a new chat or coding-agent session
+- you move or copy a project folder and want the repo's task state to move with it
+- you switch between Claude Code, Cursor, Codex, or another MCP client
+- you return to a refactor or bugfix later
+- another agent needs to continue from your checkpoint
+
+The cost benefit is a side effect: agents spend less time re-reading unchanged files and re-explaining decisions because the repo keeps the task state locally.
 
 ## v0 Scope
 
@@ -56,8 +71,10 @@ agentpack init
 agentpack install codex --write
 # or: agentpack install claude --write
 # or: agentpack install cursor --write
-# or: agentpack install claude-desktop  (prints a snippet to merge manually)
+# or: agentpack install claude-desktop --write  (writes a snippet to merge manually)
 ```
+
+Run `agentpack init` once per repo. Then run `agentpack install <client> --write` for each coding-agent client you want to use in that repo.
 
 Restart or reconnect the coding-agent client. The generated project instructions tell the agent to load Agentpack context at the start, record durable decisions/sources/evidence while working, and checkpoint meaningful progress.
 
@@ -65,6 +82,7 @@ Use `agentpack doctor` to verify the local setup. Use `agentpack resume --preset
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, Cursor, and Claude Desktop setup.
 See [docs/agentpack-flow.md](docs/agentpack-flow.md) for a visual execution flow.
+See [docs/DEMOS.md](docs/DEMOS.md) for compact continuity demo outlines.
 
 ## Verify a workflow-published release
 
@@ -100,13 +118,19 @@ The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`
 
 ## Coding-Agent Loop
 
-Agentpack's core loop is built for coding agents working in the same repo over long sessions, compaction, restarts, or handoffs:
+Agentpack works as a hybrid loop. Humans can save and export state manually through the CLI, while MCP-connected coding agents can follow the generated project instructions and call Agentpack tools during the task.
+
+For a manual CLI flow:
 
 ```bash
 agentpack resume --preset agent --query "MCP install"
 agentpack source status
+agentpack record decision "Use project-local MCP config instead of editing global config automatically"
 agentpack checkpoint -m "MCP install tested" --status "Ready for docs polish" --next "Update integration docs"
+agentpack export --to markdown --preset chat --query "MCP install"
 ```
+
+For a large refactor, you can also tell the agent directly: "Before you start, load Agentpack context; while you work, record durable decisions, source conclusions, dead ends, and test evidence; checkpoint when the step is coherent." The generated `AGENTS.md`, `CLAUDE.md`, and Cursor rules say the same thing, so connected agents can do this without turning every action into a log entry.
 
 `resume --preset agent` gives the next coding agent the current goal, status, next actions, git state, durable decisions, dead ends, evidence, and source-cache guidance under a rough context budget. `source status` tells the agent which recorded source conclusions are still valid and which files need to be reopened. It compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
 

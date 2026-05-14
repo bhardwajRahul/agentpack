@@ -8,8 +8,8 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 | --- | --- | --- | --- |
 | Codex | `AGENTS.md` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | Tested |
 | Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | Tested |
-| Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Generated, not tested yet |
-| Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Generated, not tested yet |
+| Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Tested |
+| Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Tested |
 | Web chats | Markdown handoff | No local stdio MCP support in v0; use `agentpack export` | Manual fallback |
 
 Coding-agent clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live. Web chats are fallback targets for pasted markdown handoffs; they are not the primary v0 integration surface.
@@ -32,6 +32,8 @@ In a local project setup:
 If a snippet is missing, run the matching `agentpack install <target> --write`. Running `agentpack install claude --write` does not create Codex or Claude Desktop snippets.
 
 ## Safe Install Flow
+
+Run `agentpack init` once per repo to create `.agentpack/` and local ignore rules. Then install the client integrations you actually want to use in that repo. Each `agentpack install <target> --write` command configures one client surface; it does not replace `init`, and installing one client does not create files for the others.
 
 Preview first:
 
@@ -117,13 +119,13 @@ This writes:
 - `.agentpack/instructions/claude-desktop.md`
 - `.agentpack/instructions/claude-desktop-mcp.example.json`
 
-Claude Desktop does not read this repo's `.mcp.json` or `CLAUDE.md`. To enable Agentpack manually in Claude Desktop on macOS, review `.agentpack/instructions/claude-desktop-mcp.example.json` and merge the `agentpack` server into:
+Claude Desktop does not read this repo's `.mcp.json` or `CLAUDE.md`. To enable Agentpack manually in Claude Desktop on macOS, review `.agentpack/instructions/claude-desktop-mcp.example.json` and merge the generated Agentpack server entry into:
 
 ```text
 ~/Library/Application Support/Claude/claude_desktop_config.json
 ```
 
-Do not copy the generated snippet over the Desktop config file. That can delete existing Claude Desktop MCP servers. Merge only the `mcpServers.agentpack` entry.
+Do not copy the generated snippet over the Desktop config file. That can delete existing Claude Desktop MCP servers. Merge only the generated `mcpServers.<server-name>` entry.
 
 Safe manual flow:
 
@@ -138,17 +140,17 @@ If the config file does not exist yet, create it with the generated snippet cont
 
 ```json
 "agentpack-example-app": {
-  "command": "agentpack",
-  "args": ["mcp", "--root", "/absolute/path/to/your/project"],
+  "command": "/absolute/path/to/node",
+  "args": ["/absolute/path/to/agentpack.js", "mcp", "--root", "/absolute/path/to/your/project"],
   "env": {
     "AGENTPACK_ROOT": "/absolute/path/to/your/project"
   }
 }
 ```
 
-Then restart Claude Desktop. If the Desktop app cannot find `agentpack`, replace `"command": "agentpack"` in the snippet with an absolute executable path. Keep both the `--root` argument and the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
+Then restart Claude Desktop. The generated snippet launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Claude Desktop's GUI `PATH`. If Claude Desktop reports that the MCP server disconnected or cannot start, rerun `agentpack install claude-desktop --write`, merge the refreshed snippet, then restart Claude Desktop. Keep both the `--root` argument and the `AGENTPACK_ROOT` env value pointed at the project whose `.agentpack/` state you want Claude Desktop to use.
 
-Claude Desktop has no project-local repo config. If you switch Claude Desktop from one repo to another, update both the relevant server's `--root` value and `AGENTPACK_ROOT`, then restart Claude Desktop.
+Claude Desktop has no project-local repo config. If it lists several Agentpack servers, use the repo-specific server key from the generated snippet for the repo you are working in. If you switch one Claude Desktop server from one repo to another, update both that server's `--root` value and `AGENTPACK_ROOT`, then restart Claude Desktop.
 
 One Claude Desktop server entry points to one Agentpack repo at a time. To expose multiple repos at once, add multiple `mcpServers` entries with different names and different `AGENTPACK_ROOT` values, but expect duplicated Agentpack tool names in the client UI.
 

@@ -214,6 +214,99 @@ test("doctor warns about stale project roots and overwritten Claude Desktop conf
   }
 });
 
+test("doctor warns about legacy Claude Desktop launchers and missing entrypoints", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-desktop-doctor-test-"));
+  const fakeHome = mkdtempSync(path.join(os.tmpdir(), "agentpack-home-test-"));
+  const missingEntrypoint = path.join(dir, "missing-agentpack.js");
+  mkdirSync(path.join(fakeHome, "Library", "Application Support", "Claude"), { recursive: true });
+
+  run(dir, ["init"]);
+  writeFileSync(
+    path.join(fakeHome, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+    JSON.stringify({
+      mcpServers: {
+        "agentpack-legacy": {
+          command: "agentpack",
+          args: ["mcp", "--root", realpathSync(dir)],
+          env: {
+            AGENTPACK_ROOT: realpathSync(dir)
+          }
+        },
+        "agentpack-missing": {
+          command: process.execPath,
+          args: [missingEntrypoint, "mcp", "--root", realpathSync(dir)],
+          env: {
+            AGENTPACK_ROOT: realpathSync(dir)
+          }
+        }
+      }
+    }, null, 2),
+    "utf8"
+  );
+
+  const originalHome = process.env.HOME;
+  try {
+    process.env.HOME = fakeHome;
+    const doctor = buildDoctorReport(dir).text;
+    assert.match(doctor, /\[warn\] Claude Desktop: .*uses command "agentpack"/);
+    assert.match(doctor, /Claude Desktop may not inherit your shell PATH/);
+    assert.match(doctor, /Agentpack entrypoint does not exist/);
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
+});
+
+test("doctor names the Claude Desktop server key for the current repo", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-desktop-current-test-"));
+  const otherRoot = mkdtempSync(path.join(os.tmpdir(), "agentpack-other-root-"));
+  const fakeHome = mkdtempSync(path.join(os.tmpdir(), "agentpack-home-test-"));
+  const serverName = expectedMcpServerName(dir);
+  mkdirSync(path.join(fakeHome, "Library", "Application Support", "Claude"), { recursive: true });
+
+  run(dir, ["init"]);
+  writeFileSync(
+    path.join(fakeHome, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+    JSON.stringify({
+      mcpServers: {
+        [serverName]: {
+          command: process.execPath,
+          args: [cli, "mcp", "--root", realpathSync(dir)],
+          env: {
+            AGENTPACK_ROOT: realpathSync(dir)
+          }
+        },
+        "agentpack-other": {
+          command: process.execPath,
+          args: [cli, "mcp", "--root", otherRoot],
+          env: {
+            AGENTPACK_ROOT: otherRoot
+          }
+        }
+      }
+    }, null, 2),
+    "utf8"
+  );
+
+  const originalHome = process.env.HOME;
+  try {
+    process.env.HOME = fakeHome;
+    const doctor = buildDoctorReport(dir).text;
+    assert.match(doctor, new RegExp(`\\[ok\\] Claude Desktop: server key "${serverName}" points at this pack root`));
+    assert.match(doctor, /also has other Agentpack servers/);
+    assert.match(doctor, /use the repo-specific server\/tool group/);
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
+});
+
 test("mcp root resolution prefers --root, then AGENTPACK_ROOT, then cwd", () => {
   const originalRoot = process.env.AGENTPACK_ROOT;
 
@@ -492,7 +585,14 @@ test("previews and writes project-local MCP client install files", () => {
     path.join(dir, ".agentpack", "instructions", "claude-desktop-mcp.example.json"),
     "utf8"
   ));
-  assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName], {
+  assert.equal(claudeDesktopSnippet.mcpServers[serverName].command, process.execPath);
+  assert.ok(path.isAbsolute(claudeDesktopSnippet.mcpServers[serverName].args[0]));
+  assert.match(claudeDesktopSnippet.mcpServers[serverName].args[0], /agentpack\.js$/);
+  assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName].args.slice(1), ["mcp", "--root", realpathSync(dir)]);
+  assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName].env, {
+    AGENTPACK_ROOT: realpathSync(dir)
+  });
+  assert.notDeepEqual(claudeDesktopSnippet.mcpServers[serverName], {
     command: "agentpack",
     args: ["mcp", "--root", realpathSync(dir)],
     env: {
@@ -506,6 +606,18 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(
     readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
     /Do not copy the generated snippet over the Desktop config file/
+  );
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
+    /current Node executable and Agentpack entrypoint/
+  );
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
+    new RegExp(`Generated server key for this repo: \`${serverName}\``)
+  );
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude-desktop.md"), "utf8"),
+    new RegExp(`mcpServers\\.${serverName}`)
   );
 
   run(dir, ["install", "cursor", "--write"]);

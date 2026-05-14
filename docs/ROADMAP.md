@@ -4,7 +4,7 @@
 
 Agentpack is a local task-state layer for AI coding agents. It captures useful working context that usually gets lost in long sessions, restarts, and compaction: decisions, dead ends, inspected sources, evidence, checkpoints, and budgeted resumes.
 
-Agentpack is not an orchestrator. It is the portable context ledger for humans, single agents, and agent teams working on a repo.
+Agentpack is not an orchestrator or a broad automatic memory engine. It is the portable context ledger for humans, single agents, and agent teams working on a repo.
 
 ## Product Principles
 
@@ -18,6 +18,7 @@ Agentpack is not an orchestrator. It is the portable context ledger for humans, 
 - Prefer simple file formats over hidden databases until the need is obvious.
 - Avoid framework lock-in; integrate through CLI, files, MCP, and project instructions.
 - Install Agentpack once, initialize it per repo, and keep chats/sessions out of the core model.
+- Prefer reviewed task state over automatic full-session capture.
 
 ## State Model
 
@@ -118,9 +119,11 @@ Demo story:
 - Security model documented.
 - npm publish as `agentpack-cli`.
 - Good demo and examples.
+- Public MCP-directory listing after the next polished release, for example FindMCP, mcp-list.com, MCPKit, MCP Server Directory, or similar current directories.
 
 ## Later
 
+- Backup/export/import bundles for moving local task state between workspaces or fresh clones without committing live `.agentpack/` state.
 - Shareable bundles.
 - Optional imports from markdown handoffs.
 - Orchestrator adapters.

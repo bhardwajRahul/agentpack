@@ -1,0 +1,79 @@
+# Agentpack Demo Outlines
+
+Use these as short demos for the durable task continuity story. The point is not that Agentpack saves chat history; the point is that the repo keeps enough task state for the next agent or session to continue without rediscovering everything.
+
+In the normal MCP-connected workflow, this is hybrid: generated project instructions tell the agent when to load context, record durable state, and checkpoint progress. The CLI commands below are the manual equivalent, useful for demos, web-chat fallback, or telling an agent exactly what to do before a large refactor.
+
+## New Workspace, Same Task State
+
+Scenario: a developer continues the same task after opening the repo from a different workspace path, a copied sandbox, or a restored backup. The old chat or IDE context is gone, but the repo-local task state is still available.
+
+1. In a sample repo, run these commands manually, or ask the connected agent to record this durable state:
+
+```bash
+agentpack init
+agentpack record decision "Use the existing auth middleware instead of adding a second request guard."
+agentpack source add src/auth.ts --summary "Auth middleware validates session cookies and attaches user context before route handlers."
+agentpack checkpoint -m "Auth refactor context captured" --status "Ready to continue in a fresh workspace" --next "Update route tests"
+```
+
+2. Open the repo from a different workspace path or copied sandbox. For this local demo, copy the folder including `.agentpack/`; for a fresh git clone today, use `agentpack export` as a manual handoff instead.
+3. Start a new Claude Code, Cursor, or Codex session in that workspace.
+4. Start the new session with:
+
+```bash
+agentpack resume --preset agent --query "auth refactor"
+agentpack source status
+```
+
+Expected takeaway: the new workspace/session can recover the task goal, source conclusions, and next action without reopening the old chat. Agentpack is preserving reviewed task state, not relying on the client remembering a folder name.
+
+## Compact Or New Session Resume
+
+Scenario: a long coding session gets compacted, disconnected, or restarted.
+
+1. During the first session, record only durable state manually or let the connected agent do it through MCP:
+
+```bash
+agentpack record decision "Keep the installer local-only; do not edit global client config automatically."
+agentpack record dead-end "Relying on GUI apps to inherit shell PATH is unreliable for MCP launchers."
+agentpack checkpoint -m "Installer behavior decided" --status "Need Desktop docs and tests" --next "Update Claude Desktop snippet"
+```
+
+2. Start a new chat or agent session in the same repo.
+3. Ask the agent to begin by loading Agentpack context, or run:
+
+```bash
+agentpack resume --preset agent --query "Desktop installer"
+agentpack source status
+```
+
+Expected takeaway: the new session gets the goal, status, decisions, dead ends, source-cache guidance, and next action under a compact budget. Lower token usage is a side effect of less rediscovery; the main value is continuity.
+
+## Multi-Client Repo Setup
+
+Scenario: a developer wants the same repo task state available in more than one coding-agent client.
+
+1. Initialize the repo once:
+
+```bash
+agentpack init
+```
+
+2. Install only the client surfaces needed for this repo. After this, MCP-connected agents can use Agentpack through their generated instructions:
+
+```bash
+agentpack install codex --write
+agentpack install claude --write
+agentpack install cursor --write
+agentpack install claude-desktop --write
+```
+
+3. For Claude Desktop, merge only the generated `mcpServers.<server-name>` entry from `.agentpack/instructions/claude-desktop-mcp.example.json` into the user-local Claude Desktop config, then restart Claude Desktop.
+4. Verify the setup:
+
+```bash
+agentpack doctor
+```
+
+Expected takeaway: `init` creates the repo ledger once, each `install` command configures one client, and `doctor` shows which repo-specific MCP server key points at the current pack root. If Claude Desktop lists several Agentpack servers, use the server/tool group whose key matches this repo.

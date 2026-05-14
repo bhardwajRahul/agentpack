@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
@@ -337,15 +337,65 @@ function checkClaudeDesktopConfig(root: string): DoctorCheck {
   const roots = agentpackServers
     .map(([name, server]) => [name, readConfiguredRoot(server)] as const)
     .filter((entry): entry is readonly [string, string] => typeof entry[1] === "string");
-  const hasCurrentRoot = roots.some(([, configuredRoot]) => samePath(configuredRoot, root));
+  const currentRootServers = roots.filter(([, configuredRoot]) => samePath(configuredRoot, root));
+  const hasCurrentRoot = currentRootServers.length > 0;
+  const issues = agentpackServers.flatMap(([name, server]) => claudeDesktopServerIssues(name, server));
+
+  if (!hasCurrentRoot) {
+    issues.push(`Agentpack Desktop servers point elsewhere: ${roots.map(([name, configuredRoot]) => `${name}=${configuredRoot}`).join(", ") || "no root configured"}`);
+  }
 
   return {
-    status: hasCurrentRoot ? "ok" : "warn",
+    status: issues.length ? "warn" : "ok",
     name: "Claude Desktop",
-    detail: hasCurrentRoot
-      ? "has an Agentpack server for this pack root"
-      : `Agentpack Desktop servers point elsewhere: ${roots.map(([name, configuredRoot]) => `${name}=${configuredRoot}`).join(", ") || "no root configured"}`
+    detail: issues.length ? issues.join("; ") : claudeDesktopOkDetail(currentRootServers, agentpackServers.length)
   };
+}
+
+function claudeDesktopOkDetail(currentRootServers: readonly (readonly [string, string])[], serverCount: number): string {
+  const serverNames = currentRootServers.map(([name]) => `"${name}"`).join(", ");
+  const base = currentRootServers.length === 1
+    ? `server key ${serverNames} points at this pack root`
+    : `server keys ${serverNames} point at this pack root`;
+
+  return serverCount > currentRootServers.length
+    ? `${base}; Claude Desktop also has other Agentpack servers, so use the repo-specific server/tool group for this repo`
+    : base;
+}
+
+function claudeDesktopServerIssues(name: string, server: unknown): string[] {
+  if (!isRecord(server)) {
+    return [`${name} server config is not an object`];
+  }
+
+  const issues: string[] = [];
+  const command = typeof server.command === "string" ? server.command : undefined;
+  const args = Array.isArray(server.args) ? server.args.filter((arg): arg is string => typeof arg === "string") : [];
+
+  if (!command) {
+    issues.push(`${name} is missing command`);
+  } else if (command === "agentpack") {
+    issues.push(`${name} uses command "agentpack"; Claude Desktop may not inherit your shell PATH, rerun \`agentpack install claude-desktop --write\``);
+  } else if (path.isAbsolute(command) && !existsSync(command)) {
+    issues.push(`${name} command does not exist: ${command}`);
+  }
+
+  if (!args.includes("mcp")) {
+    issues.push(`${name} args should include "mcp"`);
+  }
+
+  if (command && command !== "agentpack") {
+    const entrypoint = args[0];
+    if (!entrypoint || entrypoint === "mcp") {
+      issues.push(`${name} should pass an absolute Agentpack entrypoint before "mcp"; rerun \`agentpack install claude-desktop --write\``);
+    } else if (!path.isAbsolute(entrypoint)) {
+      issues.push(`${name} Agentpack entrypoint should be absolute: ${entrypoint}; rerun \`agentpack install claude-desktop --write\``);
+    } else if (!existsSync(entrypoint)) {
+      issues.push(`${name} Agentpack entrypoint does not exist: ${entrypoint}; rerun \`agentpack install claude-desktop --write\``);
+    }
+  }
+
+  return issues;
 }
 
 function readGitignoreLines(gitignorePath: string): string[] {
@@ -430,7 +480,15 @@ function readRootArg(args: string[]): string | undefined {
 }
 
 function samePath(left: string, right: string): boolean {
-  return path.resolve(left) === path.resolve(right);
+  return canonicalPath(left) === canonicalPath(right);
+}
+
+function canonicalPath(value: string): string {
+  try {
+    return realpathSync(value);
+  } catch {
+    return path.resolve(value);
+  }
 }
 
 function renderDoctor(checks: DoctorCheck[]): { ok: boolean; text: string } {
