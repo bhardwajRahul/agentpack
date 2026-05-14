@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getPackPath, readJson } from "../core/store.js";
 
 const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor"] as const;
@@ -416,7 +417,7 @@ function cursorMcpServer(): Record<string, unknown> {
 }
 
 function agentpackEntrypoint(): string {
-  return path.resolve(process.argv[1] || "agentpack");
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "agentpack.js");
 }
 
 function mcpServerName(root: string): string {

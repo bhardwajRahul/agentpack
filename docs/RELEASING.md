@@ -66,6 +66,12 @@ Before `npm version`:
 - `npm pack --dry-run` shows the expected set of files and a reasonable
   tarball size (~85 kB at the time of writing).
 - README, CHANGELOG (if any), and docs reflect the version about to ship.
+- Changes to install flows, MCP launchers, or generated client config are
+  dogfooded in at least one non-Agentpack repo before release. Verify generated
+  snippets point at stable package entrypoints, not transient shell shims.
+- Do not cut a release while basic install, doctor, MCP startup, or resume flows
+  are suspect. Prefer fixing and shipping one follow-up patch over rushing
+  multiple releases that churn the same core workflow.
 
 ## Rollback
 

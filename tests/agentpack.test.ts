@@ -588,6 +588,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(claudeDesktopSnippet.mcpServers[serverName].command, process.execPath);
   assert.ok(path.isAbsolute(claudeDesktopSnippet.mcpServers[serverName].args[0]));
   assert.match(claudeDesktopSnippet.mcpServers[serverName].args[0], /agentpack\.js$/);
+  assert.equal(claudeDesktopSnippet.mcpServers[serverName].args[0], cli);
   assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName].args.slice(1), ["mcp", "--root", realpathSync(dir)]);
   assert.deepEqual(claudeDesktopSnippet.mcpServers[serverName].env, {
     AGENTPACK_ROOT: realpathSync(dir)
@@ -628,6 +629,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(cursorMcp.mcpServers[serverName].command, process.execPath);
   assert.ok(path.isAbsolute(cursorMcp.mcpServers[serverName].args[0]));
   assert.match(cursorMcp.mcpServers[serverName].args[0], /agentpack\.js$/);
+  assert.equal(cursorMcp.mcpServers[serverName].args[0], cli);
   assert.deepEqual(cursorMcp.mcpServers[serverName].args.slice(1), ["mcp", "--root", "${workspaceFolder}"]);
   assert.equal(cursorMcp.mcpServers.agentpack, undefined);
 
