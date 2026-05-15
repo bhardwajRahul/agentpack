@@ -10,6 +10,12 @@ const INSTRUCTIONS = `# Agentpack
 Use Agentpack as the task-state ledger for this repo.
 Agentpack is not an activity logger; do not record every thought, file read, or edit.
 
+Safety invariant:
+- preserve existing functionality; do not make changes that knowingly break current behavior
+- make changes carefully, with compatibility and rollback impact in mind
+- verify meaningful changes with focused tests, smoke checks, or documented reasoning before handing off
+- if a requested change risks a regression, call out the risk and choose the safer path unless explicitly directed otherwise
+
 At the start of a task:
 - call \`load_context\` with a small preset first
 - call \`source_status\` before re-reading previously inspected files
