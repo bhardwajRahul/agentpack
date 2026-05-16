@@ -99,6 +99,7 @@ See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, Cu
 See [docs/agentpack-flow.md](docs/agentpack-flow.md) for a visual execution flow.
 See [docs/CLI.md](docs/CLI.md) for manual CLI and web-chat fallback commands.
 See [docs/DEMOS.md](docs/DEMOS.md) for compact continuity demo outlines.
+See [docs/VISION.md](docs/VISION.md) for the strategic north star.
 
 ## Verify a workflow-published release
 

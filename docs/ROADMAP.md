@@ -2,9 +2,11 @@
 
 ## North Star
 
-Agentpack is a local task-state layer for AI coding agents. It captures useful working context that usually gets lost in long sessions, restarts, and compaction: decisions, dead ends, inspected sources, evidence, checkpoints, and budgeted resumes.
+Agentpack makes agent continuity native to the repo.
 
-Agentpack is not an orchestrator or a broad automatic memory engine. It is the portable context ledger for humans, single agents, and agent teams working on a repo.
+It is a neutral task passport for agentic workspaces: a compact, portable record of decisions, source conclusions, evidence, dead ends, checkpoints, and next actions that survives chat compaction, client switches, worktree handoffs, machines, branches, and orchestrators.
+
+See [VISION.md](VISION.md) for the fuller strategic framing.
 
 ## Product Principles
 
