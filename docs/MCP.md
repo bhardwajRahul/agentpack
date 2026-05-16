@@ -1,10 +1,21 @@
 # MCP
 
-`agentpack mcp` starts a local stdio MCP server.
+`agentpack mcp` starts a local stdio MCP server. This is Agentpack's primary runtime surface for connected coding agents.
 
 The MCP stdio transport uses newline-delimited JSON-RPC messages over stdin/stdout. The client launches Agentpack as a subprocess, sends JSON-RPC messages to stdin, and reads JSON-RPC responses from stdout. Agentpack must not write non-MCP logs to stdout.
 
 Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/docs/concepts/transports).
+
+## Default Client Loop
+
+Generated Codex, Claude Code, and Cursor instructions tell connected agents to use the MCP tools as a small hybrid continuity loop:
+
+1. Start by calling `load_context` with a focused query and compact preset.
+2. Call `source_status` before relying on previously recorded source conclusions.
+3. Record durable decisions, dead ends, evidence, and reviewed source conclusions while working.
+4. Call `checkpoint` after meaningful progress so the next session inherits status, next actions, git state, and compact resume context.
+
+The CLI exposes the same operations for setup, inspection, debugging, demos, and web-chat fallback. See [CLI.md](CLI.md) for manual command examples.
 
 ## Tools
 
@@ -21,7 +32,7 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 
 `load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/topic/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
 
-## Manual Smoke
+## Smoke Test
 
 In normal use, a client such as Codex, Claude Code, or Cursor starts `agentpack mcp`. For development, run the local smoke command:
 

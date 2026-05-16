@@ -1,6 +1,6 @@
 # Agentpack
 
-Local task-state ledger for AI coding agents.
+Portable task continuity for AI coding agents.
 
 > Coding agents forget. Agentpack gives them the task state they need to continue.
 
@@ -8,16 +8,31 @@ Agentpack helps coding agents continue long-running repo work without rediscover
 
 ## Product Contract
 
-Agentpack is a local-first open-source tool for repo-scoped coding work. It is not a general AI memory, a knowledge graph, an automatic activity logger, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
+Agentpack is a local-first continuity layer for repo-scoped coding work. Execution engines run the work. Git stores code state. Agentpack stores reviewed task state so the next agent can continue safely.
 
-- files in `.agentpack/`
-- CLI commands
+Agentpack is not a general AI memory, a knowledge graph, an automatic activity logger, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
+
 - a local MCP server
 - project instructions such as `AGENTS.md`, `CLAUDE.md`, and Cursor rules
+- CLI commands for setup, inspection, debugging, and fallback
+- files in `.agentpack/`
 
 `.agentpack/` is local task state and is ignored by git by default. Agentpack is designed first for coding agents such as Codex, Claude Code, Cursor, and other MCP clients. Markdown export exists as a fallback for manual handoff, not as the primary workflow.
 
-The core contract is simple: Git stores code state; Agentpack stores reviewed task state. It captures the decisions, source conclusions, evidence, and checkpoints that help the next agent continue correctly.
+The normal workflow is hybrid: generated client instructions tell MCP-connected agents when to load context, record durable decisions, attach evidence, cache reviewed source conclusions, and checkpoint meaningful progress. Humans can still use the CLI directly when they want to inspect state, debug MCP, run demos, or fall back to a web chat.
+
+## Core Idea
+
+Agentpack stores the reviewed task state a future agent needs:
+
+- goal, current status, and next actions
+- decisions and failed approaches
+- evidence and test outputs
+- relevant files and source conclusions
+- repo name, branch, commit hash, and git diff
+- compact resume context under a rough token budget
+
+The source cache is deliberately lightweight. Agentpack stores metadata, hashes, summaries, and optional snippets, not a full copy of the repository.
 
 ## When Agentpack Helps
 
@@ -82,6 +97,7 @@ Use `agentpack doctor` to verify the local setup. Use `agentpack resume --preset
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, Cursor, and Claude Desktop setup.
 See [docs/agentpack-flow.md](docs/agentpack-flow.md) for a visual execution flow.
+See [docs/CLI.md](docs/CLI.md) for manual CLI and web-chat fallback commands.
 See [docs/DEMOS.md](docs/DEMOS.md) for compact continuity demo outlines.
 
 ## Verify a workflow-published release
@@ -116,27 +132,17 @@ npm run mcp:smoke
 
 The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize`, `tools/list`, and a short `resume` flow, then deletes the temporary workspace.
 
-## Coding-Agent Loop
+## Hybrid Agent Loop
 
-Agentpack works as a hybrid loop. Humans can save and export state manually through the CLI, while MCP-connected coding agents can follow the generated project instructions and call Agentpack tools during the task.
+Agentpack's default loop is MCP-connected and agent-led:
 
-For a manual CLI flow:
+1. The agent starts a session by loading compact Agentpack context for the repo.
+2. Before relying on prior source conclusions, it checks whether recorded files are unchanged, changed, or missing.
+3. While working, it records durable decisions, failed approaches, useful evidence, and reviewed source conclusions.
+4. At a coherent boundary, it creates a checkpoint with status, next actions, git state, and a compact resume.
+5. The next Codex, Claude Code, Cursor, or MCP-capable agent continues from that task state instead of rebuilding it from chat history.
 
-```bash
-agentpack resume --preset agent --query "MCP install"
-agentpack source status
-agentpack record decision "Use project-local MCP config instead of editing global config automatically"
-agentpack checkpoint -m "MCP install tested" --status "Ready for docs polish" --next "Update integration docs"
-agentpack export --to markdown --preset chat --query "MCP install"
-```
-
-For a large refactor, you can also tell the agent directly: "Before you start, load Agentpack context; while you work, record durable decisions, source conclusions, dead ends, and test evidence; checkpoint when the step is coherent." The generated `AGENTS.md`, `CLAUDE.md`, and Cursor rules say the same thing, so connected agents can do this without turning every action into a log entry.
-
-`resume --preset agent` gives the next coding agent the current goal, status, next actions, git state, durable decisions, dead ends, evidence, and source-cache guidance under a rough context budget. `source status` tells the agent which recorded source conclusions are still valid and which files need to be reopened. It compares the current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Each recorded source shows hash status and git status separately, and git changes that were never recorded as sources are listed separately.
-
-For manual web-chat fallback, `export --to markdown --preset chat` writes a handoff file under `.agentpack/exports/`. For the normal coding-agent workflow, `resume --preset agent` prints a larger task state directly in the terminal or MCP response. Add `--query` when you want Source Cache to include full summaries for sources relevant to the next task, always include changed/missing source records in full, and keep compact path/status/topic stubs for the rest.
-
-In a new session, start by loading Agentpack MCP context, or by pasting a markdown handoff when MCP is not available. Then inspect only the files marked changed or missing. During work, record durable decisions, failed approaches, evidence, and source conclusions. End a coherent step with a checkpoint so the next agent inherits a compact state instead of a pile of chat history.
+The CLI mirrors this loop for humans, demos, debugging, and web-chat fallback. See [docs/CLI.md](docs/CLI.md) for manual commands.
 
 ## Security Posture
 
@@ -151,44 +157,15 @@ Agentpack keeps the v0 supply chain deliberately small:
 - best-effort redaction for common secret-looking values in stored context and handoff outputs
 - release workflow publishing through GitHub Actions with npm provenance and Trusted Publisher OIDC (no long-lived npm tokens)
 
-## Core Idea
-
-Agentpack stores:
-
-- goal and current status
-- next actions
-- decisions
-- dead ends and failed approaches
-- evidence and test outputs
-- relevant files and source conclusions
-- repo name, branch, commit hash, and git diff
-- compact resume context under a rough token budget
-
-The source cache is deliberately lightweight. Agentpack stores metadata, hashes, summaries, and optional snippets, not a full copy of the repository.
-
 ## Context Budgets
 
-`--budget` is an approximate token target for generated handoff context. v0 uses a simple estimate, so the number is a practical target, not an exact API token count. Resume output includes estimated usage and a budget status line that says whether any sections were omitted or truncated.
+Agentpack compresses task state under rough context budgets so agents can resume with the useful state, not a pile of history. `load_context`, `resume`, and `export` can focus Source Cache with a local `--query` filter: matched sources keep full summaries/snippets, changed or missing records are always shown in full, and unrelated unchanged sources stay visible as compact stubs.
 
-`--query` is an optional local filter for Source Cache. It uses deterministic lexical matching, not embeddings or network calls. Matching sources keep their summaries and snippets; changed or missing source records are always shown in full; non-matching unchanged sources stay visible as compact stubs with path, short topic, hash status, meaning, and guidance. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering.
-
-Suggested defaults:
-
-- `1200`: quick status ping
-- `4000`: compact manual handoff
-- `8000`: deeper coding-agent handoff
-- `16000`: large debugging session or review
-
-When unsure, start with:
-
-```bash
-agentpack resume --preset quick --query "MCP install"
-agentpack resume --preset agent --query "MCP install"
-```
+See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 
 ## MCP
 
-`agentpack mcp` starts a stdio MCP server with tools for reading and writing task state:
+`agentpack mcp` is the primary runtime surface for connected coding agents. It starts a local stdio MCP server with tools for reading and writing task state:
 
 - `load_context`
 - `record_decision`

@@ -168,10 +168,18 @@ export function resolveMcpStartDir(options: Record<string, ArgValue>, cwd: strin
 function printHelp(): void {
   process.stdout.write(`Agentpack
 
-Local task-state ledger for AI coding agents.
+Portable task continuity for AI coding agents.
+
+Default workflow:
+  agentpack init, install a client, then let MCP-connected agents use the
+  generated project instructions. CLI commands are for setup, inspection,
+  debugging, demos, and fallback.
 
 Usage:
   agentpack init
+  agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
+  agentpack doctor
+  agentpack mcp [--root <path>]
   agentpack set goal <text>
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
@@ -187,13 +195,11 @@ Usage:
   agentpack export --to markdown --preset chat [--query <text>]
   agentpack diff [from] [to]
   agentpack replay
-  agentpack doctor
-  agentpack mcp [--root <path>]
-  agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
   agentpack --version
   agentpack --help
 
 MCP root resolution: --root, then AGENTPACK_ROOT, then current working directory.
+Install defaults to dry-run; pass --write to apply generated client config.
 Budget presets: ${formatBudgetPresets()}
 `);
 }

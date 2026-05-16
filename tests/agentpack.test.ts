@@ -26,6 +26,8 @@ test("--version and --help run without an initialized pack", () => {
 
   const help = run(dir, ["--help"]);
   assert.match(help, /Agentpack/);
+  assert.match(help, /Default workflow/);
+  assert.match(help, /MCP-connected agents/);
   assert.match(help, /--version/);
 });
 
