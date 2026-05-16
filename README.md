@@ -96,7 +96,7 @@ Restart or reconnect the coding-agent client. The generated project instructions
 Use `agentpack doctor` to verify the local setup. Use `agentpack resume --preset agent --query "<topic>"` when you want to inspect the task state yourself.
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for safe Codex, Claude Code, Cursor, and Claude Desktop setup.
-See [docs/agentpack-flow.md](docs/agentpack-flow.md) for a visual execution flow.
+See [docs/agentpack-architecture.html](docs/agentpack-architecture.html) for the architecture and flow map.
 See [docs/CLI.md](docs/CLI.md) for manual CLI and web-chat fallback commands.
 See [docs/DEMOS.md](docs/DEMOS.md) for compact continuity demo outlines.
 See [docs/VISION.md](docs/VISION.md) for the strategic north star.

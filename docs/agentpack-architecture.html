@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>agentpack — Architecture & Flows</title>
+<style>
+  :root,
+  [data-theme="dark"] {
+    --bg:            #07090f;
+    --bg-grid:       rgba(255,255,255,0.025);
+    --panel:         #0d1320;
+    --panel-2:       #11192a;
+    --panel-hover:   #141e33;
+    --border:        rgba(255,255,255,0.09);
+    --border-strong: rgba(255,255,255,0.18);
+    --fg-1:          #e7ecf3;
+    --fg-2:          #aab3c5;
+    --fg-3:          #6c7689;
+    --fg-4:          #4a5366;
+    --code-bg:       rgba(255,255,255,0.05);
+    --edge:          rgba(180,188,220,0.18);
+    --edge-strong:   rgba(220,226,245,0.52);
+    --arrow:         rgba(220,226,245,0.40);
+    --topbar-bg:     linear-gradient(180deg, rgba(8,11,18,0.92), rgba(8,11,18,0.7));
+    --sidebar-bg:    rgba(10,13,21,0.6);
+    --dashed:        rgba(255,255,255,0.07);
+    --hl-bg:         rgba(148,148,255,0.07);
+
+    --actor:     #5fa3ff;
+    --entry:     #c197ff;
+    --tool:      #6ee39a;
+    --operation: #f4a55f;
+    --core:      #76d6e6;
+    --state:     #ff8dc1;
+    --output:    #e87cd9;
+    --quality:   #d4e36b;
+
+    --highlight: #9494ff;
+    --highlight-glow: rgba(148,148,255,0.32);
+  }
+
+  [data-theme="light"] {
+    --bg:            #f5f7fa;
+    --bg-grid:       rgba(20,30,55,0.04);
+    --panel:         #ffffff;
+    --panel-2:       #f8fafc;
+    --panel-hover:   #f1f4f9;
+    --border:        rgba(15,23,42,0.10);
+    --border-strong: rgba(15,23,42,0.22);
+    --fg-1:          #0f172a;
+    --fg-2:          #334155;
+    --fg-3:          #64748b;
+    --fg-4:          #94a3b8;
+    --code-bg:       rgba(15,23,42,0.06);
+    --edge:          rgba(40,60,110,0.16);
+    --edge-strong:   rgba(40,60,110,0.45);
+    --arrow:         rgba(40,60,110,0.40);
+    --topbar-bg:     linear-gradient(180deg, rgba(245,247,250,0.95), rgba(245,247,250,0.78));
+    --sidebar-bg:    rgba(248,250,252,0.7);
+    --dashed:        rgba(15,23,42,0.10);
+    --hl-bg:         rgba(96,71,255,0.08);
+
+    --actor:     #2563eb;
+    --entry:     #7c3aed;
+    --tool:      #0f9d58;
+    --operation: #d97706;
+    --core:      #0891b2;
+    --state:     #db2777;
+    --output:    #a21caf;
+    --quality:   #65a30d;
+
+    --highlight: #6047ff;
+    --highlight-glow: rgba(96,71,255,0.32);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--fg-1);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    background-image:
+      linear-gradient(var(--bg-grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bg-grid) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+    min-width: 1920px;
+  }
+  button {
+    font: inherit; color: inherit; cursor: pointer;
+    background: transparent; border: none; padding: 0;
+  }
+
+  /* ------------- top bar ------------- */
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 32px;
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--topbar-bg);
+    backdrop-filter: blur(8px);
+  }
+  .title h1 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--fg-1);
+  }
+  .title p {
+    margin: 0;
+    max-width: 720px;
+    color: var(--fg-3);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 18px;
+    align-items: center;
+    justify-content: flex-end;
+    max-width: 980px;
+  }
+  .topbar-right {
+    display: flex;
+    align-items: flex-start;
+    gap: 18px;
+  }
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    color: var(--fg-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--panel);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+  }
+  .theme-toggle:hover {
+    color: var(--fg-1);
+    border-color: var(--border-strong);
+    background: var(--panel-hover);
+  }
+  .theme-toggle .glyph {
+    width: 12px; height: 12px;
+    display: inline-block;
+    border-radius: 50%;
+    background: var(--fg-2);
+    box-shadow: inset -3px -3px 0 0 var(--panel);
+  }
+  .legend-item {
+    display: inline-flex; align-items: center; gap: 7px;
+    color: var(--fg-2);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .legend-dot {
+    width: 9px; height: 9px; border-radius: 2px;
+    background: var(--c, var(--fg-3));
+    box-shadow: 0 0 6px rgba(0,0,0,0.4);
+  }
+
+  /* ------------- flowbar (top nav) ------------- */
+  .flowbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 28px 11px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel-2);
+    flex-wrap: wrap;
+  }
+  .flowbar-label {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--fg-3);
+    margin-right: 4px;
+  }
+  .flow-chip {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg-2);
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 11.5px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  }
+  .flow-chip:hover {
+    border-color: var(--border-strong);
+    color: var(--fg-1);
+    background: var(--panel-hover);
+  }
+  .flow-chip.active {
+    border-color: var(--highlight);
+    background: var(--hl-bg);
+    color: var(--fg-1);
+  }
+  .flow-chip .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    color: var(--fg-3);
+    font-size: 9.5px;
+    font-weight: 600;
+  }
+  .flow-chip.active .n {
+    border-color: var(--highlight);
+    color: var(--highlight);
+    background: transparent;
+  }
+  .flow-clear {
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--fg-3);
+    padding: 5px 10px;
+    font-size: 10.5px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease;
+  }
+  .flow-clear:hover { color: var(--fg-1); border-color: var(--border-strong); }
+  .flow-clear[hidden] { display: none; }
+  .canvas-wrap {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    align-items: start;
+  }
+  .canvas {
+    position: relative;
+    padding: 22px 24px 60px;
+  }
+  .col-headers {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    column-gap: 14px;
+    margin-bottom: 14px;
+  }
+  .col-headers div {
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--fg-3);
+    text-transform: uppercase;
+    padding: 0 2px;
+  }
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    column-gap: 14px;
+    align-items: start;
+    position: relative;
+  }
+  .col {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+  }
+
+  /* Storage column header is enough; no extra bracket */
+
+  /* ------------- nodes ------------- */
+  .node {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--c, var(--fg-3));
+    border-radius: 4px;
+    padding: 9px 11px 10px;
+    color: var(--fg-1);
+    transition: background 120ms ease, border-color 120ms ease, opacity 160ms ease;
+    z-index: 2;
+    cursor: pointer;
+  }
+  .node:hover {
+    background: var(--panel-hover);
+  }
+  .node-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 6px;
+    margin-bottom: 3px;
+  }
+  .node-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--fg-1);
+    letter-spacing: -0.1px;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .node-sub {
+    font-size: 9.5px;
+    color: var(--fg-4);
+    font-weight: 500;
+    white-space: nowrap;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .node-desc {
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--fg-3);
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+  }
+  .node-files {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--fg-4);
+    line-height: 1.4;
+    word-break: break-all;
+    display: none;
+  }
+  .node[data-type="actor"]     { --c: var(--actor); }
+  .node[data-type="entry"]     { --c: var(--entry); }
+  .node[data-type="tool"]      { --c: var(--tool); }
+  .node[data-type="operation"] { --c: var(--operation); }
+  .node[data-type="core"]      { --c: var(--core); }
+  .node[data-type="state"]     { --c: var(--state); }
+  .node[data-type="output"]    { --c: var(--output); }
+  .node[data-type="quality"]   { --c: var(--quality); }
+
+  /* Highlighting states */
+  body[data-mode="flow"] .node:not(.in-flow),
+  body[data-mode="node"] .node:not(.is-selected) {
+    opacity: 0.3;
+  }
+  body[data-mode="flow"] .node:not(.in-flow) .node-desc,
+  body[data-mode="node"] .node:not(.is-selected) .node-desc {
+    color: var(--fg-4);
+  }
+  body[data-mode="flow"] .node.in-flow {
+    border-color: var(--highlight);
+    background: var(--hl-bg);
+    box-shadow: 0 0 0 1px var(--highlight), 0 0 16px var(--highlight-glow);
+  }
+  body[data-mode="flow"] .node.in-flow .node-title { color: #fff8de; }
+  body[data-mode="node"] .node.is-selected {
+    border-color: var(--highlight);
+    box-shadow: 0 0 0 1px var(--highlight), 0 0 14px var(--highlight-glow);
+  }
+
+  /* ------------- SVG edges ------------- */
+  svg.edges {
+    position: absolute;
+    left: 0; top: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 1;
+    overflow: visible;
+  }
+  svg.edges path {
+    fill: none;
+    stroke: var(--edge);
+    stroke-width: 1.1;
+    transition: stroke 200ms ease, stroke-width 200ms ease, opacity 200ms ease;
+  }
+  /* arrow markers use CSS so they theme */
+  svg.edges marker#arrow-default > path { fill: var(--arrow); }
+  svg.edges marker#arrow-flow > path { fill: var(--highlight); }
+  body[data-mode="flow"] svg.edges path:not(.in-flow) { opacity: 0.18; }
+  svg.edges path.in-flow {
+    stroke: var(--highlight);
+    stroke-width: 1.7;
+    opacity: 0.95;
+    filter: drop-shadow(0 0 4px var(--highlight-glow));
+  }
+
+  /* ------------- sidebar ------------- */
+  .sidebar {
+    border-left: 1px solid var(--border);
+    background: var(--sidebar-bg);
+    min-height: 100vh;
+    padding: 22px 22px 40px;
+  }
+  .sidebar h2 {
+    margin: 0 0 12px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    color: var(--fg-3);
+    text-transform: uppercase;
+  }
+  .sidebar h2:not(:first-child) { margin-top: 26px; }
+  .flow-list { display: flex; flex-direction: column; gap: 8px; }
+  .flow-card {
+    text-align: left;
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 11px 10px;
+    transition: background 120ms ease, border-color 120ms ease;
+  }
+  .flow-card:hover { background: var(--panel-hover); border-color: var(--border-strong); }
+  .flow-card.active {
+    background: var(--hl-bg);
+    border-color: var(--highlight);
+    box-shadow: 0 0 0 1px var(--highlight), 0 0 14px var(--highlight-glow);
+  }
+  .flow-card.active .flow-card-label { color: #fff8de; }
+  .flow-card-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+  .flow-card-label {
+    overflow-wrap: anywhere;
+    line-height: 1.3;
+  }
+  .flow-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border: 1px solid var(--border-strong);
+    border-radius: 50%;
+    font-size: 10px;
+    color: var(--fg-2);
+    flex-shrink: 0;
+  }
+  .flow-card.active .flow-num {
+    border-color: var(--highlight);
+    color: var(--highlight);
+    background: var(--hl-bg);
+  }
+  .flow-card-label { color: var(--fg-1); }
+  .flow-card-sum {
+    margin: 5px 0 0 26px;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .clear-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 12px;
+    padding: 6px 10px;
+    font-size: 10.5px;
+    color: var(--fg-3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+  }
+  .clear-btn:hover { color: var(--fg-1); border-color: var(--border-strong); }
+  .clear-btn[hidden] { display: none; }
+
+  /* Steps + node detail */
+  .steps-empty {
+    font-size: 11px;
+    color: var(--fg-4);
+    line-height: 1.6;
+  }
+  .steps-empty .arrow { color: var(--highlight); }
+  .step {
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    column-gap: 9px;
+    padding: 9px 0;
+    border-top: 1px dashed var(--dashed);
+    align-items: start;
+  }
+  .step:first-of-type { border-top: none; }
+  .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--hl-bg);
+    color: var(--highlight);
+    border: 1px solid var(--highlight);
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .step-body {
+    font-size: 10.5px;
+    color: var(--fg-2);
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+  .step-body code {
+    background: var(--code-bg);
+    padding: 1px 4px;
+    border-radius: 2px;
+    color: var(--fg-1);
+    font-size: 10.5px;
+  }
+
+  .node-detail {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 2px solid var(--c, var(--fg-3));
+    border-radius: 4px;
+    padding: 11px 13px 12px;
+    margin-bottom: 14px;
+  }
+  .node-detail-type {
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--c, var(--fg-3));
+    margin-bottom: 4px;
+  }
+  .node-detail-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg-1);
+    margin-bottom: 6px;
+  }
+  .node-detail-desc {
+    font-size: 11.5px;
+    color: var(--fg-2);
+    line-height: 1.5;
+  }
+  .node-detail-files {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--dashed);
+    font-size: 10.5px;
+    color: var(--fg-3);
+    line-height: 1.55;
+    word-break: break-all;
+  }
+  .node-detail-files .label {
+    color: var(--fg-4);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 9.5px;
+    display: block;
+    margin-bottom: 3px;
+  }
+
+  /* small footer/meta */
+  .meta {
+    margin-top: 30px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--dashed);
+    font-size: 10px;
+    color: var(--fg-4);
+    line-height: 1.6;
+  }
+  .meta code { color: var(--fg-2); background: var(--code-bg); padding: 1px 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <h1 id="title">agentpack — Architecture &amp; Flows</h1>
+      <p id="subtitle">Every module and data flow in the agentpack CLI + MCP server. Pick a flow on the right to highlight the path through CLI dispatch, core builders, durable state, and generated handoff context.</p>
+    </div>
+    <div class="topbar-right">
+      <div class="legend" id="legend"></div>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle light / dark theme">
+        <span class="glyph" aria-hidden="true"></span>
+        <span id="theme-label">dark</span>
+      </button>
+    </div>
+  </header>
+
+  <nav class="flowbar" id="flowbar">
+    <span class="flowbar-label">Flows</span>
+    <div id="flow-chips" style="display:flex; gap:6px; flex-wrap:wrap;"></div>
+    <button class="flow-clear" id="flow-clear" hidden>× clear selection</button>
+  </nav>
+
+  <main class="canvas-wrap">
+    <section class="canvas" id="canvas">
+      <div class="col-headers" id="col-headers"></div>
+      <div class="cols" id="cols"></div>
+      <svg class="edges" id="edges">
+        <defs>
+          <marker id="arrow-default" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z"></path>
+          </marker>
+          <marker id="arrow-flow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L8,4 L0,8 z"></path>
+          </marker>
+        </defs>
+      </svg>
+    </section>
+
+    <aside class="sidebar">
+      <h2>Steps</h2>
+      <div id="detail"></div>
+
+      <div class="meta" id="meta"></div>
+    </aside>
+  </main>
+
+<!-- Architecture data (same shape as agentpack-architecture.json) -->
+<script type="application/json" id="arch-data">
+{
+  "schemaVersion": 1,
+  "title": "agentpack — Architecture & Flows",
+  "description": "Local task-state ledger for AI coding agents. Pick a flow on the right to highlight the path through CLI, MCP tools, durable state, and generated handoff context.",
+  "repository": "agentpack-cli",
+  "package": "agentpack-cli",
+  "binary": "agentpack",
+  "engines": { "node": ">=20" },
+  "columns": [
+    { "id": "actors",    "label": "Actors" },
+    { "id": "entry",     "label": "CLI / MCP entry" },
+    { "id": "dispatch",  "label": "Dispatch & tools" },
+    { "id": "operations","label": "Operations" },
+    { "id": "core",      "label": "Core builders" },
+    { "id": "storage",   "label": ".agentpack/ state" },
+    { "id": "outputs",   "label": "Outputs" },
+    { "id": "quality",   "label": "Tests & release" }
+  ],
+  "legend": [
+    { "type": "actor",     "label": "Actor" },
+    { "type": "entry",     "label": "CLI / MCP entry" },
+    { "type": "tool",      "label": "Dispatch / tool" },
+    { "type": "operation", "label": "Operation" },
+    { "type": "core",      "label": "Core builder" },
+    { "type": "state",     "label": ".agentpack state" },
+    { "type": "output",    "label": "Output artifact" },
+    { "type": "quality",   "label": "Tests / CI" }
+  ],
+  "nodes": [
+    {
+      "id": "human",
+      "column": "actors",
+      "type": "actor",
+      "title": "Developer",
+      "summary": "Runs setup commands, reviews handoffs, steers coding-agent work.",
+      "files": ["README.md", "docs/CLI.md"]
+    },
+    {
+      "id": "agent",
+      "column": "actors",
+      "type": "actor",
+      "title": "Coding agent",
+      "summary": "Codex / Claude Code / Cursor / any MCP client. Reads instructions, calls MCP tools.",
+      "files": ["AGENTS.md", "CLAUDE.md", ".agentpack/instructions/"]
+    },
+    {
+      "id": "ci",
+      "column": "actors",
+      "type": "actor",
+      "title": "CI / release",
+      "summary": "GitHub Actions builds, tests, smokes MCP, packs, publishes provenance releases.",
+      "files": [".github/workflows/ci.yml", ".github/workflows/publish.yml"]
+    },
+
+    {
+      "id": "agentpack-bin",
+      "column": "entry",
+      "type": "entry",
+      "title": "agentpack",
+      "subtitle": "package bin",
+      "summary": "package.json#bin → dist/src/agentpack.js after TypeScript build.",
+      "files": ["package.json", "src/agentpack.ts"]
+    },
+    {
+      "id": "cli",
+      "column": "entry",
+      "type": "entry",
+      "title": "src/cli/index.ts",
+      "subtitle": "495 lines",
+      "summary": "Parses commands and flags, resolves --root / AGENTPACK_ROOT / cwd, dispatches CLI operations, can start MCP mode.",
+      "files": ["src/cli/index.ts"]
+    },
+    {
+      "id": "mcp-start",
+      "column": "entry",
+      "type": "entry",
+      "title": "agentpack mcp",
+      "subtitle": "stdio launcher",
+      "summary": "Launches JSON-RPC over stdio. Root resolution: --root → AGENTPACK_ROOT → cwd.",
+      "files": ["src/cli/index.ts", "src/mcp/server.ts"]
+    },
+
+    {
+      "id": "mcp-server",
+      "column": "dispatch",
+      "type": "tool",
+      "title": "src/mcp/server.ts",
+      "subtitle": "397 lines",
+      "summary": "MCP tools: load_context, source_status, record_source, record_decision, record_dead_end, attach_evidence, checkpoint, diff, replay, resume.",
+      "files": ["src/mcp/server.ts", "docs/MCP.md"]
+    },
+    {
+      "id": "commands",
+      "column": "dispatch",
+      "type": "tool",
+      "title": "CLI commands",
+      "subtitle": "human surface",
+      "summary": "init · set · record · note · source · evidence · run · checkpoint · resume · export · diff · replay · doctor.",
+      "files": ["src/cli/index.ts", "docs/CLI.md"]
+    },
+    {
+      "id": "install",
+      "column": "dispatch",
+      "type": "tool",
+      "title": "installIntegration()",
+      "subtitle": "client installer",
+      "summary": "Generates Codex / Claude / Claude Desktop / Cursor instructions + MCP config. Dry-run unless --write.",
+      "files": ["src/integrations/install.ts", "docs/INTEGRATIONS.md"]
+    },
+
+    {
+      "id": "operations",
+      "column": "operations",
+      "type": "operation",
+      "title": "src/operations.ts",
+      "subtitle": "268 lines",
+      "summary": "Source records, evidence files, source status, replay output, git-status labels, redaction at the operation boundary.",
+      "files": ["src/operations.ts"]
+    },
+    {
+      "id": "doctor",
+      "column": "operations",
+      "type": "operation",
+      "title": "core/doctor.ts",
+      "summary": "Pack health, ignore gaps, project MCP names, stale roots, Desktop config, launcher risks.",
+      "files": ["src/core/doctor.ts"]
+    },
+    {
+      "id": "git",
+      "column": "operations",
+      "type": "operation",
+      "title": "core/git.ts",
+      "summary": "Branch, head commit, working-tree status, bounded diff context for resumes.",
+      "files": ["src/core/git.ts"]
+    },
+    {
+      "id": "hash",
+      "column": "operations",
+      "type": "operation",
+      "title": "core/hash.ts",
+      "summary": "sha256File + getFileRecord. Powers source-cache identity and stale detection.",
+      "files": ["src/core/hash.ts"]
+    },
+
+    {
+      "id": "store",
+      "column": "core",
+      "type": "core",
+      "title": "core/store.ts",
+      "subtitle": "286 lines",
+      "summary": "Finds pack roots, initPack(), appends ignore patterns, reads/writes state, appends events, serializes writes with .lock.",
+      "files": ["src/core/store.ts"]
+    },
+    {
+      "id": "checkpoints",
+      "column": "core",
+      "type": "core",
+      "title": "core/checkpoints.ts",
+      "summary": "Creates checkpoint directories, manifests, resume snapshots, updates state pointer, diffs checkpoint pairs.",
+      "files": ["src/core/checkpoints.ts"]
+    },
+    {
+      "id": "resume",
+      "column": "core",
+      "type": "core",
+      "title": "core/resume.ts",
+      "summary": "Builds budgeted markdown context: state + git + source cache + decisions + dead ends + evidence + recent timeline.",
+      "files": ["src/core/resume.ts"]
+    },
+    {
+      "id": "budget",
+      "column": "core",
+      "type": "core",
+      "title": "core/budget.ts",
+      "summary": "Token estimator + section packer. Required sections kept, optionals truncated, omissions reported.",
+      "files": ["src/core/budget.ts", "src/core/presets.ts"]
+    },
+    {
+      "id": "redaction",
+      "column": "core",
+      "type": "core",
+      "title": "core/redaction.ts",
+      "summary": "Strips root paths and configured secret patterns before state leaves the local ledger.",
+      "files": ["src/core/redaction.ts"]
+    },
+
+    {
+      "id": "state",
+      "column": "storage",
+      "type": "state",
+      "title": "state.json",
+      "summary": "Goal · current status · next actions · current checkpoint pointer.",
+      "files": [".agentpack/state.json"]
+    },
+    {
+      "id": "events",
+      "column": "storage",
+      "type": "state",
+      "title": "events.jsonl",
+      "summary": "Append-only timeline: decisions, notes, evidence, commands, sources, checkpoints.",
+      "files": [".agentpack/events.jsonl"]
+    },
+    {
+      "id": "sources",
+      "column": "storage",
+      "type": "state",
+      "title": "sources.json",
+      "summary": "Source-cache summaries keyed by path + sha256 so future agents avoid stale assumptions.",
+      "files": [".agentpack/sources.json"]
+    },
+    {
+      "id": "evidence",
+      "column": "storage",
+      "type": "state",
+      "title": "evidence/",
+      "summary": "Local evidence payloads attached from command output, files, notes, links.",
+      "files": [".agentpack/evidence/"]
+    },
+    {
+      "id": "checkpoint-store",
+      "column": "storage",
+      "type": "state",
+      "title": "checkpoints/",
+      "summary": "Durable checkpoint manifests and resume snapshots for recovery & comparison.",
+      "files": [".agentpack/checkpoints/"]
+    },
+    {
+      "id": "instructions",
+      "column": "storage",
+      "type": "state",
+      "title": "instructions/",
+      "summary": "Generated client instructions for the Agentpack workflow.",
+      "files": [".agentpack/instructions/"]
+    },
+
+    {
+      "id": "resume-output",
+      "column": "outputs",
+      "type": "output",
+      "title": "resume / load_context",
+      "summary": "Markdown task context: pack root, state, git, source-cache guidance, decisions, evidence, next actions.",
+      "files": ["docs/MCP.md", "docs/CLI.md"]
+    },
+    {
+      "id": "handoff-export",
+      "column": "outputs",
+      "type": "output",
+      "title": "exports/",
+      "summary": "Markdown handoff fallback for clients that cannot read local MCP tools.",
+      "files": [".agentpack/exports/"]
+    },
+    {
+      "id": "client-config",
+      "column": "outputs",
+      "type": "output",
+      "title": "Client MCP config",
+      "summary": "Project-local Codex / Claude / Cursor. Claude Desktop gets a merge snippet for global config.",
+      "files": [".codex/config.toml", ".mcp.json", ".cursor/mcp.json"]
+    },
+    {
+      "id": "doctor-output",
+      "column": "outputs",
+      "type": "output",
+      "title": "doctor report",
+      "summary": "Ok / warn / fail checks for pack setup, ignore rules, MCP launcher safety.",
+      "files": ["src/core/doctor.ts"]
+    },
+
+    {
+      "id": "tests",
+      "column": "quality",
+      "type": "quality",
+      "title": "tests/agentpack.test.ts",
+      "summary": "node --test suite covering CLI, pack state, source status, resumes, MCP tools, doctor, installs, redaction, budget.",
+      "files": ["tests/agentpack.test.ts"]
+    },
+    {
+      "id": "smoke",
+      "column": "quality",
+      "type": "quality",
+      "title": "scripts/mcp-smoke.mjs",
+      "summary": "Builds CLI, starts MCP, sends initialize / tools/list / resume JSON-RPC, validates output.",
+      "files": ["scripts/mcp-smoke.mjs"]
+    },
+    {
+      "id": "release",
+      "column": "quality",
+      "type": "quality",
+      "title": "release workflow",
+      "summary": "ci.yml builds + tests + smokes + packs. publish.yml releases npm with provenance via OIDC Trusted Publisher.",
+      "files": [".github/workflows/ci.yml", ".github/workflows/publish.yml", "docs/RELEASING.md"]
+    }
+  ],
+  "edges": [
+    { "id": "e-human-bin",          "from": "human",         "to": "agentpack-bin" },
+    { "id": "e-agent-mcp",          "from": "agent",         "to": "mcp-start" },
+    { "id": "e-ci-bin",             "from": "ci",            "to": "agentpack-bin" },
+
+    { "id": "e-bin-cli",            "from": "agentpack-bin", "to": "cli" },
+    { "id": "e-cli-mcp",            "from": "cli",           "to": "mcp-start" },
+    { "id": "e-mcp-server",         "from": "mcp-start",     "to": "mcp-server" },
+
+    { "id": "e-mcp-commands",       "from": "mcp-server",    "to": "commands" },
+    { "id": "e-cli-commands",       "from": "cli",           "to": "commands" },
+    { "id": "e-cli-install",        "from": "cli",           "to": "install" },
+
+    { "id": "e-commands-operations","from": "commands",      "to": "operations" },
+    { "id": "e-commands-doctor",    "from": "commands",      "to": "doctor" },
+    { "id": "e-mcp-operations",     "from": "mcp-server",    "to": "operations" },
+
+    { "id": "e-operations-hash",    "from": "operations",    "to": "hash" },
+    { "id": "e-operations-git",     "from": "operations",    "to": "git" },
+    { "id": "e-commands-store",     "from": "commands",      "to": "store" },
+    { "id": "e-install-store",      "from": "install",       "to": "store" },
+
+    { "id": "e-commands-checkpoints","from": "commands",     "to": "checkpoints" },
+    { "id": "e-mcp-checkpoints",    "from": "mcp-server",    "to": "checkpoints" },
+    { "id": "e-commands-resume",    "from": "commands",      "to": "resume" },
+    { "id": "e-mcp-resume",         "from": "mcp-server",    "to": "resume" },
+
+    { "id": "e-store-state",        "from": "store",         "to": "state" },
+    { "id": "e-store-events",       "from": "store",         "to": "events" },
+    { "id": "e-store-sources",      "from": "store",         "to": "sources" },
+    { "id": "e-operations-sources", "from": "operations",    "to": "sources" },
+    { "id": "e-operations-evidence","from": "operations",    "to": "evidence" },
+    { "id": "e-operations-events",  "from": "operations",    "to": "events" },
+    { "id": "e-checkpoints-store",  "from": "checkpoints",   "to": "checkpoint-store" },
+    { "id": "e-checkpoints-state",  "from": "checkpoints",   "to": "state" },
+    { "id": "e-checkpoints-events", "from": "checkpoints",   "to": "events" },
+    { "id": "e-install-instructions","from": "install",      "to": "instructions" },
+
+    { "id": "e-resume-state",       "from": "resume",        "to": "state" },
+    { "id": "e-resume-sources",     "from": "resume",        "to": "sources" },
+    { "id": "e-resume-events",      "from": "resume",        "to": "events" },
+    { "id": "e-resume-git",         "from": "resume",        "to": "git" },
+    { "id": "e-resume-budget",      "from": "resume",        "to": "budget" },
+    { "id": "e-resume-redaction",   "from": "resume",        "to": "redaction" },
+
+    { "id": "e-resume-out",         "from": "resume",        "to": "resume-output" },
+    { "id": "e-resume-export",      "from": "resume",        "to": "handoff-export" },
+    { "id": "e-install-config",     "from": "install",       "to": "client-config" },
+    { "id": "e-doctor-output",      "from": "doctor",        "to": "doctor-output" },
+
+    { "id": "e-tests-cli",          "from": "tests",         "to": "cli" },
+    { "id": "e-tests-mcp",          "from": "tests",         "to": "mcp-server" },
+    { "id": "e-smoke-mcp",          "from": "smoke",         "to": "mcp-server" },
+    { "id": "e-release-tests",      "from": "release",       "to": "tests" },
+    { "id": "e-release-smoke",      "from": "release",       "to": "smoke" }
+  ],
+  "flows": [
+    {
+      "id": "init",
+      "label": "init workspace",
+      "summary": "Create local task-state ledger and keep it out of git.",
+      "nodes": ["human","agentpack-bin","cli","commands","store","state","events","sources","instructions"],
+      "edges": ["e-human-bin","e-bin-cli","e-cli-commands","e-commands-store","e-store-state","e-store-events","e-store-sources"],
+      "steps": [
+        "Developer runs `agentpack init` in a repo.",
+        "CLI resolves the workspace and calls `initPack()` in core/store.ts.",
+        "store.ts creates `.agentpack/` and default state.json, events.jsonl, sources.json.",
+        "`ensurePackIgnored()` appends local-only ignore patterns to .gitignore without replacing existing rules."
+      ]
+    },
+    {
+      "id": "install",
+      "label": "install client",
+      "summary": "Generate client instructions + MCP launcher config for Codex / Claude / Cursor.",
+      "nodes": ["human","agentpack-bin","cli","install","store","instructions","client-config"],
+      "edges": ["e-human-bin","e-bin-cli","e-cli-install","e-install-store","e-install-instructions","e-install-config"],
+      "steps": [
+        "Developer runs `agentpack install codex|claude|claude-desktop|cursor --write`.",
+        "`installIntegration()` builds the per-client file plan (dry-run unless --write).",
+        "Generated workflow instructions are written under `.agentpack/instructions/`.",
+        "Project-local clients get config files (.codex, .mcp.json, .cursor/mcp.json); Claude Desktop gets a merge snippet."
+      ]
+    },
+    {
+      "id": "source-cache",
+      "label": "source cache",
+      "summary": "Record source conclusions by hash and detect staleness on the next session.",
+      "nodes": ["agent","mcp-start","mcp-server","operations","hash","git","sources","events","resume-output"],
+      "edges": ["e-agent-mcp","e-mcp-server","e-mcp-operations","e-operations-hash","e-operations-git","e-operations-sources","e-operations-events"],
+      "steps": [
+        "Agent inspects an important source file.",
+        "`record_source` (or `agentpack source add`) stores summary + snippet + path + sha256 via core/hash.ts.",
+        "`source_status` later compares recorded hashes against the working tree and git status.",
+        "Future resumes show unchanged sources as compact stubs and flag changed/missing files in full."
+      ]
+    },
+    {
+      "id": "checkpoint",
+      "label": "checkpoint",
+      "summary": "Persist meaningful progress into durable state and a recoverable snapshot.",
+      "nodes": ["agent","mcp-start","mcp-server","checkpoints","store","state","events","checkpoint-store"],
+      "edges": ["e-agent-mcp","e-mcp-server","e-mcp-checkpoints","e-checkpoints-store","e-checkpoints-state","e-checkpoints-events"],
+      "steps": [
+        "Agent reaches a coherent boundary and calls `checkpoint`.",
+        "`checkpoints.ts` writes a manifest + resume snapshot under the Agentpack write lock.",
+        "state.json is updated with status, next actions, and the current checkpoint id.",
+        "events.jsonl gets a `checkpoint` event for the timeline."
+      ]
+    },
+    {
+      "id": "resume",
+      "label": "resume context",
+      "summary": "Pack current task state into budgeted markdown for the next agent.",
+      "nodes": ["agent","mcp-start","mcp-server","resume","git","budget","redaction","state","sources","events","resume-output","handoff-export"],
+      "edges": ["e-agent-mcp","e-mcp-server","e-mcp-resume","e-resume-state","e-resume-sources","e-resume-events","e-resume-git","e-resume-budget","e-resume-redaction","e-resume-out","e-resume-export"],
+      "steps": [
+        "Agent calls `load_context` or `resume` with a preset, budget, and optional query.",
+        "core/resume.ts combines state + git + source cache + decisions + evidence + timeline.",
+        "core/budget.ts keeps required sections and reports truncated/omitted ones.",
+        "core/redaction.ts strips root paths + configured secrets before output leaves the ledger.",
+        "Result is returned via MCP, or written to `.agentpack/exports/` as a markdown fallback."
+      ]
+    },
+    {
+      "id": "doctor-ci",
+      "label": "doctor + CI",
+      "summary": "Catch broken setup, stale MCP roots, and release regressions.",
+      "nodes": ["human","ci","agentpack-bin","cli","commands","doctor","doctor-output","tests","smoke","release","mcp-server"],
+      "edges": ["e-human-bin","e-ci-bin","e-bin-cli","e-cli-commands","e-commands-doctor","e-doctor-output","e-release-tests","e-release-smoke","e-tests-cli","e-tests-mcp","e-smoke-mcp"],
+      "steps": [
+        "`agentpack doctor` reports pack health, ignore rules, launcher names, and stale roots.",
+        "Node tests cover CLI behavior, MCP tools, installs, source cache, redaction, budget packing.",
+        "`scripts/mcp-smoke.mjs` runs a JSON-RPC flow against the built server.",
+        "Release workflow publishes npm packages with provenance after build/test/smoke/pack checks."
+      ]
+    }
+  ]
+}
+</script>
+
+<script>
+(() => {
+  // ---- Theme toggle --------------------------------------------------------
+  const THEME_KEY = 'agentpack-arch-theme';
+  const themeBtn = document.getElementById('theme-toggle');
+  const themeLabel = document.getElementById('theme-label');
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    themeLabel.textContent = t;
+  }
+  const saved = (() => { try { return localStorage.getItem(THEME_KEY); } catch (_) { return null; } })();
+  const prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+  applyTheme(saved || (prefersLight ? 'light' : 'dark'));
+  themeBtn.addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    applyTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+  });
+
+  // ---- Load embedded data --------------------------------------------------
+  const data = JSON.parse(document.getElementById('arch-data').textContent);
+  document.getElementById('title').textContent = data.title;
+  document.getElementById('subtitle').textContent = data.description;
+
+  // ---- Legend --------------------------------------------------------------
+  const legendEl = document.getElementById('legend');
+  data.legend.forEach(l => {
+    const span = document.createElement('span');
+    span.className = 'legend-item';
+    span.innerHTML = `<span class="legend-dot" style="--c: var(--${l.type})"></span>${l.label}`;
+    legendEl.appendChild(span);
+  });
+
+  // ---- Column headers + columns -------------------------------------------
+  const headersEl = document.getElementById('col-headers');
+  const colsEl = document.getElementById('cols');
+  const colMap = {};
+  data.columns.forEach(c => {
+    const h = document.createElement('div');
+    h.textContent = c.label;
+    headersEl.appendChild(h);
+
+    const col = document.createElement('div');
+    col.className = 'col col-' + c.id;
+    col.dataset.col = c.id;
+    colsEl.appendChild(col);
+    colMap[c.id] = col;
+  });
+
+  // ---- Nodes ---------------------------------------------------------------
+  const nodeEls = {};
+  data.nodes.forEach(n => {
+    const el = document.createElement('article');
+    el.className = 'node';
+    el.dataset.id = n.id;
+    el.dataset.type = n.type;
+    el.tabIndex = 0;
+    el.innerHTML = `
+      <div class="node-head">
+        <div class="node-title">${softBreak(n.title)}</div>
+        ${n.subtitle ? `<span class="node-sub">${escapeHTML(n.subtitle)}</span>` : ''}
+      </div>
+      <p class="node-desc">${escapeHTML(n.summary)}</p>
+    `;
+    el.addEventListener('click', () => selectNode(n.id));
+    colMap[n.column].appendChild(el);
+    nodeEls[n.id] = el;
+  });
+
+  // ---- Flow chips (top bar) -----------------------------------------------
+  const flowChipsEl = document.getElementById('flow-chips');
+  const flowEls = {};
+  data.flows.forEach((f, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'flow-chip';
+    btn.dataset.id = f.id;
+    btn.title = f.summary;
+    btn.innerHTML = `<span class="n">${idx + 1}</span><span class="flow-chip-label">${softBreak(f.label)}</span>`;
+    btn.addEventListener('click', () => selectFlow(f.id));
+    flowChipsEl.appendChild(btn);
+    flowEls[f.id] = btn;
+  });
+
+  document.getElementById('flow-clear').addEventListener('click', clearSelection);
+
+  // ---- Meta info -----------------------------------------------------------
+  document.getElementById('meta').innerHTML = `
+    <strong style="color:var(--fg-2)">${escapeHTML(data.repository || 'agentpack')}</strong>
+    &nbsp;·&nbsp; bin <code>${escapeHTML(data.binary || 'agentpack')}</code>
+    &nbsp;·&nbsp; node ${escapeHTML(data?.engines?.node || '>=20')}
+    <br>
+    <span style="color:var(--fg-4)">${data.nodes.length} modules · ${data.edges.length} edges · ${data.flows.length} flows</span>
+  `;
+
+  // ---- SVG edges -----------------------------------------------------------
+  const edgesSvg = document.getElementById('edges');
+  const edgeEls = {};
+  data.edges.forEach(e => {
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('data-id', e.id);
+    p.setAttribute('data-from', e.from);
+    p.setAttribute('data-to', e.to);
+    p.setAttribute('marker-end', 'url(#arrow-default)');
+    edgesSvg.appendChild(p);
+    edgeEls[e.id] = p;
+  });
+
+  // ---- Position edges ------------------------------------------------------
+  const canvasEl = document.getElementById('canvas');
+  function layoutEdges() {
+    const cbox = canvasEl.getBoundingClientRect();
+    edgesSvg.setAttribute('viewBox', `0 0 ${cbox.width} ${cbox.height}`);
+    edgesSvg.setAttribute('width', cbox.width);
+    edgesSvg.setAttribute('height', cbox.height);
+    data.edges.forEach(e => {
+      const a = nodeEls[e.from], b = nodeEls[e.to];
+      if (!a || !b) return;
+      const ar = a.getBoundingClientRect();
+      const br = b.getBoundingClientRect();
+      const x1 = ar.right - cbox.left;
+      const y1 = ar.top + ar.height / 2 - cbox.top;
+      const x2 = br.left - cbox.left;
+      const y2 = br.top + br.height / 2 - cbox.top;
+      // cubic bezier — keep control points horizontal
+      const dx = Math.max(40, (x2 - x1) * 0.55);
+      const c1x = x1 + dx;
+      const c2x = x2 - dx;
+      edgeEls[e.id].setAttribute('d',
+        `M ${x1.toFixed(1)} ${y1.toFixed(1)} C ${c1x.toFixed(1)} ${y1.toFixed(1)}, ${c2x.toFixed(1)} ${y2.toFixed(1)}, ${x2.toFixed(1)} ${y2.toFixed(1)}`
+      );
+    });
+  }
+  layoutEdges();
+  window.addEventListener('resize', layoutEdges);
+  // re-layout once fonts load
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(layoutEdges);
+  }
+  // observe canvas size changes
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(layoutEdges);
+    ro.observe(canvasEl);
+  }
+
+  // ---- Detail panel rendering ---------------------------------------------
+  const detailEl = document.getElementById('detail');
+  const clearBtn = document.getElementById('flow-clear');
+
+  function renderEmpty() {
+    detailEl.innerHTML = `
+      <div class="steps-empty">
+        <span class="arrow">↑</span> pick a flow above to highlight the path through the system,
+        or click any module on the canvas to see its details.
+      </div>
+    `;
+  }
+
+  function renderFlow(flow) {
+    let html = `<div style="font-size:11px; color:var(--fg-3); line-height:1.5; margin-bottom:14px; padding:10px 12px; border:1px solid var(--border); border-left:2px solid var(--highlight); border-radius:4px; background:var(--hl-bg);">${escapeHTML(flow.summary)}</div>`;
+    flow.steps.forEach((s, i) => {
+      html += `
+        <div class="step">
+          <div class="step-num">${i + 1}</div>
+          <div class="step-body">${formatStep(s)}</div>
+        </div>
+      `;
+    });
+    detailEl.innerHTML = html;
+  }
+
+  function renderNode(node) {
+    const filesHtml = node.files && node.files.length
+      ? `<div class="node-detail-files">
+           <span class="label">Files</span>
+           ${node.files.map(f => escapeHTML(f)).join('<br>')}
+         </div>`
+      : '';
+    detailEl.innerHTML = `
+      <div class="node-detail" style="--c: var(--${node.type})">
+        <div class="node-detail-type">${escapeHTML(node.type)}</div>
+        <div class="node-detail-title">${softBreak(node.title)}${node.subtitle ? ` <span style="font-weight:400;color:var(--fg-4);font-size:11px">· ${escapeHTML(node.subtitle)}</span>` : ''}</div>
+        <div class="node-detail-desc">${escapeHTML(node.summary)}</div>
+        ${filesHtml}
+      </div>
+      <div class="steps-empty">
+        Pick a flow to see how this module participates.
+      </div>
+    `;
+  }
+
+  function formatStep(s) {
+    // turn `code` into <code>code</code> and escape the rest
+    const parts = [];
+    let i = 0;
+    s.replace(/`([^`]+)`/g, (m, code, idx) => {
+      parts.push(escapeHTML(s.slice(i, idx)));
+      parts.push('<code>' + escapeHTML(code) + '</code>');
+      i = idx + m.length;
+      return m;
+    });
+    parts.push(escapeHTML(s.slice(i)));
+    return parts.join('');
+  }
+
+  // ---- Selection state ----------------------------------------------------
+  function clearSelection() {
+    document.body.dataset.mode = '';
+    Object.values(nodeEls).forEach(el => { el.classList.remove('in-flow'); el.classList.remove('is-selected'); });
+    Object.values(edgeEls).forEach(el => { el.classList.remove('in-flow'); el.setAttribute('marker-end', 'url(#arrow-default)'); });
+    Object.values(flowEls).forEach(el => el.classList.remove('active'));
+    clearBtn.hidden = true;
+    renderEmpty();
+  }
+  clearSelection();
+
+  function selectFlow(id) {
+    // Toggle: clicking the active flow chip clears it.
+    if (document.body.dataset.mode === 'flow' && flowEls[id]?.classList.contains('active')) {
+      clearSelection();
+      return;
+    }
+    const f = data.flows.find(x => x.id === id);
+    if (!f) return;
+    document.body.dataset.mode = 'flow';
+    Object.values(nodeEls).forEach(el => { el.classList.remove('in-flow'); el.classList.remove('is-selected'); });
+    Object.values(edgeEls).forEach(el => { el.classList.remove('in-flow'); el.setAttribute('marker-end', 'url(#arrow-default)'); });
+    Object.values(flowEls).forEach(el => el.classList.remove('active'));
+    f.nodes.forEach(nid => nodeEls[nid] && nodeEls[nid].classList.add('in-flow'));
+    f.edges.forEach(eid => {
+      const e = edgeEls[eid];
+      if (e) { e.classList.add('in-flow'); e.setAttribute('marker-end', 'url(#arrow-flow)'); }
+    });
+    flowEls[id].classList.add('active');
+    clearBtn.hidden = false;
+    renderFlow(f);
+  }
+
+  function selectNode(id) {
+    // Toggle: clicking the same selected node clears the node selection.
+    if (document.body.dataset.mode === 'node' && nodeEls[id]?.classList.contains('is-selected')) {
+      clearSelection();
+      return;
+    }
+    const n = data.nodes.find(x => x.id === id);
+    if (!n) return;
+    document.body.dataset.mode = 'node';
+    Object.values(nodeEls).forEach(el => { el.classList.remove('in-flow'); el.classList.remove('is-selected'); });
+    Object.values(edgeEls).forEach(el => { el.classList.remove('in-flow'); el.setAttribute('marker-end', 'url(#arrow-default)'); });
+    Object.values(flowEls).forEach(el => el.classList.remove('active'));
+    nodeEls[id].classList.add('is-selected');
+    clearBtn.hidden = false;
+    renderNode(n);
+  }
+
+  // Click on empty canvas area = clear selection
+  document.getElementById('canvas').addEventListener('click', (e) => {
+    if (e.target.closest('.node')) return;
+    if (document.body.dataset.mode) clearSelection();
+  });
+
+  // ESC also clears selection
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.dataset.mode) clearSelection();
+  });
+
+  // ---- helpers ------------------------------------------------------------
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+  }
+  // Insert <wbr> soft hyphens at slashes, dots, and lowercase→uppercase
+  // boundaries so monospace file paths break at natural points.
+  function softBreak(s) {
+    return escapeHTML(s)
+      .replace(/([\/.\-_])/g, '$1<wbr>')
+      .replace(/([a-z])([A-Z])/g, '$1<wbr>$2');
+  }
+})();
+</script>
+</body>
+</html>
