@@ -1,10 +1,10 @@
 # Agentpack
 
-Portable task continuity for AI coding agents.
+Repo-native task continuity for AI coding agents.
 
 > Coding agents forget. Agentpack gives them the task state they need to continue.
 
-Agentpack helps coding agents continue long-running repo work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
+Agents lose continuity across chats, clients, worktrees, and compaction. Agentpack stores reviewed task state in repo-local `.agentpack/` so MCP-connected coding agents can continue without rediscovering context, re-reading unchanged sources, or repeating dead ends.
 
 ## Product Contract
 
@@ -183,10 +183,20 @@ See [docs/MCP.md](docs/MCP.md) for the current MCP contract and smoke-test flow.
 
 ## Roadmap
 
-```text
-v0: CLI + local source cache + markdown fallback export
-v1: local MCP server + coding-agent installers
-v2: stronger repo/file hashes, richer retrieval, and smarter budget packing
-v3: shareable .agentpack bundle
-v4: optional hosted sync/share
-```
+Current:
+
+- repo-local `.agentpack/` ledger
+- local MCP server
+- Codex, Claude Code, Claude Desktop, and Cursor installers
+- reviewed source cache with file hashes
+- decisions, dead ends, evidence, checkpoints, and budgeted resumes
+- markdown fallback export
+
+Next:
+
+- task/workstream separation
+- semantic checkpoints and evidence-linked handoffs
+- explicit export/import bundles for worktrees, machines, and clients
+- orchestrator recipes
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for the detailed roadmap.
