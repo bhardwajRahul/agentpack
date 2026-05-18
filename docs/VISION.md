@@ -12,7 +12,7 @@ As agent UIs evolve from chat boxes into execution workspaces, handoffs will bec
 
 Branches and transcripts are not enough. Agents need reviewed task state that is portable, inspectable, and client-neutral.
 
-Agentpack is not trying to replace execution engines. Codex, Claude Code, Cursor, LangGraph, Temporal, OpenAI Agents SDK, and similar systems can own execution loops, retries, approvals, tool calls, and durable runs. Agentpack should own the neutral repo-scoped continuity layer that those surfaces can share.
+Codex, Claude Code, Cursor, LangGraph, Temporal, OpenAI Agents SDK, and similar systems can own execution loops, retries, approvals, tool calls, and durable runs. Agentpack should own the neutral repo-scoped continuity layer that those surfaces can share.
 
 ## What Agentpack Should Own
 
@@ -29,6 +29,8 @@ Agentpack is not trying to replace execution engines. Codex, Claude Code, Cursor
 ## Task Passport Model
 
 A Task Passport is the handoff artifact for one coherent unit of agentic work. It should capture the objective, constraints, write scope, relevant source conclusions, decisions, dead ends, evidence, verification state, checkpoints, and next actions.
+
+See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the target schema and state transitions.
 
 One active Task Passport should own the work in a repo worktree by default. A repo can keep many closed or parked passports over time, but Agentpack should not turn one working directory into a backlog or a multi-task merge engine.
 
@@ -53,12 +55,10 @@ Agentpack should support those role lanes as lightweight prompts, metadata, and 
 - Prefer portable MCP, CLI, and file surfaces over framework lock-in.
 - Record durable context, not every action.
 
-## Non-Goals
+## Scope Boundaries
 
-- Do not become a general chat archive.
-- Do not become an issue tracker or backlog manager.
-- Do not try to solve code merge conflicts between parallel tasks.
-- Do not replace LangGraph, Temporal, OpenAI Agents SDK, Codex, Claude Code, Cursor, or other execution engines.
-- Do not make cloud sync or hosted memory required for the core workflow.
-- Do not treat automatic full-session capture as the default source of truth.
-- Do not require embeddings or network calls before deterministic file/hash/source summaries stop being enough.
+- Keep the core artifact focused on reviewed task state.
+- Keep backlog, issue tracking, and code merge conflict resolution in the tools that already own them.
+- Keep execution loops, retries, approvals, tool calls, and durable runs in execution engines.
+- Keep the core workflow local-first; hosted sync can remain optional future work.
+- Keep deterministic file, hash, and source summaries as the default before adding embeddings or network calls.

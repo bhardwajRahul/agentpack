@@ -10,14 +10,14 @@ Agents lose continuity across chats, clients, worktrees, and compaction. Agentpa
 
 Agentpack is a local-first continuity layer for repo-scoped coding work. Execution engines run the work. Git stores code state. Agentpack stores reviewed task state so the next agent can continue safely.
 
-Agentpack is not a general AI memory, a knowledge graph, an automatic activity logger, or a chat archive. Instead, it keeps a compact task ledger in `.agentpack/` and exposes that state through simple surfaces:
+Agentpack keeps a compact, inspectable task ledger in `.agentpack/` and exposes that state through simple surfaces:
 
 - a local MCP server
 - project instructions such as `AGENTS.md`, `CLAUDE.md`, and Cursor rules
 - CLI commands for setup, inspection, debugging, and fallback
 - files in `.agentpack/`
 
-`.agentpack/` is local task state and is ignored by git by default. Agentpack is designed first for coding agents such as Codex, Claude Code, Cursor, and other MCP clients. Markdown export exists as a fallback for manual handoff, not as the primary workflow.
+`.agentpack/` is local task state and is ignored by git by default. Agentpack is designed first for coding agents such as Codex, Claude Code, Cursor, and other MCP clients. Markdown export is available for manual handoff when MCP is unavailable.
 
 The normal workflow is hybrid: generated client instructions tell MCP-connected agents when to load context, record durable decisions, attach evidence, cache reviewed source conclusions, and checkpoint meaningful progress. Humans can still use the CLI directly when they want to inspect state, debug MCP, run demos, or fall back to a web chat.
 

@@ -7,6 +7,7 @@ Agentpack makes agent continuity native to the repo.
 It is a neutral task passport for agentic workspaces: a compact, portable record of decisions, source conclusions, evidence, dead ends, checkpoints, and next actions that survives chat compaction, client switches, worktree handoffs, machines, branches, and orchestrators.
 
 See [VISION.md](VISION.md) for the fuller strategic framing.
+See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the target Task Passport schema and state transitions.
 
 ## Product Principles
 
@@ -76,6 +77,22 @@ Target consistency checks:
 - write-scope overlap is detected before new work starts
 - role lanes are advisory and scoped; Scout/Reviewer are read-oriented, Builder claims writes, Archivist records durable handoff state
 - checkpoints remain append-only snapshots for recovery and handoff
+
+## Dogfood Success Metrics
+
+Agentpack should prove itself first in this repo. Measure whether it reduces repeated work and handoff friction while keeping the ledger compact.
+
+Useful signals:
+
+- resume usefulness: a fresh agent can explain the current task, constraints, relevant files, risks, and next action after `load_context` or `resume`
+- re-read avoidance: unchanged source conclusions let agents skip re-opening files unless the task requires fresh inspection
+- dead-end avoidance: recorded failed approaches are not repeated in later sessions
+- handoff time: a new agent can continue meaningful work within a few minutes after context load
+- verification quality: important changes have evidence, test output, or explicit reasoning attached before checkpoint
+- ledger health: `agentpack doctor` reports zero changed or missing source records before release-like handoff
+- overhead: recording useful state stays lightweight enough that it does not interrupt normal coding flow
+
+The target is reliable continuation of the work that was worth preserving.
 
 ## v0.1: Usable Manual CLI
 
