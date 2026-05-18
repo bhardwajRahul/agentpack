@@ -16,7 +16,15 @@ import {
   withPackWriteLock,
   writeState
 } from "../core/store.js";
-import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
+import {
+  addEvidence,
+  addSourceRecord,
+  formatSourceStatuses,
+  getSourceStatuses,
+  pruneMissingSourceRecords,
+  removeSourceRecord,
+  replayEvents
+} from "../operations.js";
 import { installIntegration } from "../integrations/install.js";
 import { startMcpServer } from "../mcp/server.js";
 
@@ -184,6 +192,8 @@ Usage:
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
   agentpack source add <file> --summary <text>
+  agentpack source remove <file>
+  agentpack source prune --missing
   agentpack source status [--json]
   agentpack record decision <text>
   agentpack record dead-end <text> --reason <text>
@@ -255,8 +265,35 @@ function sourceCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "remove") {
+    const parsed = parseArgs(args);
+    const filePath = parsed.positionals[0];
+    if (!filePath) {
+      throw new Error("source remove requires a file path");
+    }
+
+    const source = removeSourceRecord(root, filePath);
+    process.stdout.write(`Removed source ${source.path}\n`);
+    return;
+  }
+
+  if (subcommand === "prune") {
+    const parsed = parseArgs(args);
+    if (!parsed.options.missing) {
+      throw new Error("source prune requires --missing");
+    }
+
+    const removed = pruneMissingSourceRecords(root);
+    const label = removed.length === 1 ? "record" : "records";
+    process.stdout.write(`Pruned ${removed.length} missing source ${label}\n`);
+    if (removed.length > 0) {
+      process.stdout.write(`${removed.map((source) => `- ${source.path}`).join("\n")}\n`);
+    }
+    return;
+  }
+
   if (subcommand !== "add") {
-    throw new Error("source command supports `add` and `status`");
+    throw new Error("source command supports `add`, `remove`, `prune`, and `status`");
   }
 
   const parsed = parseArgs(args);

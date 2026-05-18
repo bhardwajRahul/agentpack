@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getFileRecord, sha256File } from "./core/hash.js";
+import { getFileRecord, normalizePath, sha256File } from "./core/hash.js";
 import { getGitInfo } from "./core/git.js";
 import {
   appendEvent,
@@ -64,6 +64,60 @@ export function addSourceRecord(root: string, filePath: string, options: SourceR
   });
 }
 
+export function removeSourceRecord(root: string, filePath: string): SourceRecord {
+  return withPackWriteLock(root, () => {
+    const normalizedPath = normalizeSourcePath(root, filePath);
+    const state = readSources(root);
+    const existing = state.sources.findIndex((source) => source.path === normalizedPath);
+
+    if (existing < 0) {
+      throw new Error(`No source record found for ${normalizedPath}`);
+    }
+
+    const removed = state.sources[existing];
+    if (!removed) {
+      throw new Error(`No source record found for ${normalizedPath}`);
+    }
+
+    state.sources.splice(existing, 1);
+    writeSources(root, state);
+    appendEvent(root, "source-remove", {
+      path: removed.path,
+      hash: removed.hash
+    });
+    return removed;
+  });
+}
+
+export function pruneMissingSourceRecords(root: string): SourceRecord[] {
+  return withPackWriteLock(root, () => {
+    const state = readSources(root);
+    const removed: SourceRecord[] = [];
+    const kept: SourceRecord[] = [];
+
+    for (const source of state.sources || []) {
+      if (existsSync(path.join(root, source.path))) {
+        kept.push(source);
+      } else {
+        removed.push(source);
+      }
+    }
+
+    if (removed.length === 0) {
+      return removed;
+    }
+
+    state.sources = kept;
+    writeSources(root, state);
+    appendEvent(root, "source-prune", {
+      mode: "missing",
+      count: removed.length,
+      paths: removed.map((source) => source.path)
+    });
+    return removed;
+  });
+}
+
 export function addEvidence(root: string, options: EvidenceOptions = {}): AgentpackEvent {
   const kind = options.kind || "note";
   const content = redactForRoot(root, readEvidenceContent(root, options));
@@ -82,6 +136,17 @@ export function addEvidence(root: string, options: EvidenceOptions = {}): Agentp
     command: redactForRoot(root, options.command || ""),
     exitCode: Number.isFinite(exitCode) ? exitCode : null
   });
+}
+
+function normalizeSourcePath(root: string, inputPath: string): string {
+  const absolutePath = path.resolve(root, inputPath);
+  const relativePath = path.relative(root, absolutePath);
+
+  if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error(`Refusing to remove source record outside project root: ${inputPath}`);
+  }
+
+  return normalizePath(relativePath);
 }
 
 export function getSourceStatuses(root: string): SourceStatus[] {

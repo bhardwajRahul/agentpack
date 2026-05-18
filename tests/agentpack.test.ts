@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -358,6 +367,42 @@ test("distinguishes source-cache status from git working tree status", () => {
   assert.match(status, /git: modified/);
   assert.match(status, /Git changes not recorded as Agentpack sources/);
   assert.match(status, /untracked other\.js/);
+});
+
+test("removes explicit and missing source records", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-prune-test-"));
+  writeFileSync(path.join(dir, "active.js"), "console.log('active')\n", "utf8");
+  writeFileSync(path.join(dir, "stale.js"), "console.log('stale')\n", "utf8");
+
+  run(dir, ["init"]);
+  run(dir, ["source", "add", "active.js", "--summary", "Active file was inspected."]);
+  run(dir, ["source", "add", "stale.js", "--summary", "Soon-to-be deleted file was inspected."]);
+  unlinkSync(path.join(dir, "stale.js"));
+
+  const staleStatus = run(dir, ["source", "status"]);
+  assert.match(staleStatus, /UNCHANGED active\.js/);
+  assert.match(staleStatus, /MISSING stale\.js/);
+
+  const prune = run(dir, ["source", "prune", "--missing"]);
+  assert.match(prune, /Pruned 1 missing source record/);
+  assert.match(prune, /- stale\.js/);
+
+  const prunedStatus = run(dir, ["source", "status"]);
+  assert.match(prunedStatus, /UNCHANGED active\.js/);
+  assert.doesNotMatch(prunedStatus, /stale\.js/);
+
+  const remove = run(dir, ["source", "remove", "active.js"]);
+  assert.match(remove, /Removed source active\.js/);
+
+  const sourceDb = JSON.parse(readFileSync(path.join(dir, ".agentpack", "sources.json"), "utf8"));
+  assert.deepEqual(sourceDb.sources, []);
+
+  const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string; path?: string; count?: number });
+  assert.equal(events.some((event) => event.type === "source-prune" && event.count === 1), true);
+  assert.equal(events.some((event) => event.type === "source-remove" && event.path === "active.js"), true);
 });
 
 test("redacts secrets from stored context and handoff outputs", () => {

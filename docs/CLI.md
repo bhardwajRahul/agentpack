@@ -17,6 +17,15 @@ agentpack diff
 
 `source status` tells you which recorded source conclusions are still valid and which files need to be reopened. It compares current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`.
 
+To clean up stale source-cache entries after files are deleted or conclusions are no longer useful:
+
+```bash
+agentpack source prune --missing
+agentpack source remove docs/old-file.md
+```
+
+`source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
+
 ## Record Durable State
 
 Use these commands sparingly. Agentpack is not an activity logger; record the context a future agent would actually need.
