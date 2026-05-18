@@ -26,6 +26,24 @@ agentpack source remove docs/old-file.md
 
 `source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
 
+## Task Passports
+
+Task Passport support is the first step toward task-scoped handoffs. The current CLI can create and inspect a local passport under `.agentpack/tasks/`:
+
+```bash
+agentpack task start "Add source cleanup commands" \
+  --objective "Let Agentpack remove stale source records safely" \
+  --write-scope src/operations.ts \
+  --write-scope src/cli/index.ts
+agentpack task list
+agentpack task passport
+agentpack task block --reason "Waiting for API decision"
+agentpack task verify
+agentpack task close
+```
+
+`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. Existing `resume` and MCP tools still use the repo-level v0 ledger until passport-aware context loading is implemented.
+
 ## Record Durable State
 
 Use these commands sparingly. Agentpack is not an activity logger; record the context a future agent would actually need.

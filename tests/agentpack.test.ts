@@ -405,6 +405,82 @@ test("removes explicit and missing source records", () => {
   assert.equal(events.some((event) => event.type === "source-remove" && event.path === "active.js"), true);
 });
 
+test("manages a current task passport", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-test-"));
+  mkdirSync(path.join(dir, "src"));
+  writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+
+  runGit(dir, ["init"]);
+  runGit(dir, ["add", "src/index.ts"]);
+  runGit(dir, [
+    "-c",
+    "user.name=Agentpack Test",
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    "initial"
+  ]);
+
+  run(dir, ["init"]);
+  const started = run(dir, [
+    "task",
+    "start",
+    "Add task passports",
+    "--objective",
+    "Model current task handoff state.",
+    "--constraint",
+    "Keep v0 state readable.",
+    "--write-scope",
+    "src/index.ts",
+    "--next",
+    "Wire CLI",
+    "--tag",
+    "task-passport",
+    "--risk",
+    "low"
+  ]);
+  assert.match(started, /Started task task_/);
+
+  const taskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
+  const passportPath = path.join(dir, ".agentpack", "tasks", taskId, "passport.json");
+  const passport = JSON.parse(readFileSync(passportPath, "utf8"));
+  assert.equal(passport.title, "Add task passports");
+  assert.equal(passport.objective, "Model current task handoff state.");
+  assert.equal(passport.status, "active");
+  assert.deepEqual(passport.constraints, ["Keep v0 state readable."]);
+  assert.deepEqual(passport.writeScope, ["src/index.ts"]);
+  assert.deepEqual(passport.nextActions, ["Wire CLI"]);
+  assert.deepEqual(passport.tags, ["task-passport"]);
+  assert.equal(passport.risk, "low");
+  assert.equal(passport.worktree, realpathSync(dir));
+  assert.equal(existsSync(path.join(dir, ".agentpack", "tasks", taskId, "events.jsonl")), true);
+
+  const list = run(dir, ["task", "list"]);
+  assert.match(list, new RegExp(`\\* ${taskId} \\[active\\] Add task passports`));
+
+  const currentPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(currentPassport.id, taskId);
+
+  assert.match(run(dir, ["task", "block", "--reason", "Waiting for review"]), /Blocked task/);
+  const blocked = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(blocked.status, "blocked");
+  assert.equal(blocked.blockedReason, "Waiting for review");
+
+  assert.match(run(dir, ["task", "verify"]), /Marked task .* as verifying/);
+  const verifying = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(verifying.status, "verifying");
+  assert.equal(verifying.verification.status, "pending");
+
+  assert.match(run(dir, ["task", "close"]), /Closed task/);
+  const closed = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(closed.status, "completed");
+  assert.equal(typeof closed.closedAt, "string");
+  assert.match(runExpectError(dir, ["task", "block", "--reason", "Too late"]), /Cannot update closed task/);
+});
+
 test("redacts secrets from stored context and handoff outputs", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-redaction-test-"));
   const secret = "agentpack-secret-value-12345";
@@ -817,8 +893,19 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 function run(cwd: string, args: string[]): string {
   return execFileSync(process.execPath, [cli, ...args], {
     cwd,
-    encoding: "utf8"
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
   });
+}
+
+function runExpectError(cwd: string, args: string[]): string {
+  try {
+    run(cwd, args);
+  } catch (error) {
+    const failure = error as { stderr?: Buffer | string; message?: string };
+    return String(failure.stderr || failure.message || error);
+  }
+  assert.fail(`Expected command to fail: agentpack ${args.join(" ")}`);
 }
 
 function runAsync(cwd: string, args: string[]): Promise<string> {

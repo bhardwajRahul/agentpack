@@ -31,6 +31,45 @@ export interface SourcesFile {
   sources: SourceRecord[];
 }
 
+export type TaskStatus = "active" | "parked" | "blocked" | "verifying" | "completed" | "abandoned";
+export type TaskRoleName = "scout" | "builder" | "reviewer" | "archivist";
+export type TaskRoleStatus = "pending" | "active" | "done" | "blocked";
+export type TaskRisk = "low" | "medium" | "high" | "unknown";
+
+export interface TaskRoleState {
+  status: TaskRoleStatus;
+  summary: string;
+}
+
+export interface TaskVerification {
+  status: "unknown" | "pending" | "passed" | "failed" | "accepted";
+  evidence: string[];
+  summary: string;
+}
+
+export interface TaskPassport {
+  schemaVersion: number;
+  id: string;
+  title: string;
+  status: TaskStatus;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  objective: string;
+  constraints: string[];
+  branch: string | null;
+  baseHead: string | null;
+  currentHead: string | null;
+  worktree: string;
+  writeScope: string[];
+  risk: TaskRisk;
+  roles: Partial<Record<TaskRoleName, TaskRoleState>>;
+  verification: TaskVerification;
+  nextActions: string[];
+  tags: string[];
+  blockedReason?: string;
+}
+
 export interface AgentpackEvent {
   id: string;
   ts: string;

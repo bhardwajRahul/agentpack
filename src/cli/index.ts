@@ -8,6 +8,17 @@ import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import { buildDoctorReport } from "../core/doctor.js";
 import { redactForRoot } from "../core/redaction.js";
 import {
+  blockCurrentTask,
+  closeCurrentTask,
+  getCurrentPassport,
+  listTasks,
+  parkCurrentTask,
+  readPassport,
+  startTask,
+  switchTask,
+  verifyCurrentTask
+} from "../core/tasks.js";
+import {
   appendEvent,
   getPackPath,
   initPack,
@@ -78,6 +89,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "record") {
     recordCommand(root, rest);
+    return;
+  }
+
+  if (command === "task") {
+    taskCommand(root, rest);
     return;
   }
 
@@ -191,6 +207,11 @@ Usage:
   agentpack set goal <text>
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
+  agentpack task start <title> [--objective <text>] [--write-scope <path>]
+  agentpack task list
+  agentpack task passport
+  agentpack task switch <id>
+  agentpack task park|block|verify|close
   agentpack source add <file> --summary <text>
   agentpack source remove <file>
   agentpack source prune --missing
@@ -248,6 +269,95 @@ function noteCommand(root: string, rest: string[]): void {
 
   const event = appendEvent(root, "note", { text: redactForRoot(root, text) });
   process.stdout.write(`Recorded note ${event.id}\n`);
+}
+
+function taskCommand(root: string, rest: string[]): void {
+  const subcommand = rest[0];
+  const args = rest.slice(1);
+
+  if (subcommand === "start") {
+    const parsed = parseArgs(args);
+    const title = parsed.positionals.join(" ").trim();
+    const passport = startTask(root, {
+      title: redactForRoot(root, title),
+      objective: redactForRoot(root, stringOption(parsed.options.objective)),
+      constraints: toArray(parsed.options.constraint).map((item) => redactForRoot(root, item)),
+      writeScope: toArray(parsed.options["write-scope"]),
+      nextActions: toArray(parsed.options.next).map((item) => redactForRoot(root, item)),
+      tags: toArray(parsed.options.tag),
+      risk: riskOption(parsed.options.risk)
+    });
+    process.stdout.write(`Started task ${passport.id}\n`);
+    return;
+  }
+
+  if (subcommand === "list") {
+    const tasks = listTasks(root);
+    if (tasks.length === 0) {
+      process.stdout.write("No task passports yet. Run `agentpack task start <title>`.\n");
+      return;
+    }
+
+    process.stdout.write(`${tasks.map((task) => [
+      task.current ? "*" : "-",
+      task.id,
+      `[${task.status}]`,
+      task.title,
+      task.branch ? `(branch: ${task.branch})` : ""
+    ].filter(Boolean).join(" ")).join("\n")}\n`);
+    return;
+  }
+
+  if (subcommand === "passport") {
+    const parsed = parseArgs(args);
+    const passport = parsed.positionals[0]
+      ? readPassport(root, parsed.positionals[0])
+      : getCurrentPassport(root);
+    if (!passport) {
+      throw new Error("No current task. Run `agentpack task start <title>` first.");
+    }
+    process.stdout.write(`${redactForRoot(root, JSON.stringify(passport, null, 2))}\n`);
+    return;
+  }
+
+  if (subcommand === "switch") {
+    const parsed = parseArgs(args);
+    const taskId = parsed.positionals[0];
+    if (!taskId) {
+      throw new Error("task switch requires a task id");
+    }
+    const passport = switchTask(root, taskId);
+    process.stdout.write(`Switched to task ${passport.id}\n`);
+    return;
+  }
+
+  if (subcommand === "park") {
+    const passport = parkCurrentTask(root);
+    process.stdout.write(`Parked task ${passport.id}\n`);
+    return;
+  }
+
+  if (subcommand === "block") {
+    const parsed = parseArgs(args);
+    const reason = redactForRoot(root, stringOption(parsed.options.reason) || parsed.positionals.join(" "));
+    const passport = blockCurrentTask(root, reason);
+    process.stdout.write(`Blocked task ${passport.id}\n`);
+    return;
+  }
+
+  if (subcommand === "verify") {
+    const passport = verifyCurrentTask(root);
+    process.stdout.write(`Marked task ${passport.id} as verifying\n`);
+    return;
+  }
+
+  if (subcommand === "close") {
+    const passport = closeCurrentTask(root);
+    process.stdout.write(`Closed task ${passport.id}\n`);
+    return;
+  }
+
+  throw new Error("task command supports start, list, passport, switch, park, block, verify, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {
@@ -510,6 +620,14 @@ function budgetOption(options: Record<string, ArgValue>, fallback = 0): number {
     budget: numberOption(options.budget),
     preset: stringOption(options.preset)
   }, fallback);
+}
+
+function riskOption(value: ArgValue | undefined): "low" | "medium" | "high" | "unknown" {
+  const risk = stringOption(value);
+  if (risk === "low" || risk === "medium" || risk === "high") {
+    return risk;
+  }
+  return "unknown";
 }
 
 function isRecordType(value: string | undefined): value is "decision" | "dead-end" | "note" {
