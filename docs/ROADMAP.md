@@ -24,24 +24,28 @@ See [VISION.md](VISION.md) for the fuller strategic framing.
 
 ## State Model
 
-Agentpack has four layers:
+Agentpack has five layers:
 
 1. Tool install: the `agentpack` binary is installed once on a developer machine.
 2. Repo init: each repo gets its own local `.agentpack/` directory.
 3. Repo source cache: inspected source conclusions and file hashes can be reused across tasks in the same repo.
-4. Task ledger: goal, status, decisions, dead ends, evidence, checkpoints, and exports belong to a workstream, not to a chat.
+4. Task Passport: objective, constraints, write scope, status, decisions, dead ends, evidence, verification, checkpoints, and next actions belong to one coherent unit of work.
+5. Role lanes: Scout, Builder, Reviewer, and Archivist can contribute to the current passport without creating separate tasks.
 
 Agent sessions and web chats are transport surfaces. They should be able to resume, write, and hand off a task, but they are not first-class Agentpack state.
 
-Sharing ledger state across machines or teammates is intentionally post-local-stability work. Prefer explicit sanitized export/import bundles before considering committed or synced shared state.
+One active Task Passport owns the work in a repo worktree by default. Multiple passports can exist as closed history, parked work, or separate worktree handoffs, but Agentpack should not become a backlog manager or a code-conflict resolver.
+
+Sharing passport state across machines or teammates is intentionally post-local-stability work. Prefer explicit sanitized export/import bundles before considering committed or synced shared state.
 
 Target task UX:
 
 ```bash
 agentpack init
-agentpack task start "Claude Desktop MCP install"
+agentpack task start "Claude Desktop MCP install" --write-scope src/integrations/install.ts --write-scope docs/INTEGRATIONS.md
 agentpack task list
 agentpack task switch claude-desktop-mcp-install
+agentpack task passport
 agentpack resume --preset agent
 agentpack checkpoint -m "Desktop config tested"
 agentpack task close
@@ -56,14 +60,22 @@ Target file shape:
   tasks/
     current
     claude-desktop-mcp-install/
-      state.json
+      passport.json
       events.jsonl
       checkpoints/
       evidence/
       exports/
 ```
 
-This keeps source knowledge reusable across a repo while preventing unrelated feature work from mixing decisions, dead ends, and next actions.
+This keeps source knowledge reusable across a repo while preventing unrelated work from mixing decisions, dead ends, and next actions. If another open passport claims overlapping write scope, Agentpack should warn and point the user toward reusing the current passport, parking one task, or moving work into a separate worktree.
+
+Target consistency checks:
+
+- current passport branch/head/worktree are visible in context
+- source conclusions are validated by file hash
+- write-scope overlap is detected before new work starts
+- role lanes are advisory and scoped; Scout/Reviewer are read-oriented, Builder claims writes, Archivist records durable handoff state
+- checkpoints remain append-only snapshots for recovery and handoff
 
 ## v0.1: Usable Manual CLI
 
@@ -117,7 +129,10 @@ Demo story:
 - Stable `.agentpack/` schema.
 - Stable CLI.
 - Stable MCP tools.
-- Task/workstream separation.
+- Task Passport schema and one-current-passport workflow.
+- Workstream separation for parked work, history, and worktree handoffs.
+- Lightweight role lanes for Scout, Builder, Reviewer, and Archivist.
+- Write-scope and stale-state warnings.
 - Security model documented.
 - npm publish as `agentpack-cli`.
 - Good demo and examples.
