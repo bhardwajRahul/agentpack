@@ -13,6 +13,27 @@ source_status()
 
 Use `agent` instead of `quick` when the task needs more history.
 
+## Local Tarball Workspace
+
+Use `.agentpack-dogfood/` as the repo-local scratch area for testing packed
+builds without publishing to npm. The directory is ignored by git. Put the
+actual test project under `.agentpack-dogfood/workspace/`; running `npm init`
+directly inside the hidden parent directory gives npm an invalid package name.
+
+Typical flow:
+
+```bash
+mkdir -p .agentpack-dogfood/workspace
+npm_config_cache=/private/tmp/agentpack-npm-cache npm pack --pack-destination .agentpack-dogfood
+cd .agentpack-dogfood/workspace
+npm init -y
+git init
+npm_config_cache=/private/tmp/agentpack-npm-cache npm install ../agentpack-cli-*.tgz
+./node_modules/.bin/agentpack --version
+./node_modules/.bin/agentpack init
+./node_modules/.bin/agentpack doctor
+```
+
 ## During Work
 
 Record only durable context. Agentpack is not an activity logger, and it should not log every thought, file read, or edit.

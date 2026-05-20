@@ -13,4 +13,5 @@ AGENTS.md
 CLAUDE.md
 .cursor
 .backups/
+.agentpack-dogfood/
 *.tgz

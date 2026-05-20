@@ -43,6 +43,8 @@ agentpack task update-verification --status passed --evidence evt_... --summary 
 agentpack task close
 ```
 
+Write scopes are repo-relative paths. `.` means the repository root.
+
 `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task audit` checks the current passport for stale source conclusions, branch/head drift, missing next actions, open verification, and closed-task anomalies. `task update-verification` writes verification status, evidence IDs, and summary into the passport; without flags it marks verification as `pending`, and with `--status`, `--evidence`, and `--summary` it can close the audit warning with evidence-backed verification. When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
 
 ## Record Durable State

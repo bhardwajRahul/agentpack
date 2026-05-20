@@ -391,7 +391,7 @@ function normalizeWriteScope(root: string, writeScope: string[]): string[] {
     if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
       throw new Error(`Refusing write scope outside project root: ${item}`);
     }
-    return normalizePath(relativePath);
+    return normalizePath(relativePath || ".");
   }));
 }
 

@@ -115,6 +115,8 @@ Required fields for v1:
 - `writeScope`
 - `nextActions`
 
+Write scopes are repo-relative paths. `.` means the repository root.
+
 Optional but recommended:
 
 - `constraints`

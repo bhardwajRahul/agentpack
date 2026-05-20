@@ -518,6 +518,11 @@ test("manages a current task passport", () => {
   assert.equal(closed.status, "completed");
   assert.equal(typeof closed.closedAt, "string");
   assert.match(runExpectError(dir, ["task", "block", "--reason", "Too late"]), /Cannot update closed task/);
+
+  assert.match(run(dir, ["task", "start", "Repo-wide follow-up", "--write-scope", "."]), /Started task task_/);
+  const repoWide = JSON.parse(run(dir, ["task", "passport"]));
+  assert.deepEqual(repoWide.writeScope, ["."]);
+  assert.doesNotMatch(run(dir, ["task", "audit"]), /Task has no write scope/);
 });
 
 test("redacts secrets from stored context and handoff outputs", () => {
