@@ -127,7 +127,8 @@ test("exposes expected MCP tools", () => {
     "record_source",
     "replay",
     "resume",
-    "source_status"
+    "source_status",
+    "task_audit"
   ]);
 });
 
@@ -887,9 +888,21 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.match(sourceStatus.result.content[0].text, /do not re-open unless needed/);
   assert.match(sourceStatus.result.content[0].text, /hash: matches recorded hash/);
 
-  const resume = await mcp.send({
+  const taskAudit = await mcp.send({
     jsonrpc: "2.0",
     id: 7,
+    method: "tools/call",
+    params: {
+      name: "task_audit",
+      arguments: {}
+    }
+  });
+  assert.match(taskAudit.result.content[0].text, /Task audit/);
+  assert.match(taskAudit.result.content[0].text, /No current task passport/);
+
+  const resume = await mcp.send({
+    jsonrpc: "2.0",
+    id: 8,
     method: "tools/call",
     params: {
       name: "resume",

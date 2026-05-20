@@ -239,6 +239,13 @@ export function auditCurrentTask(root: string, sourceStatuses: TaskAuditSourceSt
   return { passport, issues };
 }
 
+export function formatTaskAuditReport(report: TaskAuditReport): string {
+  return [
+    "Task audit",
+    ...report.issues.map((issue) => `[${issue.level}] ${issue.message}`)
+  ].join("\n");
+}
+
 function updateCurrentTask(
   root: string,
   status: TaskStatus,

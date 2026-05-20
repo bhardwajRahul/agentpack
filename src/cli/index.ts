@@ -11,6 +11,7 @@ import {
   auditCurrentTask,
   blockCurrentTask,
   closeCurrentTask,
+  formatTaskAuditReport,
   getCurrentPassport,
   listTasks,
   parkCurrentTask,
@@ -335,7 +336,7 @@ function taskCommand(root: string, rest: string[]): void {
 
   if (subcommand === "audit") {
     const report = auditCurrentTask(root, getSourceStatuses(root));
-    process.stdout.write(`${formatTaskAudit(report.issues)}\n`);
+    process.stdout.write(`${formatTaskAuditReport(report)}\n`);
     return;
   }
 
@@ -366,13 +367,6 @@ function taskCommand(root: string, rest: string[]): void {
   }
 
   throw new Error("task command supports start, list, passport, switch, audit, park, block, verify, and close");
-}
-
-function formatTaskAudit(issues: Array<{ level: "ok" | "warn"; message: string }>): string {
-  return [
-    "Task audit",
-    ...issues.map((issue) => `[${issue.level}] ${issue.message}`)
-  ].join("\n");
 }
 
 function sourceCommand(root: string, rest: string[]): void {

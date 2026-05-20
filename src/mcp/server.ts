@@ -5,6 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
+import { auditCurrentTask, formatTaskAuditReport } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -92,6 +93,16 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "source_status",
     description: "Check whether recorded source conclusions are still valid based on file hashes.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        json: { type: "boolean" }
+      }
+    }
+  },
+  {
+    name: "task_audit",
+    description: "Audit the current Task Passport for continuity risks such as stale sources, drift, missing next actions, and open verification.",
     inputSchema: {
       type: "object",
       properties: {
@@ -320,6 +331,14 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       return toolText(redactForRoot(root, JSON.stringify(getSourceStatuses(root), null, 2)));
     }
     return toolText(formatSourceStatuses(root));
+  }
+
+  if (name === "task_audit") {
+    const report = auditCurrentTask(root, getSourceStatuses(root));
+    if (booleanValue(args.json, false)) {
+      return toolText(redactForRoot(root, JSON.stringify(report, null, 2)));
+    }
+    return toolText(redactForRoot(root, formatTaskAuditReport(report)));
   }
 
   if (name === "checkpoint") {

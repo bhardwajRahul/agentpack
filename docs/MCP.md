@@ -25,12 +25,15 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `attach_evidence`
 - `record_source`
 - `source_status`
+- `task_audit`
 - `checkpoint`
 - `resume`
 - `diff`
 - `replay`
 
 `load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/topic/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
+
+`task_audit` checks the current Task Passport for continuity risks: missing or unreadable passport state, closed current task, missing next actions, open verification, missing write scope, branch/head drift, worktree mismatch, and changed or missing source records. Pass `{ "json": true }` for structured output.
 
 ## Smoke Test
 
@@ -55,6 +58,7 @@ The smoke test verifies:
 - `tools/call record_decision`
 - `tools/call record_source`
 - `tools/call source_status`
+- `tools/call task_audit`
 - `tools/call resume`
 - notification messages do not produce responses
 
