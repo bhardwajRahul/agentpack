@@ -172,6 +172,7 @@ agentpack task start "Add source cache cleanup commands" \
 agentpack task list
 agentpack task passport
 agentpack task switch task_20260518_source_cleanup
+agentpack task audit
 agentpack task park
 agentpack task block --reason "Waiting for API decision"
 agentpack task verify
@@ -179,6 +180,8 @@ agentpack task close
 ```
 
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
+
+`task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, stale source conclusions, and closed-current-task anomalies.
 
 ## Role Lanes
 

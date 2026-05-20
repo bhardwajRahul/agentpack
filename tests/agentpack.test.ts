@@ -474,6 +474,17 @@ test("manages a current task passport", () => {
   assert.match(resume, /Task next actions:\n  - Wire CLI/);
   assert.match(resume, /Drift: none detected/);
 
+  const initialAudit = run(dir, ["task", "audit"]);
+  assert.match(initialAudit, /Task audit/);
+  assert.match(initialAudit, new RegExp(`Current task: ${taskId} \\[active\\] Add task passports`));
+  assert.match(initialAudit, /Verification is unknown/);
+  assert.match(initialAudit, /No changed or missing recorded source conclusions/);
+
+  run(dir, ["source", "add", "src/index.ts", "--summary", "Task passport fixture source."]);
+  writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 2;\n", "utf8");
+  const staleAudit = run(dir, ["task", "audit"]);
+  assert.match(staleAudit, /Source cache has 1 changed or missing record\(s\): src\/index\.ts/);
+
   assert.match(run(dir, ["task", "block", "--reason", "Waiting for review"]), /Blocked task/);
   const blocked = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(blocked.status, "blocked");

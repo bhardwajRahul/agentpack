@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
 import { normalizePath } from "./hash.js";
@@ -30,6 +30,21 @@ export interface TaskListItem {
   current: boolean;
   updatedAt: string;
   writeScope: string[];
+}
+
+export interface TaskAuditSourceStatus {
+  path: string;
+  status: "unchanged" | "changed" | "missing";
+}
+
+export interface TaskAuditIssue {
+  level: "ok" | "warn";
+  message: string;
+}
+
+export interface TaskAuditReport {
+  passport: TaskPassport | null;
+  issues: TaskAuditIssue[];
 }
 
 const CLOSED_STATUSES = new Set<TaskStatus>(["completed", "abandoned"]);
@@ -149,6 +164,79 @@ export function closeCurrentTask(root: string): TaskPassport {
   return updateCurrentTask(root, "completed", "task-close", {
     closedAt: new Date().toISOString()
   });
+}
+
+export function auditCurrentTask(root: string, sourceStatuses: TaskAuditSourceStatus[] = []): TaskAuditReport {
+  const issues: TaskAuditIssue[] = [];
+  let passport: TaskPassport | null;
+
+  try {
+    passport = getCurrentPassport(root);
+  } catch (error) {
+    return {
+      passport: null,
+      issues: [
+        { level: "warn", message: `Cannot read current task passport: ${error instanceof Error ? error.message : String(error)}` }
+      ]
+    };
+  }
+
+  if (!passport) {
+    return {
+      passport,
+      issues: [
+        { level: "warn", message: "No current task passport. Run `agentpack task start <title>` before relying on task-scoped handoff." }
+      ]
+    };
+  }
+
+  const git = getGitInfo(root);
+  const staleSources = sourceStatuses.filter((source) => source.status !== "unchanged");
+
+  issues.push({ level: "ok", message: `Current task: ${passport.id} [${passport.status}] ${passport.title}` });
+
+  if (CLOSED_STATUSES.has(passport.status)) {
+    issues.push({ level: "warn", message: "Current task is closed. Start or switch to an open task before continuing work." });
+  }
+
+  if (!passport.nextActions.length) {
+    issues.push({ level: "warn", message: "Task has no next actions." });
+  }
+
+  if (passport.verification.status === "unknown" || passport.verification.status === "pending") {
+    issues.push({ level: "warn", message: `Verification is ${passport.verification.status}. Attach evidence or close the loop before handoff.` });
+  }
+
+  if (!passport.writeScope.length) {
+    issues.push({ level: "warn", message: "Task has no write scope; future agents may not know the intended blast radius." });
+  }
+
+  if (git.available) {
+    if (passport.branch && git.branch && passport.branch !== git.branch) {
+      issues.push({ level: "warn", message: `Branch drift: passport branch is ${passport.branch}, current branch is ${git.branch}.` });
+    }
+    if (passport.currentHead && git.head && passport.currentHead !== git.head) {
+      issues.push({ level: "warn", message: `HEAD drift: passport head is ${passport.currentHead}, current head is ${git.head}.` });
+    }
+  } else {
+    issues.push({ level: "warn", message: "Git repository not detected; branch/head drift cannot be checked." });
+  }
+
+  if (!samePath(root, passport.worktree)) {
+    issues.push({ level: "warn", message: "Worktree path differs from the current pack root; verify this passport belongs to this workspace." });
+  }
+
+  if (staleSources.length > 0) {
+    issues.push({ level: "warn", message: `Source cache has ${staleSources.length} changed or missing record(s): ${staleSources.map((source) => source.path).join(", ")}.` });
+  } else {
+    issues.push({ level: "ok", message: "No changed or missing recorded source conclusions." });
+  }
+
+  if (issues.every((issue) => issue.level === "ok")) {
+    issues.push({ level: "ok", message: "No task audit warnings." });
+  }
+
+  return { passport, issues };
 }
 
 function updateCurrentTask(
@@ -279,4 +367,12 @@ function normalizeWriteScope(root: string, writeScope: string[]): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function samePath(left: string, right: string): boolean {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return path.resolve(left) === path.resolve(right);
+  }
 }

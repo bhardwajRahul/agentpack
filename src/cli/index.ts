@@ -8,6 +8,7 @@ import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import { buildDoctorReport } from "../core/doctor.js";
 import { redactForRoot } from "../core/redaction.js";
 import {
+  auditCurrentTask,
   blockCurrentTask,
   closeCurrentTask,
   getCurrentPassport,
@@ -211,6 +212,7 @@ Usage:
   agentpack task list
   agentpack task passport
   agentpack task switch <id>
+  agentpack task audit
   agentpack task park|block|verify|close
   agentpack source add <file> --summary <text>
   agentpack source remove <file>
@@ -331,6 +333,12 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "audit") {
+    const report = auditCurrentTask(root, getSourceStatuses(root));
+    process.stdout.write(`${formatTaskAudit(report.issues)}\n`);
+    return;
+  }
+
   if (subcommand === "park") {
     const passport = parkCurrentTask(root);
     process.stdout.write(`Parked task ${passport.id}\n`);
@@ -357,7 +365,14 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, list, passport, switch, park, block, verify, and close");
+  throw new Error("task command supports start, list, passport, switch, audit, park, block, verify, and close");
+}
+
+function formatTaskAudit(issues: Array<{ level: "ok" | "warn"; message: string }>): string {
+  return [
+    "Task audit",
+    ...issues.map((issue) => `[${issue.level}] ${issue.message}`)
+  ].join("\n");
 }
 
 function sourceCommand(root: string, rest: string[]): void {
