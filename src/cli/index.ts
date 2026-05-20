@@ -18,7 +18,7 @@ import {
   readPassport,
   startTask,
   switchTask,
-  verifyCurrentTask
+  updateCurrentTaskVerification
 } from "../core/tasks.js";
 import {
   appendEvent,
@@ -214,7 +214,8 @@ Usage:
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
-  agentpack task park|block|verify|close
+  agentpack task park|block|close
+  agentpack task update-verification [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack source add <file> --summary <text>
   agentpack source remove <file>
   agentpack source prune --missing
@@ -354,9 +355,14 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  if (subcommand === "verify") {
-    const passport = verifyCurrentTask(root);
-    process.stdout.write(`Marked task ${passport.id} as verifying\n`);
+  if (subcommand === "update-verification") {
+    const parsed = parseArgs(args);
+    const passport = updateCurrentTaskVerification(root, {
+      status: stringOption(parsed.options.status),
+      evidence: toArray(parsed.options.evidence),
+      summary: redactForRoot(root, stringOption(parsed.options.summary))
+    });
+    process.stdout.write(`Updated verification for task ${passport.id} (${passport.verification.status})\n`);
     return;
   }
 
@@ -366,7 +372,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, list, passport, switch, audit, park, block, verify, and close");
+  throw new Error("task command supports start, list, passport, switch, audit, park, block, update-verification, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {

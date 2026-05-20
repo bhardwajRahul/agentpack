@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -55,6 +55,43 @@ try {
   });
   assertMatch(sourceStatus.result?.content?.[0]?.text || "", /UNCHANGED index\.js/, "source_status reports unchanged source");
 
+  const initialAudit = await client.request("tools/call", {
+    name: "task_audit",
+    arguments: {}
+  });
+  assertMatch(initialAudit.result?.content?.[0]?.text || "", /No current task passport/, "task_audit reports missing task before start");
+
+  runCli([
+    "task",
+    "start",
+    "MCP smoke verification",
+    "--write-scope",
+    "index.js",
+    "--next",
+    "Complete smoke verification"
+  ]);
+
+  const evidence = await client.request("tools/call", {
+    name: "attach_evidence",
+    arguments: {
+      kind: "test-output",
+      content: "MCP smoke verification passed."
+    }
+  });
+  const evidenceText = evidence.result?.content?.[0]?.text || "";
+  const evidenceId = evidenceText.match(/Attached evidence ([^.]+)\./)?.[1] || "";
+  assertMatch(evidenceId, /^evt_/, "attach_evidence returns an evidence event id");
+
+  const taskVerify = await client.request("tools/call", {
+    name: "task_update_verification",
+    arguments: {
+      status: "passed",
+      evidence: [evidenceId],
+      summary: "MCP smoke verification passed."
+    }
+  });
+  assertMatch(taskVerify.result?.content?.[0]?.text || "", /Updated verification for task .* \(passed\)/, "task_update_verification marks verification as passed");
+
   const resume = await client.request("tools/call", {
     name: "resume",
     arguments: {
@@ -67,7 +104,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_update_verification -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

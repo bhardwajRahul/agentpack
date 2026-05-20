@@ -5,7 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, formatTaskAuditReport } from "../core/tasks.js";
+import { auditCurrentTask, formatTaskAuditReport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -107,6 +107,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         json: { type: "boolean" }
+      }
+    }
+  },
+  {
+    name: "task_update_verification",
+    description: "Update the current Task Passport verification status, summary, and evidence references.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["unknown", "pending", "passed", "failed", "accepted"]
+        },
+        evidence: { type: "array", items: { type: "string" } },
+        summary: { type: "string" }
       }
     }
   },
@@ -339,6 +354,15 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       return toolText(redactForRoot(root, JSON.stringify(report, null, 2)));
     }
     return toolText(redactForRoot(root, formatTaskAuditReport(report)));
+  }
+
+  if (name === "task_update_verification") {
+    const passport = updateCurrentTaskVerification(root, {
+      status: text(args.status),
+      evidence: stringArray(args.evidence),
+      summary: redactForRoot(root, text(args.summary))
+    });
+    return toolText(`Updated verification for task ${passport.id} (${passport.verification.status}).`);
   }
 
   if (name === "checkpoint") {

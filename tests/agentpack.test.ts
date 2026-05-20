@@ -128,7 +128,8 @@ test("exposes expected MCP tools", () => {
     "replay",
     "resume",
     "source_status",
-    "task_audit"
+    "task_audit",
+    "task_update_verification"
   ]);
 });
 
@@ -491,10 +492,26 @@ test("manages a current task passport", () => {
   assert.equal(blocked.status, "blocked");
   assert.equal(blocked.blockedReason, "Waiting for review");
 
-  assert.match(run(dir, ["task", "verify"]), /Marked task .* as verifying/);
+  assert.match(run(dir, ["task", "update-verification"]), /Updated verification for task .* \(pending\)/);
   const verifying = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(verifying.status, "verifying");
   assert.equal(verifying.verification.status, "pending");
+
+  assert.match(run(dir, [
+    "task",
+    "update-verification",
+    "--status",
+    "passed",
+    "--evidence",
+    "evt_task_test",
+    "--summary",
+    "Focused task passport checks passed."
+  ]), /Updated verification for task .* \(passed\)/);
+  const passed = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(passed.verification.status, "passed");
+  assert.deepEqual(passed.verification.evidence, ["evt_task_test"]);
+  assert.equal(passed.verification.summary, "Focused task passport checks passed.");
+  assert.doesNotMatch(run(dir, ["task", "audit"]), /Verification is/);
 
   assert.match(run(dir, ["task", "close"]), /Closed task/);
   const closed = JSON.parse(run(dir, ["task", "passport"]));
@@ -900,9 +917,54 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.match(taskAudit.result.content[0].text, /Task audit/);
   assert.match(taskAudit.result.content[0].text, /No current task passport/);
 
-  const resume = await mcp.send({
+  run(dir, [
+    "task",
+    "start",
+    "MCP verification flow",
+    "--write-scope",
+    "index.js",
+    "--next",
+    "Finish MCP verification"
+  ]);
+
+  const evidence = await mcp.send({
     jsonrpc: "2.0",
     id: 8,
+    method: "tools/call",
+    params: {
+      name: "attach_evidence",
+      arguments: {
+        kind: "test-output",
+        content: "MCP task verification passed."
+      }
+    }
+  });
+  const evidenceId = String(evidence.result.content[0].text).match(/Attached evidence ([^.]+)\./)?.[1] || "";
+  assert.match(evidenceId, /^evt_/);
+
+  const taskVerify = await mcp.send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "tools/call",
+    params: {
+      name: "task_update_verification",
+      arguments: {
+        status: "passed",
+        evidence: [evidenceId],
+        summary: "MCP smoke verification passed."
+      }
+    }
+  });
+  assert.match(taskVerify.result.content[0].text, /Updated verification for task .* \(passed\)/);
+
+  const verifiedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(verifiedPassport.verification.status, "passed");
+  assert.deepEqual(verifiedPassport.verification.evidence, [evidenceId]);
+  assert.equal(verifiedPassport.verification.summary, "MCP smoke verification passed.");
+
+  const resume = await mcp.send({
+    jsonrpc: "2.0",
+    id: 10,
     method: "tools/call",
     params: {
       name: "resume",

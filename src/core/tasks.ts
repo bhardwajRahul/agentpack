@@ -10,7 +10,7 @@ import {
   withPackWriteLock,
   writeJson
 } from "./store.js";
-import type { AgentpackEvent, TaskPassport, TaskRisk, TaskStatus } from "./types.js";
+import type { AgentpackEvent, TaskPassport, TaskRisk, TaskStatus, TaskVerification } from "./types.js";
 
 export interface TaskStartOptions {
   title: string;
@@ -32,6 +32,12 @@ export interface TaskListItem {
   writeScope: string[];
 }
 
+export interface TaskVerificationUpdateOptions {
+  status?: TaskVerification["status"] | string;
+  evidence?: string[];
+  summary?: string;
+}
+
 export interface TaskAuditSourceStatus {
   path: string;
   status: "unchanged" | "changed" | "missing";
@@ -48,6 +54,7 @@ export interface TaskAuditReport {
 }
 
 const CLOSED_STATUSES = new Set<TaskStatus>(["completed", "abandoned"]);
+const VERIFICATION_STATUSES = new Set<TaskVerification["status"]>(["unknown", "pending", "passed", "failed", "accepted"]);
 
 export function startTask(root: string, options: TaskStartOptions): TaskPassport {
   if (!options.title.trim()) {
@@ -150,14 +157,19 @@ export function blockCurrentTask(root: string, reason = ""): TaskPassport {
   });
 }
 
-export function verifyCurrentTask(root: string): TaskPassport {
-  return updateCurrentTask(root, "verifying", "task-verify", {
+export function updateCurrentTaskVerification(root: string, options: TaskVerificationUpdateOptions = {}): TaskPassport {
+  return updateCurrentTask(root, "verifying", "task-verify", (existing) => ({
     verification: {
-      status: "pending",
-      evidence: [],
-      summary: ""
+      status: parseVerificationStatus(options.status),
+      evidence: uniqueStrings([
+        ...(existing.verification?.evidence || []),
+        ...(options.evidence || [])
+      ]),
+      summary: options.summary === undefined
+        ? existing.verification?.summary || ""
+        : options.summary.trim()
     }
-  });
+  }));
 }
 
 export function closeCurrentTask(root: string): TaskPassport {
@@ -250,7 +262,7 @@ function updateCurrentTask(
   root: string,
   status: TaskStatus,
   eventType: string,
-  patch: Partial<TaskPassport> = {}
+  patch: Partial<TaskPassport> | ((existing: TaskPassport) => Partial<TaskPassport>) = {}
 ): TaskPassport {
   return withPackWriteLock(root, () => {
     const current = readCurrentTaskId(root);
@@ -265,9 +277,10 @@ function updateCurrentTask(
 
     const now = new Date().toISOString();
     const git = getGitInfo(root);
+    const resolvedPatch = typeof patch === "function" ? patch(existing) : patch;
     const passport: TaskPassport = {
       ...existing,
-      ...patch,
+      ...resolvedPatch,
       status,
       currentHead: git.head,
       updatedAt: now
@@ -280,10 +293,20 @@ function updateCurrentTask(
     writePassport(root, passport);
     appendTaskEvent(root, passport.id, eventType, {
       status: passport.status,
-      reason: passport.blockedReason || ""
+      reason: passport.blockedReason || "",
+      verificationStatus: passport.verification.status,
+      evidence: passport.verification.evidence
     });
     return passport;
   });
+}
+
+function parseVerificationStatus(value: TaskVerificationUpdateOptions["status"]): TaskVerification["status"] {
+  const status = String(value || "pending");
+  if (VERIFICATION_STATUSES.has(status as TaskVerification["status"])) {
+    return status as TaskVerification["status"];
+  }
+  throw new Error(`Unknown verification status: ${status}`);
 }
 
 function createTaskId(title: string): string {

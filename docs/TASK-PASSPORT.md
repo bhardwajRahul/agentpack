@@ -148,7 +148,7 @@ active -> parked            task park
 parked -> active            task switch/resume
 active -> blocked           task block
 blocked -> active           task unblock/resume
-active -> verifying         task verify
+active -> verifying         task update-verification
 verifying -> active         verification found more work
 verifying -> completed      verification passed
 active -> completed         small/docs task accepted directly
@@ -175,13 +175,15 @@ agentpack task switch task_20260518_source_cleanup
 agentpack task audit
 agentpack task park
 agentpack task block --reason "Waiting for API decision"
-agentpack task verify
+agentpack task update-verification --status passed --evidence evt_... --summary "Focused checks passed"
 agentpack task close
 ```
 
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
 
 `task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, stale source conclusions, and closed-current-task anomalies.
+
+`task update-verification` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result.
 
 ## Role Lanes
 
