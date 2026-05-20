@@ -178,7 +178,7 @@ agentpack task verify
 agentpack task close
 ```
 
-`resume` and MCP `load_context` should read the current passport automatically once task support exists.
+`resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
 
 ## Role Lanes
 

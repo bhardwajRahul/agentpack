@@ -42,7 +42,7 @@ agentpack task verify
 agentpack task close
 ```
 
-`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. Existing `resume` and MCP tools still use the repo-level v0 ledger until passport-aware context loading is implemented.
+`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
 
 ## Record Durable State
 

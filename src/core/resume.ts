@@ -12,7 +12,8 @@ import {
   readState
 } from "./store.js";
 import { redact } from "./redaction.js";
-import type { AgentpackConfig, AgentpackEvent, GitInfo, SourceRecord } from "./types.js";
+import { getCurrentPassport } from "./tasks.js";
+import type { AgentpackConfig, AgentpackEvent, GitInfo, SourceRecord, TaskPassport } from "./types.js";
 
 interface ResumeOptions {
   budget?: number;
@@ -34,6 +35,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
   const sources = readSources(root).sources || [];
   const events = readEvents(root);
   const git = getGitInfo(root);
+  const currentTask = readCurrentTaskForResume(root);
   const generatedAt = new Date().toISOString();
 
   const header = [
@@ -60,6 +62,11 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
           : ["- Not set"])
       ])
     },
+    currentTask ? {
+      title: "Current Task Passport",
+      required: true,
+      text: section("Current Task Passport", formatCurrentTaskPassport(currentTask, git))
+    } : null,
     {
       title: "Git State",
       required: true,
@@ -86,7 +93,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
       title: "Recent Timeline",
       text: section("Recent Timeline", formatTimeline(events))
     }
-  ];
+  ].filter((entry): entry is { title: string; required?: boolean; text: string } => Boolean(entry));
 
   const { markdown, omittedSections, truncatedSections } = packSections(header, sections, budget);
   const redacted = withStableBudgetMetadata(markdown, config, budget, omittedSections, truncatedSections);
@@ -129,6 +136,52 @@ function formatGit(git: GitInfo): string[] {
     ...(git.status ? git.status.split("\n").map((line) => `  - ${line}`) : ["  - None"]),
     git.diff ? `- Current diff characters: ${git.diff.length}` : "- Current diff: none"
   ];
+}
+
+function readCurrentTaskForResume(root: string): TaskPassport | null {
+  try {
+    return getCurrentPassport(root);
+  } catch {
+    return null;
+  }
+}
+
+function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string[] {
+  const drift = formatTaskDrift(passport, git);
+  return [
+    `- ID: ${passport.id}`,
+    `- Title: ${passport.title}`,
+    `- Status: ${passport.status}`,
+    `- Objective: ${passport.objective || "Not set"}`,
+    passport.constraints.length ? "- Constraints:" : null,
+    ...passport.constraints.map((item) => `  - ${item}`),
+    `- Risk: ${passport.risk}`,
+    `- Worktree: ${formatPackRoot(passport.worktree)}`,
+    `- Branch: ${passport.branch || "unknown"}`,
+    passport.writeScope.length ? "- Write scope:" : "- Write scope: Not set",
+    ...passport.writeScope.map((item) => `  - ${item}`),
+    `- Verification: ${passport.verification.status}${passport.verification.summary ? ` - ${passport.verification.summary}` : ""}`,
+    passport.verification.evidence.length ? `- Verification evidence: ${passport.verification.evidence.join(", ")}` : null,
+    passport.nextActions.length ? "- Task next actions:" : "- Task next actions: Not set",
+    ...passport.nextActions.map((item) => `  - ${item}`),
+    drift
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatTaskDrift(passport: TaskPassport, git: GitInfo): string | null {
+  if (!git.available) {
+    return "- Drift: Git repository not detected; verify task state manually.";
+  }
+
+  const drift: string[] = [];
+  if (passport.branch && git.branch && passport.branch !== git.branch) {
+    drift.push(`branch changed from ${passport.branch} to ${git.branch}`);
+  }
+  if (passport.currentHead && git.head && passport.currentHead !== git.head) {
+    drift.push(`HEAD changed from ${passport.currentHead} to ${git.head}`);
+  }
+
+  return drift.length ? `- Drift: ${drift.join("; ")}. Verify task state before continuing.` : "- Drift: none detected.";
 }
 
 function formatSources(root: string, sources: SourceRecord[], query = ""): string[] {

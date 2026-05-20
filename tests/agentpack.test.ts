@@ -464,6 +464,16 @@ test("manages a current task passport", () => {
   const currentPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(currentPassport.id, taskId);
 
+  const resume = run(dir, ["resume", "--preset", "agent"]);
+  assert.match(resume, /## Current Task Passport/);
+  assert.match(resume, new RegExp(`ID: ${taskId}`));
+  assert.match(resume, /Title: Add task passports/);
+  assert.match(resume, /Objective: Model current task handoff state\./);
+  assert.match(resume, /Keep v0 state readable\./);
+  assert.match(resume, /Write scope:\n  - src\/index\.ts/);
+  assert.match(resume, /Task next actions:\n  - Wire CLI/);
+  assert.match(resume, /Drift: none detected/);
+
   assert.match(run(dir, ["task", "block", "--reason", "Waiting for review"]), /Blocked task/);
   const blocked = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(blocked.status, "blocked");
