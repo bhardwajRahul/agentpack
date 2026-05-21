@@ -5,7 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, formatTaskAuditReport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -122,6 +122,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         },
         evidence: { type: "array", items: { type: "string" } },
         summary: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "task_update",
+    description: "Update the current Task Passport objective, constraints, write scope, next actions, tags, or risk without changing lifecycle status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        objective: { type: "string" },
+        constraints: { type: "array", items: { type: "string" } },
+        writeScope: { type: "array", items: { type: "string" } },
+        nextActions: { type: "array", items: { type: "string" } },
+        tags: { type: "array", items: { type: "string" } },
+        risk: {
+          type: "string",
+          enum: ["unknown", "low", "medium", "high"]
+        }
       }
     }
   },
@@ -365,6 +383,25 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
     return toolText(`Updated verification for task ${passport.id} (${passport.verification.status}).`);
   }
 
+  if (name === "task_update") {
+    const updateOptions: TaskUpdateOptions = {
+      constraints: stringArray(args.constraints).map((item) => redactForRoot(root, item)),
+      writeScope: stringArray(args.writeScope),
+      nextActions: stringArray(args.nextActions).map((item) => redactForRoot(root, item)),
+      tags: stringArray(args.tags)
+    };
+    const objective = redactForRoot(root, text(args.objective));
+    const risk = taskRisk(args.risk);
+    if (objective) {
+      updateOptions.objective = objective;
+    }
+    if (risk) {
+      updateOptions.risk = risk;
+    }
+    const passport = updateCurrentTaskPassport(root, updateOptions);
+    return toolText(`Updated task ${passport.id}.`);
+  }
+
   if (name === "checkpoint") {
     const checkpoint = createCheckpoint(root, {
       summary: text(args.summary),
@@ -432,6 +469,16 @@ function stringArray(value: unknown): string[] {
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function taskRisk(value: unknown): "low" | "medium" | "high" | "unknown" | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  if (value === "unknown" || value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  throw new Error(`Unknown task risk: ${String(value)}`);
 }
 
 function errorMessage(error: unknown): string {

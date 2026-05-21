@@ -59,10 +59,10 @@ Target local layout:
   "currentHead": "21fe674",
   "worktree": "/path/to/repo",
   "writeScope": [
-    "src/operations.ts",
-    "src/cli/index.ts",
-    "tests/agentpack.test.ts",
-    "docs/CLI.md"
+    "src/checkout.ts",
+    "src/cart.ts",
+    "tests/checkout.test.ts",
+    "docs/checkout.md"
   ],
   "risk": "low",
   "roles": {
@@ -76,7 +76,7 @@ Target local layout:
     },
     "reviewer": {
       "status": "done",
-      "summary": "Verified tests, doctor, and dogfood cleanup."
+      "summary": "Verified focused tests and checkout smoke coverage."
     },
     "archivist": {
       "status": "done",
@@ -166,14 +166,15 @@ Closed statuses are `completed` and `abandoned`. Closed passports remain inspect
 Target first CLI surface:
 
 ```bash
-agentpack task start "Add source cache cleanup commands" \
-  --objective "Let Agentpack remove stale source records safely" \
-  --write-scope src/operations.ts \
-  --write-scope src/cli/index.ts
+agentpack task start "Fix checkout discount bug" \
+  --objective "Make discount totals consistent across cart and checkout" \
+  --write-scope src/checkout.ts \
+  --write-scope src/cart.ts
 
 agentpack task list
 agentpack task passport
 agentpack task switch task_20260518_source_cleanup
+agentpack task update --next "Run focused regression tests" --write-scope tests/checkout.test.ts --risk medium
 agentpack task audit
 agentpack task park
 agentpack task block --reason "Waiting for API decision"
@@ -184,6 +185,8 @@ agentpack task close
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
 
 `task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, stale source conclusions, and closed-current-task anomalies.
+
+`task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
 `task update-verification` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result.
 

@@ -129,6 +129,7 @@ test("exposes expected MCP tools", () => {
     "resume",
     "source_status",
     "task_audit",
+    "task_update",
     "task_update_verification"
   ]);
 });
@@ -481,6 +482,34 @@ test("manages a current task passport", () => {
   assert.match(initialAudit, new RegExp(`Current task: ${taskId} \\[active\\] Add task passports`));
   assert.match(initialAudit, /Verification is unknown/);
   assert.match(initialAudit, /No changed or missing recorded source conclusions/);
+
+  assert.match(run(dir, [
+    "task",
+    "update",
+    "--objective",
+    "Model current task handoff state and update it after start.",
+    "--constraint",
+    "Keep task updates additive.",
+    "--write-scope",
+    ".",
+    "--next",
+    "Document task update flow",
+    "--tag",
+    "task-update",
+    "--risk",
+    "medium"
+  ]), /Updated task .*/);
+  const updated = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(updated.objective, "Model current task handoff state and update it after start.");
+  assert.deepEqual(updated.constraints, ["Keep v0 state readable.", "Keep task updates additive."]);
+  assert.deepEqual(updated.writeScope, ["src/index.ts", "."]);
+  assert.deepEqual(updated.nextActions, ["Wire CLI", "Document task update flow"]);
+  assert.deepEqual(updated.tags, ["task-passport", "task-update"]);
+  assert.equal(updated.risk, "medium");
+  assert.match(runExpectError(dir, ["task", "update"]), /task update requires at least one non-empty field/);
+  assert.match(runExpectError(dir, ["task", "update", "--next", "Document task update flow"]), /task update did not change the current task/);
+  assert.match(runExpectError(dir, ["task", "update", "--objective", ""]), /task update requires at least one non-empty field/);
+  assert.match(runExpectError(dir, ["task", "update", "--risk", "urgent"]), /Unknown task risk: urgent/);
 
   run(dir, ["source", "add", "src/index.ts", "--summary", "Task passport fixture source."]);
   writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 2;\n", "utf8");
@@ -976,9 +1005,47 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.deepEqual(verifiedPassport.verification.evidence, [evidenceId]);
   assert.equal(verifiedPassport.verification.summary, "MCP smoke verification passed.");
 
-  const resume = await mcp.send({
+  const taskUpdate = await mcp.send({
     jsonrpc: "2.0",
     id: 10,
+    method: "tools/call",
+    params: {
+      name: "task_update",
+      arguments: {
+        objective: "Exercise MCP task update flow.",
+        constraints: ["Keep MCP task updates additive."],
+        writeScope: ["."],
+        nextActions: ["Inspect updated passport"],
+        tags: ["mcp-task-update"],
+        risk: "medium"
+      }
+    }
+  });
+  assert.match(taskUpdate.result.content[0].text, /Updated task .*/);
+  const mcpUpdatedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(mcpUpdatedPassport.objective, "Exercise MCP task update flow.");
+  assert.deepEqual(mcpUpdatedPassport.constraints, ["Keep MCP task updates additive."]);
+  assert.deepEqual(mcpUpdatedPassport.writeScope, ["index.js", "."]);
+  assert.deepEqual(mcpUpdatedPassport.nextActions, ["Finish MCP verification", "Inspect updated passport"]);
+  assert.deepEqual(mcpUpdatedPassport.tags, ["mcp-task-update"]);
+  assert.equal(mcpUpdatedPassport.risk, "medium");
+
+  const invalidMcpRisk = await mcp.send({
+    jsonrpc: "2.0",
+    id: 11,
+    method: "tools/call",
+    params: {
+      name: "task_update",
+      arguments: {
+        risk: "urgent"
+      }
+    }
+  });
+  assert.equal(invalidMcpRisk.error?.message, "Unknown task risk: urgent");
+
+  const resume = await mcp.send({
+    jsonrpc: "2.0",
+    id: 12,
     method: "tools/call",
     params: {
       name: "resume",

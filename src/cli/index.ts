@@ -18,6 +18,8 @@ import {
   readPassport,
   startTask,
   switchTask,
+  type TaskUpdateOptions,
+  updateCurrentTaskPassport,
   updateCurrentTaskVerification
 } from "../core/tasks.js";
 import {
@@ -210,6 +212,7 @@ Usage:
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
   agentpack task start <title> [--objective <text>] [--write-scope <path>]
+  agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task list
   agentpack task passport
   agentpack task switch <id>
@@ -312,6 +315,25 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "update") {
+    const parsed = parseArgs(args);
+    const updateOptions: TaskUpdateOptions = {
+      constraints: toArray(parsed.options.constraint).map((item) => redactForRoot(root, item)),
+      writeScope: toArray(parsed.options["write-scope"]),
+      nextActions: toArray(parsed.options.next).map((item) => redactForRoot(root, item)),
+      tags: toArray(parsed.options.tag)
+    };
+    if (optionValue(parsed.options, "objective")) {
+      updateOptions.objective = redactForRoot(root, stringOption(parsed.options.objective));
+    }
+    if (optionValue(parsed.options, "risk")) {
+      updateOptions.risk = taskRiskOption(parsed.options.risk);
+    }
+    const passport = updateCurrentTaskPassport(root, updateOptions);
+    process.stdout.write(`Updated task ${passport.id}\n`);
+    return;
+  }
+
   if (subcommand === "passport") {
     const parsed = parseArgs(args);
     const passport = parsed.positionals[0]
@@ -372,7 +394,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, list, passport, switch, audit, park, block, update-verification, and close");
+  throw new Error("task command supports start, update, list, passport, switch, audit, park, block, update-verification, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {
@@ -611,6 +633,10 @@ function stringOption(value: ArgValue | undefined): string {
   return Array.isArray(value) ? value[0] || "" : value;
 }
 
+function optionValue(options: Record<string, ArgValue>, key: string): boolean {
+  return options[key] !== undefined;
+}
+
 function numberOption(value: ArgValue | undefined): number {
   if (value === undefined || value === true || value === false) {
     return 0;
@@ -643,6 +669,14 @@ function riskOption(value: ArgValue | undefined): "low" | "medium" | "high" | "u
     return risk;
   }
   return "unknown";
+}
+
+function taskRiskOption(value: ArgValue | undefined): "low" | "medium" | "high" | "unknown" {
+  const risk = stringOption(value);
+  if (risk === "unknown" || risk === "low" || risk === "medium" || risk === "high") {
+    return risk;
+  }
+  throw new Error(`Unknown task risk: ${risk || "(empty)"}`);
 }
 
 function isRecordType(value: string | undefined): value is "decision" | "dead-end" | "note" {

@@ -31,10 +31,14 @@ agentpack source remove docs/old-file.md
 Task Passport support is the first step toward task-scoped handoffs. The current CLI can create and inspect a local passport under `.agentpack/tasks/`:
 
 ```bash
-agentpack task start "Add source cleanup commands" \
-  --objective "Let Agentpack remove stale source records safely" \
-  --write-scope src/operations.ts \
-  --write-scope src/cli/index.ts
+agentpack task start "Fix checkout discount bug" \
+  --objective "Make discount totals consistent across cart and checkout" \
+  --write-scope src/checkout.ts \
+  --write-scope src/cart.ts
+agentpack task update \
+  --next "Run focused regression tests" \
+  --write-scope tests/checkout.test.ts \
+  --risk medium
 agentpack task list
 agentpack task passport
 agentpack task audit
@@ -45,7 +49,7 @@ agentpack task close
 
 Write scopes are repo-relative paths. `.` means the repository root.
 
-`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task audit` checks the current passport for stale source conclusions, branch/head drift, missing next actions, open verification, and closed-task anomalies. `task update-verification` writes verification status, evidence IDs, and summary into the passport; without flags it marks verification as `pending`, and with `--status`, `--evidence`, and `--summary` it can close the audit warning with evidence-backed verification. When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
+`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task update` patches objective, constraints, write scope, next actions, tags, and risk without changing lifecycle status; list fields are appended and deduplicated. Empty or no-op updates fail, and unknown risk values are rejected. `task audit` checks the current passport for stale source conclusions, branch/head drift, missing next actions, open verification, and closed-task anomalies. `task update-verification` writes verification status, evidence IDs, and summary into the passport; without flags it marks verification as `pending`, and with `--status`, `--evidence`, and `--summary` it can close the audit warning with evidence-backed verification. When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
 
 ## Record Durable State
 

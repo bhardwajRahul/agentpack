@@ -38,6 +38,15 @@ export interface TaskVerificationUpdateOptions {
   summary?: string;
 }
 
+export interface TaskUpdateOptions {
+  objective?: string;
+  constraints?: string[];
+  writeScope?: string[];
+  nextActions?: string[];
+  tags?: string[];
+  risk?: TaskRisk;
+}
+
 export interface TaskAuditSourceStatus {
   path: string;
   status: "unchanged" | "changed" | "missing";
@@ -157,6 +166,46 @@ export function blockCurrentTask(root: string, reason = ""): TaskPassport {
   });
 }
 
+export function updateCurrentTaskPassport(root: string, options: TaskUpdateOptions = {}): TaskPassport {
+  return patchCurrentTask(root, "task-update", (existing) => {
+    const objective = options.objective?.trim() || "";
+    const constraints = uniqueStrings(options.constraints || []);
+    const writeScope = normalizeWriteScope(root, options.writeScope || []);
+    const nextActions = uniqueStrings(options.nextActions || []);
+    const tags = uniqueStrings(options.tags || []);
+
+    if (!hasTaskUpdate({ objective, constraints, writeScope, nextActions, tags }, options.risk)) {
+      throw new Error("task update requires at least one non-empty field");
+    }
+
+    const patch: Partial<TaskPassport> = {};
+    if (objective) {
+      patch.objective = objective;
+    }
+    if (constraints.length > 0) {
+      patch.constraints = mergeStringLists(existing.constraints, constraints);
+    }
+    if (writeScope.length > 0) {
+      patch.writeScope = mergeStringLists(existing.writeScope, writeScope);
+    }
+    if (nextActions.length > 0) {
+      patch.nextActions = mergeStringLists(existing.nextActions, nextActions);
+    }
+    if (tags.length > 0) {
+      patch.tags = mergeStringLists(existing.tags, tags);
+    }
+    if (options.risk) {
+      patch.risk = options.risk;
+    }
+
+    if (!changesTaskPassport(existing, patch)) {
+      throw new Error("task update did not change the current task");
+    }
+
+    return patch;
+  });
+}
+
 export function updateCurrentTaskVerification(root: string, options: TaskVerificationUpdateOptions = {}): TaskPassport {
   return updateCurrentTask(root, "verifying", "task-verify", (existing) => ({
     verification: {
@@ -264,6 +313,17 @@ function updateCurrentTask(
   eventType: string,
   patch: Partial<TaskPassport> | ((existing: TaskPassport) => Partial<TaskPassport>) = {}
 ): TaskPassport {
+  return patchCurrentTask(root, eventType, (existing) => ({
+    ...(typeof patch === "function" ? patch(existing) : patch),
+    status
+  }));
+}
+
+function patchCurrentTask(
+  root: string,
+  eventType: string,
+  patch: Partial<TaskPassport> | ((existing: TaskPassport) => Partial<TaskPassport>) = {}
+): TaskPassport {
   return withPackWriteLock(root, () => {
     const current = readCurrentTaskId(root);
     if (!current) {
@@ -281,24 +341,57 @@ function updateCurrentTask(
     const passport: TaskPassport = {
       ...existing,
       ...resolvedPatch,
-      status,
       currentHead: git.head,
       updatedAt: now
     };
 
-    if (status === "completed" || status === "abandoned") {
+    if (passport.status === "completed" || passport.status === "abandoned") {
       passport.closedAt = passport.closedAt || now;
     }
 
     writePassport(root, passport);
     appendTaskEvent(root, passport.id, eventType, {
       status: passport.status,
+      objective: passport.objective,
+      writeScope: passport.writeScope,
+      nextActions: passport.nextActions,
+      risk: passport.risk,
       reason: passport.blockedReason || "",
       verificationStatus: passport.verification.status,
       evidence: passport.verification.evidence
     });
     return passport;
   });
+}
+
+function hasTaskUpdate(options: Omit<TaskUpdateOptions, "risk">, risk: TaskRisk | undefined): boolean {
+  return Boolean(
+    options.objective ||
+    risk !== undefined ||
+    (options.constraints && options.constraints.length > 0) ||
+    (options.writeScope && options.writeScope.length > 0) ||
+    (options.nextActions && options.nextActions.length > 0) ||
+    (options.tags && options.tags.length > 0)
+  );
+}
+
+function mergeStringLists(existing: string[], incoming: string[] | undefined): string[] {
+  return uniqueStrings([...existing, ...(incoming || [])]);
+}
+
+function changesTaskPassport(existing: TaskPassport, patch: Partial<TaskPassport>): boolean {
+  return Boolean(
+    (patch.objective !== undefined && patch.objective !== existing.objective) ||
+    (patch.risk !== undefined && patch.risk !== existing.risk) ||
+    (patch.constraints !== undefined && !sameStringList(patch.constraints, existing.constraints)) ||
+    (patch.writeScope !== undefined && !sameStringList(patch.writeScope, existing.writeScope)) ||
+    (patch.nextActions !== undefined && !sameStringList(patch.nextActions, existing.nextActions)) ||
+    (patch.tags !== undefined && !sameStringList(patch.tags, existing.tags))
+  );
+}
+
+function sameStringList(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 function parseVerificationStatus(value: TaskVerificationUpdateOptions["status"]): TaskVerification["status"] {

@@ -26,6 +26,7 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `record_source`
 - `source_status`
 - `task_audit`
+- `task_update`
 - `task_update_verification`
 - `checkpoint`
 - `resume`
@@ -35,6 +36,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 `load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/topic/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
 
 `task_audit` checks the current Task Passport for continuity risks: missing or unreadable passport state, closed current task, missing next actions, open verification, missing write scope, branch/head drift, worktree mismatch, and changed or missing source records. Pass `{ "json": true }` for structured output.
+
+`task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
 `task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed.
 
@@ -62,6 +65,7 @@ The smoke test verifies:
 - `tools/call record_source`
 - `tools/call source_status`
 - `tools/call task_audit`
+- `tools/call task_update`
 - `tools/call task_update_verification`
 - `tools/call resume`
 - notification messages do not produce responses
