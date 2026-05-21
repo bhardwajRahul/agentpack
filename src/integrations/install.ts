@@ -5,6 +5,16 @@ import { getPackPath, readJson } from "../core/store.js";
 
 const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor"] as const;
 
+function collaborationModesSection(): string {
+  return `Collaboration modes:
+- treat named modes as explicit collaboration preferences; follow the active mode until the user switches mode, asks for work that clearly implies another mode, the task ends, or safety requires a pause
+- design mode: do not write code; analyze the task, architecture, options, risks, and verification plan
+- implementation mode: implement the agreed direction in small, reviewable steps
+- review mode: review the current diff or proposal for bugs, regressions, missing tests, and design risks
+- teach mode: explain TypeScript, architecture, or code through the concrete files and changes at hand
+- checkpoint mode: summarize what was decided, what changed, why, verification status, and next actions`;
+}
+
 const INSTRUCTIONS = `# Agentpack
 
 Use Agentpack as the task-state ledger for this repo.
@@ -15,6 +25,8 @@ Safety invariant:
 - make changes carefully, with compatibility and rollback impact in mind
 - verify meaningful changes with focused tests, smoke checks, or documented reasoning before handing off
 - if a requested change risks a regression, call out the risk and choose the safer path unless explicitly directed otherwise
+
+${collaborationModesSection()}
 
 At the start of a task:
 - call \`load_context\` with a small preset first
