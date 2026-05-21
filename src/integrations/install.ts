@@ -33,10 +33,14 @@ At the start of a task:
 - call \`source_status\` before re-reading previously inspected files
 
 During work:
-- call \`record_source\` after inspecting an important file, with a concise conclusion
-- call \`record_decision\` for durable technical/product decisions
+- call \`record_source\` only when you have a durable conclusion about an important file; avoid repeated records for the same file unless the conclusion changed
+- call \`record_decision\` for durable technical/product decisions, not every preference
 - call \`record_dead_end\` when an approach failed and should not be repeated
-- call \`attach_evidence\` for useful test output, command output, or verification notes
+- call \`attach_evidence\` for meaningful verification, review findings, commits, or command output worth preserving
+
+Avoid turning Agentpack into an activity log:
+- do not record every file read, mode switch, minor diff check, or routine command
+- for small tasks, prefer one final source record per touched important file plus one verification evidence and one checkpoint
 
 Default cadence:
 - start with Agentpack context
