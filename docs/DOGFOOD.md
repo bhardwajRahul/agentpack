@@ -8,7 +8,6 @@ Load a small context first:
 
 ```text
 load_context(preset: "quick")
-source_status()
 ```
 
 Use `agent` instead of `quick` when the task needs more history.
@@ -40,9 +39,11 @@ Record only durable context. Agentpack is not an activity logger, and it should 
 
 Default cadence:
 
-- At task start, load Agentpack context and source status.
+- At task start, load Agentpack context.
+- Call source status only when you need a full stale-source check beyond the loaded context.
 - During normal coding, keep working locally; record only durable decisions, dead ends, source conclusions, and evidence.
-- At the end of a coherent step, record the useful sources/evidence, update status and next actions, then checkpoint.
+- Sequence state-changing Agentpack calls; do not run them in parallel with audit, status, or checkpoint calls.
+- At the end of a coherent step, record aggregated evidence, update status and next actions, then checkpoint.
 - Use full safe mode for risky or release-like changes: record important findings as they happen and run the full verification loop.
 
 This keeps Agentpack useful without turning every micro-step into ledger traffic. The intended default cost is one context load near the start and one durable save near the end.
@@ -84,8 +85,10 @@ Git still owns code history. Agentpack owns task memory.
 
 While dogfooding, look for friction:
 
-- Did the agent call `load_context` and `source_status` early enough?
+- Did the agent call `load_context` early enough without repeating status checks unnecessarily?
 - Were unchanged sources avoided when recorded conclusions were enough?
+- Did `record_source` capture only reusable source conclusions instead of one event per changed file?
+- Were state-changing Agentpack calls sequenced so audits read the latest state?
 - Were decisions and dead ends recorded at useful moments?
 - Was evidence too noisy or too thin?
 - Was the checkpoint useful to the next session?

@@ -211,7 +211,7 @@ Usage:
   agentpack set goal <text>
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
-  agentpack task start <title> [--objective <text>] [--write-scope <path>]
+  agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task list
   agentpack task passport
@@ -285,15 +285,17 @@ function taskCommand(root: string, rest: string[]): void {
   if (subcommand === "start") {
     const parsed = parseArgs(args);
     const title = parsed.positionals.join(" ").trim();
-    const passport = startTask(root, {
+    const startOptions = {
       title: redactForRoot(root, title),
       objective: redactForRoot(root, stringOption(parsed.options.objective)),
       constraints: toArray(parsed.options.constraint).map((item) => redactForRoot(root, item)),
       writeScope: toArray(parsed.options["write-scope"]),
       nextActions: toArray(parsed.options.next).map((item) => redactForRoot(root, item)),
-      tags: toArray(parsed.options.tag),
-      risk: riskOption(parsed.options.risk)
-    });
+      tags: toArray(parsed.options.tag)
+    };
+    const passport = startTask(root, optionValue(parsed.options, "risk")
+      ? { ...startOptions, risk: taskRiskOption(parsed.options.risk) }
+      : startOptions);
     process.stdout.write(`Started task ${passport.id}\n`);
     return;
   }
@@ -661,14 +663,6 @@ function budgetOption(options: Record<string, ArgValue>, fallback = 0): number {
     budget: numberOption(options.budget),
     preset: stringOption(options.preset)
   }, fallback);
-}
-
-function riskOption(value: ArgValue | undefined): "low" | "medium" | "high" | "unknown" {
-  const risk = stringOption(value);
-  if (risk === "low" || risk === "medium" || risk === "high") {
-    return risk;
-  }
-  return "unknown";
 }
 
 function taskRiskOption(value: ArgValue | undefined): "low" | "medium" | "high" | "unknown" {

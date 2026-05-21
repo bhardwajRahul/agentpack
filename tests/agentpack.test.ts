@@ -446,6 +446,17 @@ test("manages a current task passport", () => {
     "low"
   ]);
   assert.match(started, /Started task task_/);
+  assert.match(
+    runExpectError(dir, ["task", "start", "Overlapping task", "--write-scope", "src/index.ts"]),
+    /Current task .* is active; park or close it before starting a new task\./
+  );
+  assert.match(runExpectError(dir, [
+    "task",
+    "start",
+    "Invalid risk task",
+    "--risk",
+    "urgent"
+  ]), /Unknown task risk: urgent/);
 
   const taskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
   const passportPath = path.join(dir, ".agentpack", "tasks", taskId, "passport.json");
@@ -552,6 +563,15 @@ test("manages a current task passport", () => {
   const repoWide = JSON.parse(run(dir, ["task", "passport"]));
   assert.deepEqual(repoWide.writeScope, ["."]);
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Task has no write scope/);
+
+  assert.match(run(dir, ["task", "close"]), /Closed task/);
+  assert.match(runExpectError(dir, [
+    "task",
+    "start",
+    "Invalid risk task",
+    "--risk",
+    "urgent"
+  ]), /Unknown task risk: urgent/);
 });
 
 test("redacts secrets from stored context and handoff outputs", () => {
@@ -846,6 +866,10 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Avoid turning Agentpack into an activity log/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record_source` only when you have a durable conclusion/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` only when you need a full stale-source check/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /prefer one aggregated verification evidence and one checkpoint/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /sequence state-changing Agentpack calls/);
+  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` before re-reading/);
   const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
   assert.match(codexConfig, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.doesNotMatch(codexConfig, /\[mcp_servers\.agentpack\]/);

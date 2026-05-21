@@ -72,6 +72,12 @@ export function startTask(root: string, options: TaskStartOptions): TaskPassport
 
   return withPackWriteLock(root, () => {
     ensureTasksDir(root);
+    const currentTask = getCurrentPassport(root);
+    if (currentTask && !CLOSED_STATUSES.has(currentTask.status) && currentTask.status !== "parked") {
+      throw new Error(
+        `Current task ${currentTask.id} is ${currentTask.status}; park or close it before starting a new task.`
+      );
+    }
 
     const now = new Date().toISOString();
     const git = getGitInfo(root);

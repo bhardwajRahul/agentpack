@@ -30,7 +30,7 @@ ${collaborationModesSection()}
 
 At the start of a task:
 - call \`load_context\` with a small preset first
-- call \`source_status\` before re-reading previously inspected files
+- call \`source_status\` only when you need a full stale-source check beyond the context you just loaded
 
 During work:
 - call \`record_source\` only when you have a durable conclusion about an important file; avoid repeated records for the same file unless the conclusion changed
@@ -40,11 +40,14 @@ During work:
 
 Avoid turning Agentpack into an activity log:
 - do not record every file read, mode switch, minor diff check, or routine command
-- for small tasks, prefer one final source record per touched important file plus one verification evidence and one checkpoint
+- do not call \`source_status\` repeatedly when \`load_context\`, \`task_audit\`, or a recent status check already answered the question
+- do not call \`record_source\` for every changed file just to make an audit warning disappear; prefer a checkpoint summary for batch changes and refresh source records only when the durable conclusion changed
+- for small tasks, prefer one aggregated verification evidence and one checkpoint; add source records only for important implementation files with reusable conclusions
 
 Default cadence:
 - start with Agentpack context
 - work locally without recording every micro-step
+- sequence state-changing Agentpack calls; do not run them in parallel with audit/status/checkpoint calls
 - record durable findings and evidence before a checkpoint
 - use full safe mode for risky or release-like changes
 

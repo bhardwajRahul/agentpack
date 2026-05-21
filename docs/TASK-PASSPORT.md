@@ -184,6 +184,8 @@ agentpack task close
 
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
 
+`task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
+
 `task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, stale source conclusions, and closed-current-task anomalies.
 
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
