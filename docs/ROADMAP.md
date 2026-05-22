@@ -94,6 +94,55 @@ Useful signals:
 
 The target is reliable continuation of the work that was worth preserving.
 
+## Near-Term Roadmap
+
+### Now: v0.1.11 Dogfood
+
+Goal: run one or two short working sessions without large new features.
+
+Watch where the workflow actually hurts:
+
+- `task audit` is too noisy
+- updating the current passport is awkward
+- a short current-task status view is missing
+- the release flow is too manual
+- ledger cadence still nudges agents toward extra records
+
+Patch only blockers or very small reliability issues during this period.
+
+### Next Patch: Ergonomics
+
+Choose one or two small improvements, not a broad feature batch:
+
+- `agentpack task status`: short human-readable current task view
+- `agentpack task finalize` or `agentpack task close --verified`: a small ritual for evidence, verification, checkpoint, and close
+- softer audit output that separates action-required issues from accepted metadata warnings
+
+### Release Flow
+
+If release friction stays real after another release:
+
+- add a `release:patch` helper or script
+- make it do the version bump, checklist reminder, and maybe local preflight
+- do not automate GitHub Actions or npm polling unless explicitly requested
+
+### Docs And Product
+
+After dogfood:
+
+- update this roadmap to reflect the real post-Task-Passport state
+- document the recommended multi-chat workflow: implementation, design review, and teach/learn
+- simplify README positioning around the idea that Agentpack is a continuity ledger, not general AI memory
+
+### Later
+
+Only after the short dogfood and ergonomics pass:
+
+- role lanes inside Task Passport
+- better source-cache refresh ergonomics
+- structured handoff between separate chats
+- maybe `agentpack task handoff` as a compact current-passport-first export
+
 ## v0.1: Usable Manual CLI
 
 Goal: useful in any repo without MCP.
