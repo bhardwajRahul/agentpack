@@ -19,19 +19,42 @@ npm provenance via a Trusted Publisher. No `NPM_TOKEN` is stored in the repo.
 
 ## Cutting a release
 
+Release discipline:
+
+- A normal push to `main` never publishes to npm.
+- Keep feature/docs commits separate from the version bump.
+- Make the version bump as its own release-prep commit after the feature branch
+  has been reviewed and pushed.
+- Re-run pre-flight after the version bump, because the package metadata and
+  tarball have changed.
+- For small patch releases, write concise notes in the GitHub Release. Do not
+  add a weak release-notes file to the repo just to have one.
+- The agent may create the GitHub Release when asked, but the human owner can
+  check GitHub Actions and npm status manually. Do not add extra workflow/npm
+  polling unless explicitly requested.
+- This flow is still too manual; prefer adding a single `release:patch` helper
+  later once the exact release contract is stable.
+
 ```bash
-# 1. Decide the bump and update package.json + create the git tag.
-npm version patch      # 0.1.x -> 0.1.(x+1)
-# or: npm version minor # 0.1.x -> 0.2.0
-# or: npm version major # 0.x.y -> 1.0.0
+# 1. After feature/docs commits are reviewed and pushed, create a separate
+#    release-prep commit.
+npm version patch --no-git-tag-version
+VERSION="$(node -p "require('./package.json').version")"
 
-# 2. Push the new commit and the tag.
-git push --follow-tags
+git add package.json package-lock.json
+git commit -m "chore(release): prepare ${VERSION}"
 
-# 3. Create a GitHub Release for that tag. The publish workflow fires on
+# 2. Push the release-prep commit.
+git push origin main
+
+# 3. Create and push the tag.
+git tag "v${VERSION}"
+git push origin "v${VERSION}"
+
+# 4. Create a GitHub Release for that tag. The publish workflow fires on
 #    release: published.
-gh release create "v$(node -p "require('./package.json').version")" \
-  --title "v$(node -p "require('./package.json').version")" \
+gh release create "v${VERSION}" \
+  --title "v${VERSION}" \
   --generate-notes
 ```
 
