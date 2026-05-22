@@ -40,7 +40,6 @@ Release discipline:
 
 # 1.1 Docs-only commits after a verified release do not require a full preflight; review the diff and run lightweight checks such as `git diff --check`.
 
-Docs-only commits after a verified release do not require a full preflight; review the diff and run lightweight checks such as `git diff --check`.
 npm version patch --no-git-tag-version
 VERSION="$(node -p "require('./package.json').version")"
 
