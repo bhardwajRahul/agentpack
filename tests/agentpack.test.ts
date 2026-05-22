@@ -475,6 +475,16 @@ test("manages a current task passport", () => {
   const list = run(dir, ["task", "list"]);
   assert.match(list, new RegExp(`\\* ${taskId} \\[active\\] Add task passports`));
 
+  const status = run(dir, ["task", "status"]);
+  assert.match(status, /Task status/);
+  assert.match(status, /Add task passports \[active\]/);
+  assert.match(status, new RegExp(`ID: ${taskId}`));
+  assert.match(status, /Risk: low/);
+  assert.match(status, /Verification: unknown/);
+  assert.match(status, /Next: Wire CLI/);
+  assert.match(status, /Write scope: src\/index\.ts/);
+  assert.match(status, /Drift: none/);
+
   const currentPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(currentPassport.id, taskId);
 
@@ -572,6 +582,15 @@ test("manages a current task passport", () => {
     "--risk",
     "urgent"
   ]), /Unknown task risk: urgent/);
+});
+
+test("task status reports missing current passport without requiring audit", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-status-test-"));
+  run(dir, ["init"]);
+
+  const status = run(dir, ["task", "status"]);
+  assert.match(status, /Task status/);
+  assert.match(status, /No current task passport/);
 });
 
 test("redacts secrets from stored context and handoff outputs", () => {

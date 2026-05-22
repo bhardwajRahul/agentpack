@@ -11,6 +11,7 @@ import {
   auditCurrentTask,
   blockCurrentTask,
   closeCurrentTask,
+  formatCurrentTaskStatus,
   formatTaskAuditReport,
   getCurrentPassport,
   listTasks,
@@ -214,6 +215,7 @@ Usage:
   agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task list
+  agentpack task status
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
@@ -317,6 +319,11 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "status") {
+    process.stdout.write(`${redactForRoot(root, formatCurrentTaskStatus(root))}\n`);
+    return;
+  }
+
   if (subcommand === "update") {
     const parsed = parseArgs(args);
     const updateOptions: TaskUpdateOptions = {
@@ -396,7 +403,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, update, list, passport, switch, audit, park, block, update-verification, and close");
+  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, update-verification, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {

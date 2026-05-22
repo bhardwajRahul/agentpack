@@ -313,6 +313,58 @@ export function formatTaskAuditReport(report: TaskAuditReport): string {
   ].join("\n");
 }
 
+export function formatCurrentTaskStatus(root: string): string {
+  let passport: TaskPassport | null;
+
+  try {
+    passport = getCurrentPassport(root);
+  } catch (error) {
+    return [
+      "Task status",
+      `[warn] Cannot read current task passport: ${error instanceof Error ? error.message : String(error)}`
+    ].join("\n");
+  }
+
+  if (!passport) {
+    return [
+      "Task status",
+      "[warn] No current task passport. Run `agentpack task start <title>` before relying on task-scoped handoff."
+    ].join("\n");
+  }
+
+  const git = getGitInfo(root);
+  const drift = formatTaskDrift(passport, git);
+  const nextAction = passport.nextActions[0] || "(none)";
+  const writeScope = passport.writeScope.length > 0 ? passport.writeScope.join(", ") : "(none)";
+  const verification = passport.verification?.status || "unknown";
+
+  return [
+    "Task status",
+    `${passport.title} [${passport.status}]`,
+    `ID: ${passport.id}`,
+    `Branch: ${passport.branch || "(unknown)"}`,
+    `Risk: ${passport.risk || "unknown"}`,
+    `Verification: ${verification}`,
+    `Next: ${nextAction}`,
+    `Write scope: ${writeScope}`,
+    `Drift: ${drift}`
+  ].join("\n");
+}
+
+function formatTaskDrift(passport: TaskPassport, git: ReturnType<typeof getGitInfo>): string {
+  if (!git.available) {
+    return "git unavailable";
+  }
+  const issues: string[] = [];
+  if (passport.branch && git.branch && passport.branch !== git.branch) {
+    issues.push(`branch ${passport.branch} -> ${git.branch}`);
+  }
+  if (passport.currentHead && git.head && passport.currentHead !== git.head) {
+    issues.push(`HEAD ${passport.currentHead} -> ${git.head}`);
+  }
+  return issues.length > 0 ? issues.join("; ") : "none";
+}
+
 function updateCurrentTask(
   root: string,
   status: TaskStatus,
