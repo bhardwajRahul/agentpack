@@ -36,9 +36,9 @@ Release discipline:
   later once the exact release contract is stable.
 
 ```bash
-# 1. After feature or release-prep commits are reviewed and pushed, create a separate release-prep commit for the version bump and release notes, then rerun full preflight.
-
-# 1.1 Docs-only commits after a verified release do not require a full preflight; review the diff and run lightweight checks such as `git diff --check`.
+# 1. After feature/code commits are reviewed and pushed, create a separate release-prep commit for the version bump.
+#    Re-run full preflight after the version bump because package metadata and the tarball changed.
+#    Docs-only commits after a verified release do not require full preflight; review the diff and run lightweight checks such as `git diff --check`.
 
 npm version patch --no-git-tag-version
 VERSION="$(node -p "require('./package.json').version")"
