@@ -549,7 +549,7 @@ test("manages a current task passport", () => {
 
   assert.match(run(dir, [
     "task",
-    "update-verification",
+    "verify",
     "--status",
     "passed",
     "--evidence",

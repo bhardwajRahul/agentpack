@@ -179,7 +179,7 @@ agentpack task update --next "Run focused regression tests" --write-scope tests/
 agentpack task audit
 agentpack task park
 agentpack task block --reason "Waiting for API decision"
-agentpack task update-verification --status passed --evidence evt_... --summary "Focused checks passed"
+agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
 agentpack task close
 ```
 
@@ -193,7 +193,7 @@ agentpack task close
 
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
-`task update-verification` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result.
+`task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
 
 ## Role Lanes
 

@@ -209,13 +209,19 @@ Usage:
   agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
   agentpack doctor
   agentpack mcp [--root <path>]
+
+Primary task workflow:
+  agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
+  agentpack task status
+  agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
+  agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack checkpoint -m <summary> --status <text> --next <item>
+
+Advanced/debug commands:
   agentpack set goal <text>
   agentpack set status <text>
   agentpack set next <item> [--next <item>]
-  agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
-  agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task list
-  agentpack task status
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
@@ -230,7 +236,6 @@ Usage:
   agentpack note <text>
   agentpack evidence add --kind test-output --file test.log
   agentpack run "npm test"
-  agentpack checkpoint -m <summary> --status <text> --next <item>
   agentpack resume --preset agent [--query <text>]
   agentpack export --to markdown --preset chat [--query <text>]
   agentpack diff [from] [to]
@@ -386,7 +391,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  if (subcommand === "update-verification") {
+  if (subcommand === "verify" || subcommand === "update-verification") {
     const parsed = parseArgs(args);
     const passport = updateCurrentTaskVerification(root, {
       status: stringOption(parsed.options.status),
@@ -403,7 +408,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, update-verification, and close");
+  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, verify, update-verification, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {
