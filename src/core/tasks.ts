@@ -55,6 +55,7 @@ export interface TaskAuditSourceStatus {
 export interface TaskAuditIssue {
   level: "ok" | "warn";
   message: string;
+  category?: "task" | "metadata";
 }
 
 export interface TaskAuditReport {
@@ -294,22 +295,35 @@ export function auditCurrentTask(root: string, sourceStatuses: TaskAuditSourceSt
   }
 
   if (staleSources.length > 0) {
-    issues.push({ level: "warn", message: `Source cache has ${staleSources.length} changed or missing record(s): ${staleSources.map((source) => source.path).join(", ")}.` });
+    issues.push({
+      level: "warn",
+      category: "metadata",
+      message: `Source cache metadata has ${staleSources.length} changed or missing record(s): ${staleSources.map((source) => source.path).join(", ")}. Refresh only records whose durable conclusions changed.`
+    });
   } else {
-    issues.push({ level: "ok", message: "No changed or missing recorded source conclusions." });
+    issues.push({ level: "ok", category: "metadata", message: "No changed or missing recorded source conclusions." });
   }
 
-  if (issues.every((issue) => issue.level === "ok")) {
-    issues.push({ level: "ok", message: "No task audit warnings." });
+  if (issues.filter((issue) => issue.category !== "metadata").every((issue) => issue.level === "ok")) {
+    issues.push({ level: "ok", message: "No action-required task warnings." });
   }
 
   return { passport, issues };
 }
 
 export function formatTaskAuditReport(report: TaskAuditReport): string {
+  const taskIssues = report.issues.filter((issue) => issue.category !== "metadata");
+  const metadataIssues = report.issues.filter((issue) => issue.category === "metadata");
   return [
     "Task audit",
-    ...report.issues.map((issue) => `[${issue.level}] ${issue.message}`)
+    ...taskIssues.map((issue) => `[${issue.level}] ${issue.message}`),
+    ...(metadataIssues.length
+      ? [
+          "",
+          "Metadata",
+          ...metadataIssues.map((issue) => `[${issue.level}] ${issue.message}`)
+        ]
+      : [])
   ].join("\n");
 }
 

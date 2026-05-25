@@ -189,7 +189,7 @@ agentpack task close
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 
-`task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, stale source conclusions, and closed-current-task anomalies.
+`task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, closed-current-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so stale source records do not look like action-required task failures.
 
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 

@@ -502,6 +502,7 @@ test("manages a current task passport", () => {
   assert.match(initialAudit, /Task audit/);
   assert.match(initialAudit, new RegExp(`Current task: ${taskId} \\[active\\] Add task passports`));
   assert.match(initialAudit, /Verification is unknown/);
+  assert.match(initialAudit, /Metadata/);
   assert.match(initialAudit, /No changed or missing recorded source conclusions/);
 
   assert.match(run(dir, [
@@ -535,7 +536,8 @@ test("manages a current task passport", () => {
   run(dir, ["source", "add", "src/index.ts", "--summary", "Task passport fixture source."]);
   writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 2;\n", "utf8");
   const staleAudit = run(dir, ["task", "audit"]);
-  assert.match(staleAudit, /Source cache has 1 changed or missing record\(s\): src\/index\.ts/);
+  assert.match(staleAudit, /Source cache metadata has 1 changed or missing record\(s\): src\/index\.ts/);
+  assert.match(staleAudit, /Refresh only records whose durable conclusions changed/);
 
   assert.match(run(dir, ["task", "block", "--reason", "Waiting for review"]), /Blocked task/);
   const blocked = JSON.parse(run(dir, ["task", "passport"]));
