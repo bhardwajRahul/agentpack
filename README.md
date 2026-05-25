@@ -122,6 +122,7 @@ npm ci --ignore-scripts
 npm test
 npm run mcp:smoke
 node dist/src/agentpack.js --help
+node dist/src/agentpack.js task --help
 ```
 
 This repo uses Agentpack itself through MCP — see [docs/DOGFOOD.md](docs/DOGFOOD.md) for the working protocol and [docs/SETUP.md](docs/SETUP.md) for the full setup guide. Release process is documented in [docs/RELEASING.md](docs/RELEASING.md).
@@ -141,10 +142,11 @@ Agentpack's default loop is MCP-connected and agent-led:
 1. The agent starts a session by loading compact Agentpack context for the repo.
 2. Before relying on prior source conclusions, it checks whether recorded files are unchanged, changed, or missing.
 3. While working, it records durable decisions, failed approaches, useful evidence, and reviewed source conclusions.
-4. At a coherent boundary, it creates a checkpoint with status, next actions, git state, and a compact resume.
-5. The next Codex, Claude Code, Cursor, or MCP-capable agent continues from that task state instead of rebuilding it from chat history.
+4. At handoff or completion time, it verifies the Task Passport, prints a compact handoff, and finalizes the task when verification is final.
+5. At a coherent boundary, it creates a checkpoint with status, next actions, git state, and a compact resume.
+6. The next Codex, Claude Code, Cursor, or MCP-capable agent continues from that task state instead of rebuilding it from chat history.
 
-The CLI mirrors this loop for humans, demos, debugging, and web-chat fallback. See [docs/CLI.md](docs/CLI.md) for manual commands.
+The CLI mirrors this loop for humans, demos, debugging, and web-chat fallback. See `agentpack task --help` and [docs/CLI.md](docs/CLI.md) for manual commands.
 
 ## Security Posture
 

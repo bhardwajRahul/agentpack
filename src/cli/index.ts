@@ -86,6 +86,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     return;
   }
 
+  if (command === "task" && isHelpRequest(rest[0])) {
+    printTaskHelp();
+    return;
+  }
+
   const root = requirePackRoot(cwd);
 
   if (command === "status") {
@@ -216,10 +221,14 @@ Primary task workflow:
   agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task status
   agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
-  agentpack task handoff
   agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task handoff
   agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack checkpoint -m <summary> --status <text> --next <item>
+
+End-of-task ritual:
+  attach or capture meaningful evidence, verify the task, print a handoff,
+  then finalize when verification is passed, failed, or accepted.
 
 Advanced/debug commands:
   agentpack set goal <text>
@@ -231,6 +240,7 @@ Advanced/debug commands:
   agentpack task audit
   agentpack task park|block|close
   agentpack task update-verification [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task --help
   agentpack source add <file> --summary <text>
   agentpack source remove <file>
   agentpack source prune --missing
@@ -250,6 +260,43 @@ Advanced/debug commands:
 MCP root resolution: --root, then AGENTPACK_ROOT, then current working directory.
 Install defaults to dry-run; pass --write to apply generated client config.
 Budget presets: ${formatBudgetPresets()}
+`);
+}
+
+function isHelpRequest(value: string | undefined): boolean {
+  return !value || value === "--help" || value === "-h" || value === "help";
+}
+
+function printTaskHelp(): void {
+  process.stdout.write(`Agentpack Task Passports
+
+Task Passports keep the current task's reviewed state close to the repo:
+objective, constraints, write scope, next actions, verification, evidence,
+handoff context, and lifecycle status.
+
+Common workflow:
+  agentpack task start <title> [--objective <text>] [--write-scope <path>] [--next <item>] [--risk low|medium|high]
+  agentpack task status
+  agentpack task update [--objective <text>] [--write-scope <path>] [--next <item>] [--risk low|medium|high]
+  agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task handoff
+  agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
+
+Inspection and coordination:
+  agentpack task list
+  agentpack task passport
+  agentpack task switch <id>
+  agentpack task audit
+  agentpack task park
+  agentpack task block --reason <text>
+  agentpack task close
+
+Notes:
+  Write scopes are repo-relative paths; . means the repository root.
+  task status is the quick current-task view.
+  task audit is the diagnostic continuity check.
+  task handoff is the compact summary for another chat, client, worktree, or agent.
+  task finalize refuses unknown or pending verification by default.
 `);
 }
 
@@ -292,6 +339,11 @@ function noteCommand(root: string, rest: string[]): void {
 function taskCommand(root: string, rest: string[]): void {
   const subcommand = rest[0];
   const args = rest.slice(1);
+
+  if (isHelpRequest(subcommand)) {
+    printTaskHelp();
+    return;
+  }
 
   if (subcommand === "start") {
     const parsed = parseArgs(args);

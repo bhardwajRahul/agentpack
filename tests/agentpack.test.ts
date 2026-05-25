@@ -37,7 +37,14 @@ test("--version and --help run without an initialized pack", () => {
   assert.match(help, /Agentpack/);
   assert.match(help, /Default workflow/);
   assert.match(help, /MCP-connected agents/);
+  assert.match(help, /End-of-task ritual/);
   assert.match(help, /--version/);
+
+  const taskHelp = run(dir, ["task", "--help"]);
+  assert.match(taskHelp, /Agentpack Task Passports/);
+  assert.match(taskHelp, /Common workflow/);
+  assert.match(taskHelp, /task handoff/);
+  assert.match(taskHelp, /task finalize refuses unknown or pending verification/);
 });
 
 test("creates a pack, records source context, checkpoints, and exports handoff", () => {

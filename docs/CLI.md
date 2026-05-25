@@ -41,17 +41,31 @@ agentpack task update \
   --risk medium
 agentpack task list
 agentpack task status
-agentpack task handoff
-agentpack task passport
-agentpack task audit
-agentpack task block --reason "Waiting for API decision"
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
+agentpack task handoff
 agentpack task finalize
 ```
 
 Write scopes are repo-relative paths. `.` means the repository root.
 
-`task start` refuses to replace an active, blocked, or verifying current task; park or close the current task first when starting unrelated work. Invalid risk values are rejected instead of being treated as unknown. `task status` prints a short current-task view without running a source-cache audit. `task handoff` prints a compact current-passport handoff with objective, constraints, write scope, next actions, verification, drift, and audit summary for switching chats, clients, worktrees, or agents. `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task update` patches objective, constraints, write scope, next actions, tags, and risk without changing lifecycle status; list fields are appended and deduplicated. Empty or no-op updates fail, and unknown risk values are rejected. `task audit` checks the current passport for branch/head drift, missing next actions, open verification, closed-task anomalies, and source-cache metadata drift; metadata warnings are shown separately so they do not look like action-required task failures. `task verify` writes verification status, evidence IDs, and summary into the passport; without flags it marks verification as `pending`, and with `--status`, `--evidence`, and `--summary` it can close the audit warning with evidence-backed verification. `task finalize` closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. `task close` remains available for explicit manual closure. `task update-verification` remains available as a compatibility alias. When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
+The common workflow is:
+
+1. `task start` declares the work.
+2. `task status` gives a quick current-task view.
+3. `task update` keeps objective, scope, risk, or next actions current.
+4. `task verify` records the verification result and linked evidence.
+5. `task handoff` prints the compact summary for another chat, client, worktree, or agent.
+6. `task finalize` closes the task after verification is final.
+
+Use `agentpack task --help` for the task-focused command list.
+
+`task start` refuses to replace an active, blocked, or verifying current task; park or close the current task first when starting unrelated work. Invalid risk values are rejected instead of being treated as unknown.
+
+`task audit` checks the current passport for branch/head drift, missing next actions, open verification, closed-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so they do not look like action-required task failures.
+
+`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
+
+When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
 
 ## Record Durable State
 

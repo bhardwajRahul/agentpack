@@ -182,9 +182,12 @@ agentpack task park
 agentpack task block --reason "Waiting for API decision"
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
 agentpack task finalize
+agentpack task --help
 ```
 
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
+
+The normal human-facing sequence is: start the task, keep status/scope/next actions current, record verification with evidence, print a handoff when another agent or chat may continue, then finalize only after verification is final.
 
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
