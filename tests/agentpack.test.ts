@@ -419,6 +419,54 @@ test("removes explicit and missing source records", () => {
   assert.equal(events.some((event) => event.type === "source-remove" && event.path === "active.js"), true);
 });
 
+test("requires semantic review to refresh changed source records", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-review-test-"));
+  writeFileSync(path.join(dir, "reviewed.js"), "console.log('reviewed v1')\n", "utf8");
+
+  run(dir, ["init"]);
+  run(dir, ["source", "add", "reviewed.js", "--summary", "Reviewed v1 behavior."]);
+  writeFileSync(path.join(dir, "reviewed.js"), "console.log('reviewed v2')\n", "utf8");
+
+  const changedStatus = run(dir, ["source", "status", "--changed"]);
+  assert.match(changedStatus, /CHANGED reviewed\.js/);
+  assert.doesNotMatch(changedStatus, /UNCHANGED reviewed\.js/);
+
+  const missingStatus = run(dir, ["source", "status", "--missing"]);
+  assert.match(missingStatus, /No missing source records/);
+
+  assert.match(
+    runExpectError(dir, ["source", "add", "reviewed.js", "--summary", "Blindly update hash."]),
+    /use `agentpack source review reviewed\.js --summary <text>` after semantic review/
+  );
+
+  const stillChanged = run(dir, ["source", "status", "--changed"]);
+  assert.match(stillChanged, /CHANGED reviewed\.js/);
+
+  assert.match(
+    runExpectError(dir, ["source", "review", "reviewed.js"]),
+    /source review requires --summary <text>/
+  );
+
+  const review = run(dir, ["source", "review", "reviewed.js", "--summary", "Reviewed v2 behavior."]);
+  assert.match(review, /Reviewed source reviewed\.js/);
+
+  const noChanged = run(dir, ["source", "status", "--changed"]);
+  assert.match(noChanged, /No changed source records/);
+
+  const refreshedStatus = run(dir, ["source", "status"]);
+  assert.match(refreshedStatus, /UNCHANGED reviewed\.js/);
+  assert.match(refreshedStatus, /summary: Reviewed v2 behavior\./);
+
+  const changedJson = JSON.parse(run(dir, ["source", "status", "--changed", "--json"])) as unknown[];
+  assert.deepEqual(changedJson, []);
+
+  const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string; path?: string });
+  assert.equal(events.some((event) => event.type === "source-review" && event.path === "reviewed.js"), true);
+});
+
 test("manages a current task passport", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-test-"));
   mkdirSync(path.join(dir, "src"));

@@ -39,11 +39,38 @@ export interface SourceStatus {
   gitStatus: string | null;
 }
 
+export type SourceStatusKind = SourceStatus["status"];
+
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
+  return writeSourceRecord(root, filePath, {
+    summary: options.summary || "Reviewed source.",
+    snippet: options.snippet || "",
+    eventType: "source"
+  });
+}
+
+export function reviewSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
+  const summary = (options.summary || "").trim();
+  if (!summary) {
+    throw new Error("source review requires --summary <text>; changed source conclusions must be refreshed by semantic review, not hash-only refresh.");
+  }
+
+  return writeSourceRecord(root, filePath, {
+    summary,
+    snippet: options.snippet || "",
+    eventType: "source-review"
+  });
+}
+
+function writeSourceRecord(
+  root: string,
+  filePath: string,
+  options: { summary: string; snippet: string; eventType: "source" | "source-review" }
+): SourceRecord {
   return withPackWriteLock(root, () => {
     const source = getFileRecord(root, filePath, {
-      summary: redactForRoot(root, options.summary || "Reviewed source."),
-      snippet: redactForRoot(root, options.snippet || "")
+      summary: redactForRoot(root, options.summary),
+      snippet: redactForRoot(root, options.snippet)
     });
     const state = readSources(root);
     const existing = state.sources.findIndex((item) => item.path === source.path);
@@ -55,7 +82,7 @@ export function addSourceRecord(root: string, filePath: string, options: SourceR
     }
 
     writeSources(root, state);
-    appendEvent(root, "source", {
+    appendEvent(root, options.eventType, {
       path: source.path,
       hash: source.hash,
       summary: source.summary
@@ -149,14 +176,20 @@ function normalizeSourcePath(root: string, inputPath: string): string {
   return normalizePath(relativePath);
 }
 
-export function getSourceStatuses(root: string): SourceStatus[] {
+export function getSourceStatus(root: string, filePath: string): SourceStatus | null {
+  const normalizedPath = normalizeSourcePath(root, filePath);
+  return getSourceStatuses(root).find((source) => source.path === normalizedPath) || null;
+}
+
+export function getSourceStatuses(root: string, filters: SourceStatusKind[] = []): SourceStatus[] {
   const sources = readSources(root).sources || [];
   const gitStatuses = getGitStatuses(root);
+  const filterSet = new Set(filters);
 
-  return sources.map((source) => {
+  const statuses: SourceStatus[] = sources.map((source) => {
     const absolutePath = path.join(root, source.path);
     const currentHash = existsSync(absolutePath) ? sha256File(absolutePath) : null;
-    const status = currentHash === null
+    const status: SourceStatusKind = currentHash === null
       ? "missing"
       : currentHash === source.hash
         ? "unchanged"
@@ -172,17 +205,30 @@ export function getSourceStatuses(root: string): SourceStatus[] {
       gitStatus: gitStatuses.get(source.path) || null
     };
   });
+
+  if (filterSet.size === 0) {
+    return statuses;
+  }
+
+  return statuses.filter((source) => filterSet.has(source.status));
 }
 
-export function formatSourceStatuses(root: string): string {
-  const statuses = getSourceStatuses(root);
+export function formatSourceStatuses(root: string, filters: SourceStatusKind[] = []): string {
+  const allStatuses = getSourceStatuses(root);
+  const statuses = filters.length > 0
+    ? allStatuses.filter((source) => filters.includes(source.status))
+    : allStatuses;
   const gitStatuses = getGitStatuses(root);
 
-  if (statuses.length === 0) {
+  if (allStatuses.length === 0) {
     return formatNoSourceRecords(gitStatuses);
   }
 
-  const recordedPaths = new Set(statuses.map((source) => source.path));
+  if (statuses.length === 0) {
+    return `No ${formatStatusFilter(filters)} source records.`;
+  }
+
+  const recordedPaths = new Set(allStatuses.map((source) => source.path));
   const unrecordedGitChanges = [...gitStatuses.entries()]
     .filter(([filePath]) => !recordedPaths.has(filePath))
     .map(([filePath, status]) => `- ${status} ${filePath}`);
@@ -258,6 +304,13 @@ function formatNoSourceRecords(gitStatuses: Map<string, string>): string {
   }
 
   return lines.join("\n");
+}
+
+function formatStatusFilter(filters: SourceStatusKind[]): string {
+  if (filters.length === 0) {
+    return "matching";
+  }
+  return filters.join(" or ");
 }
 
 function formatHashStatus(status: SourceStatus["status"]): string {

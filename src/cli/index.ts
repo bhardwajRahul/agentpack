@@ -38,11 +38,14 @@ import {
   addEvidence,
   addSourceRecord,
   formatSourceStatuses,
+  getSourceStatus,
   getSourceStatuses,
   pruneMissingSourceRecords,
   removeSourceRecord,
+  reviewSourceRecord,
   replayEvents
 } from "../operations.js";
+import type { SourceStatusKind } from "../operations.js";
 import { installIntegration } from "../integrations/install.js";
 import { startMcpServer } from "../mcp/server.js";
 
@@ -227,7 +230,7 @@ Task Passport:
 
 Inspect and export:
   agentpack resume --preset agent [--query <text>]
-  agentpack source status [--json]
+  agentpack source status [--json] [--changed] [--missing]
   agentpack export --to markdown --preset chat [--query <text>]
 
 More:
@@ -467,11 +470,12 @@ function sourceCommand(root: string, rest: string[]): void {
 
   if (subcommand === "status") {
     const parsed = parseArgs(args);
+    const filters = sourceStatusFilters(parsed.options);
     if (parsed.options.json) {
-      const statuses = JSON.stringify(getSourceStatuses(root), null, 2);
+      const statuses = JSON.stringify(getSourceStatuses(root, filters), null, 2);
       process.stdout.write(`${redactForRoot(root, statuses)}\n`);
     } else {
-      process.stdout.write(`${formatSourceStatuses(root)}\n`);
+      process.stdout.write(`${formatSourceStatuses(root, filters)}\n`);
     }
     return;
   }
@@ -503,22 +507,49 @@ function sourceCommand(root: string, rest: string[]): void {
     return;
   }
 
-  if (subcommand !== "add") {
-    throw new Error("source command supports `add`, `remove`, `prune`, and `status`");
+  if (subcommand !== "add" && subcommand !== "review") {
+    throw new Error("source command supports `add`, `review`, `remove`, `prune`, and `status`");
   }
 
   const parsed = parseArgs(args);
   const filePath = parsed.positionals[0];
   if (!filePath) {
-    throw new Error("source add requires a file path");
+    throw new Error(`source ${subcommand} requires a file path`);
+  }
+
+  const summary = stringOption(parsed.options.summary) || stringOption(parsed.options.s) || parsed.positionals.slice(1).join(" ");
+
+  if (subcommand === "review") {
+    const source = reviewSourceRecord(root, filePath, {
+      summary,
+      snippet: stringOption(parsed.options.snippet) || ""
+    });
+    process.stdout.write(`Reviewed source ${source.path} (${source.hash.slice(0, 12)})\n`);
+    return;
+  }
+
+  const existingStatus = getSourceStatus(root, filePath);
+  if (existingStatus?.status === "changed") {
+    throw new Error(`Source record for ${existingStatus.path} is changed; use \`agentpack source review ${existingStatus.path} --summary <text>\` after semantic review.`);
   }
 
   const source = addSourceRecord(root, filePath, {
-    summary: stringOption(parsed.options.summary) || stringOption(parsed.options.s) || parsed.positionals.slice(1).join(" "),
+    summary,
     snippet: stringOption(parsed.options.snippet) || ""
   });
 
   process.stdout.write(`Recorded source ${source.path} (${source.hash.slice(0, 12)})\n`);
+}
+
+function sourceStatusFilters(options: Record<string, ArgValue>): SourceStatusKind[] {
+  const filters: SourceStatusKind[] = [];
+  if (options.changed) {
+    filters.push("changed");
+  }
+  if (options.missing) {
+    filters.push("missing");
+  }
+  return filters;
 }
 
 function evidenceCommand(root: string, rest: string[]): void {

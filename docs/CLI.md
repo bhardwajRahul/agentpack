@@ -9,13 +9,21 @@ Use the CLI directly when you want to inspect state yourself, debug an MCP setup
 ```bash
 agentpack resume --preset agent --query "MCP install"
 agentpack source status
+agentpack source status --changed
+agentpack source status --missing
 agentpack replay
 agentpack diff
 ```
 
 `resume --preset agent` shows the current goal, status, next actions, git state, durable decisions, dead ends, evidence, and source-cache guidance under a rough context budget.
 
-`source status` tells you which recorded source conclusions are still valid and which files need to be reopened. It compares current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`.
+`source status` tells you which recorded source conclusions are still valid and which files need to be reopened. It compares current file content to the hash recorded with the source conclusion; it is not a replacement for `git status`. Use `--changed` or `--missing` to focus triage on stale records.
+
+Changed source records require semantic review, not hash-only refresh. After reopening a changed file and confirming the durable conclusion, update the record with a fresh summary:
+
+```bash
+agentpack source review src/checkout.ts --summary "Checkout totals still flow through calculateTotals; tax handling moved into normalizeLineItems."
+```
 
 To clean up stale source-cache entries after files are deleted or conclusions are no longer useful:
 
