@@ -393,6 +393,57 @@ export function formatCurrentTaskStatus(root: string): string {
   ].join("\n");
 }
 
+export function formatCurrentTaskHandoff(root: string, sourceStatuses: TaskAuditSourceStatus[] = []): string {
+  let passport: TaskPassport | null;
+
+  try {
+    passport = getCurrentPassport(root);
+  } catch (error) {
+    return [
+      "Task handoff",
+      `[warn] Cannot read current task passport: ${error instanceof Error ? error.message : String(error)}`
+    ].join("\n");
+  }
+
+  if (!passport) {
+    return [
+      "Task handoff",
+      "[warn] No current task passport. Run `agentpack task start <title>` before relying on task-scoped handoff."
+    ].join("\n");
+  }
+
+  const git = getGitInfo(root);
+  const report = auditCurrentTask(root, sourceStatuses);
+  const taskWarnings = report.issues.filter((issue) => issue.level === "warn" && issue.category !== "metadata");
+  const metadataWarnings = report.issues.filter((issue) => issue.level === "warn" && issue.category === "metadata");
+  const verification = passport.verification;
+
+  return [
+    "Task handoff",
+    `${passport.title} [${passport.status}]`,
+    `ID: ${passport.id}`,
+    `Objective: ${passport.objective || "(none)"}`,
+    `Branch: ${passport.branch || "(unknown)"}`,
+    `HEAD: ${git.head || passport.currentHead || "(unknown)"}`,
+    `Risk: ${passport.risk || "unknown"}`,
+    `Verification: ${verification.status}${verification.summary ? ` - ${verification.summary}` : ""}`,
+    `Evidence: ${verification.evidence.length > 0 ? verification.evidence.join(", ") : "(none)"}`,
+    "Constraints:",
+    ...formatList(passport.constraints),
+    "Write scope:",
+    ...formatList(passport.writeScope),
+    "Next actions:",
+    ...formatList(passport.nextActions),
+    `Drift: ${formatTaskDrift(passport, git)}`,
+    `Audit: ${taskWarnings.length > 0 ? taskWarnings.map((issue) => issue.message).join(" | ") : "No action-required task warnings."}`,
+    `Metadata: ${metadataWarnings.length > 0 ? metadataWarnings.map((issue) => issue.message).join(" | ") : "No source-cache metadata warnings."}`
+  ].join("\n");
+}
+
+function formatList(items: string[]): string[] {
+  return items.length > 0 ? items.map((item) => `- ${item}`) : ["- (none)"];
+}
+
 function formatTaskDrift(passport: TaskPassport, git: ReturnType<typeof getGitInfo>): string {
   if (!git.available) {
     return "git unavailable";

@@ -12,6 +12,7 @@ import {
   blockCurrentTask,
   closeCurrentTask,
   finalizeCurrentTask,
+  formatCurrentTaskHandoff,
   formatCurrentTaskStatus,
   formatTaskAuditReport,
   getCurrentPassport,
@@ -215,6 +216,7 @@ Primary task workflow:
   agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task status
   agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
+  agentpack task handoff
   agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack checkpoint -m <summary> --status <text> --next <item>
@@ -331,6 +333,11 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "handoff") {
+    process.stdout.write(`${redactForRoot(root, formatCurrentTaskHandoff(root, getSourceStatuses(root)))}\n`);
+    return;
+  }
+
   if (subcommand === "update") {
     const parsed = parseArgs(args);
     const updateOptions: TaskUpdateOptions = {
@@ -421,7 +428,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
+  throw new Error("task command supports start, update, list, status, handoff, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {

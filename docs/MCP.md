@@ -14,7 +14,8 @@ Generated Codex, Claude Code, and Cursor instructions tell connected agents to u
 2. Call `source_status` only when you need a full stale-source check beyond the context you just loaded.
 3. Record durable decisions, dead ends, evidence, and reviewed source conclusions while working.
 4. Call `checkpoint` after meaningful progress so the next session inherits status, next actions, git state, and compact resume context.
-5. When a Task Passport is verified, call `task_finalize` to close it instead of leaving the next agent to infer whether the work is done.
+5. Call `task_handoff` before switching chats, clients, worktrees, or agents.
+6. When a Task Passport is verified, call `task_finalize` to close it instead of leaving the next agent to infer whether the work is done.
 
 For small tasks, prefer one aggregated evidence item plus one checkpoint summary. Do not call `source_status` repeatedly when `load_context`, `task_audit`, or a recent status check already answered the question. Do not call `record_source` for every changed file just to clear an audit warning; refresh a source record only when its durable conclusion changed.
 
@@ -30,6 +31,7 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `source_status`
 - `task_audit`
 - `task_finalize`
+- `task_handoff`
 - `task_update`
 - `task_update_verification`
 - `checkpoint`
@@ -40,6 +42,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 `load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/topic/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
 
 `task_audit` checks the current Task Passport for continuity risks: missing or unreadable passport state, closed current task, missing next actions, open verification, missing write scope, branch/head drift, worktree mismatch, and source-cache metadata drift. Pass `{ "json": true }` for structured output.
+
+`task_handoff` generates a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
@@ -72,6 +76,7 @@ The smoke test verifies:
 - `tools/call source_status`
 - `tools/call task_audit`
 - `tools/call task_finalize`
+- `tools/call task_handoff`
 - `tools/call task_update`
 - `tools/call task_update_verification`
 - `tools/call resume`

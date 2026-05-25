@@ -173,6 +173,7 @@ agentpack task start "Fix checkout discount bug" \
 
 agentpack task list
 agentpack task status
+agentpack task handoff
 agentpack task passport
 agentpack task switch task_20260518_source_cleanup
 agentpack task update --next "Run focused regression tests" --write-scope tests/checkout.test.ts --risk medium
@@ -188,6 +189,8 @@ agentpack task finalize
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
+
+`task handoff` prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
 `task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, closed-current-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so stale source records do not look like action-required task failures.
 

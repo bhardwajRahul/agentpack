@@ -5,7 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, finalizeCurrentTask, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -108,6 +108,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         json: { type: "boolean" }
       }
+    }
+  },
+  {
+    name: "task_handoff",
+    description: "Generate a compact current Task Passport handoff for switching chats, clients, worktrees, or agents.",
+    inputSchema: {
+      type: "object",
+      properties: {}
     }
   },
   {
@@ -387,6 +395,10 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       return toolText(redactForRoot(root, JSON.stringify(report, null, 2)));
     }
     return toolText(redactForRoot(root, formatTaskAuditReport(report)));
+  }
+
+  if (name === "task_handoff") {
+    return toolText(redactForRoot(root, formatCurrentTaskHandoff(root, getSourceStatuses(root))));
   }
 
   if (name === "task_update_verification") {

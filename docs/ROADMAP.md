@@ -105,6 +105,7 @@ Recent dogfood confirmed these workflow pains and fixes:
 
 - `task audit` was too noisy, so metadata drift is now separated from action-required task warnings
 - quick current-task inspection was missing, so `agentpack task status` now exists
+- switching chats or agents needed a compact task-first summary, so local main now has `agentpack task handoff`
 - ending a task required too many manual steps, so local main now has `agentpack task finalize`
 - the release flow is still manual, but it is tolerable enough to keep release automation deferred
 - ledger cadence still needs dogfood attention so agents avoid recording every micro-step
@@ -116,6 +117,7 @@ Patch only blockers or cohesive ergonomics improvements during this period. Pref
 Implemented locally after v0.1.12:
 
 - `agentpack task status`: short human-readable current task view
+- `agentpack task handoff`: compact current-passport handoff for chat/client/worktree switches
 - `agentpack task finalize`: a small ritual for evidence-backed verification and close
 - softer audit output that separates action-required issues from accepted metadata warnings
 

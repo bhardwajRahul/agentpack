@@ -176,6 +176,7 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `record_source`
 - `source_status`
 - `task_audit`
+- `task_handoff`
 - `task_update`
 - `task_update_verification`
 - `task_finalize`
@@ -194,6 +195,7 @@ Current:
 - local MCP server
 - Codex, Claude Code, Claude Desktop, and Cursor installers
 - current Task Passport workflow for task-scoped handoff
+- compact handoff view for switching chats, clients, worktrees, or agents
 - reviewed source cache with file hashes
 - decisions, dead ends, evidence, checkpoints, and budgeted resumes
 - markdown fallback export

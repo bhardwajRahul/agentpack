@@ -130,6 +130,7 @@ test("exposes expected MCP tools", () => {
     "source_status",
     "task_audit",
     "task_finalize",
+    "task_handoff",
     "task_update",
     "task_update_verification"
   ]);
@@ -486,6 +487,15 @@ test("manages a current task passport", () => {
   assert.match(status, /Write scope: src\/index\.ts/);
   assert.match(status, /Drift: none/);
 
+  const handoff = run(dir, ["task", "handoff"]);
+  assert.match(handoff, /Task handoff/);
+  assert.match(handoff, /Add task passports \[active\]/);
+  assert.match(handoff, /Objective: Model current task handoff state\./);
+  assert.match(handoff, /Constraints:\n- Keep v0 state readable\./);
+  assert.match(handoff, /Write scope:\n- src\/index\.ts/);
+  assert.match(handoff, /Next actions:\n- Wire CLI/);
+  assert.match(handoff, /Audit: Verification is unknown/);
+
   const currentPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(currentPassport.id, taskId);
 
@@ -566,6 +576,10 @@ test("manages a current task passport", () => {
   assert.deepEqual(passed.verification.evidence, ["evt_task_test"]);
   assert.equal(passed.verification.summary, "Focused task passport checks passed.");
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Verification is/);
+  const verifiedHandoff = run(dir, ["task", "handoff"]);
+  assert.match(verifiedHandoff, /Verification: passed - Focused task passport checks passed\./);
+  assert.match(verifiedHandoff, /Evidence: evt_task_test/);
+  assert.match(verifiedHandoff, /Audit: No action-required task warnings\./);
 
   assert.match(run(dir, ["task", "finalize"]), /Finalized task .* \(passed\)/);
   const closed = JSON.parse(run(dir, ["task", "passport"]));
@@ -1031,9 +1045,22 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     "Finish MCP verification"
   ]);
 
-  const evidence = await mcp.send({
+  const taskHandoff = await mcp.send({
     jsonrpc: "2.0",
     id: 8,
+    method: "tools/call",
+    params: {
+      name: "task_handoff",
+      arguments: {}
+    }
+  });
+  assert.match(taskHandoff.result.content[0].text, /Task handoff/);
+  assert.match(taskHandoff.result.content[0].text, /MCP verification flow \[active\]/);
+  assert.match(taskHandoff.result.content[0].text, /Next actions:\n- Finish MCP verification/);
+
+  const evidence = await mcp.send({
+    jsonrpc: "2.0",
+    id: 9,
     method: "tools/call",
     params: {
       name: "attach_evidence",
@@ -1048,7 +1075,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskVerify = await mcp.send({
     jsonrpc: "2.0",
-    id: 9,
+    id: 10,
     method: "tools/call",
     params: {
       name: "task_update_verification",
@@ -1068,7 +1095,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskUpdate = await mcp.send({
     jsonrpc: "2.0",
-    id: 10,
+    id: 11,
     method: "tools/call",
     params: {
       name: "task_update",
@@ -1093,7 +1120,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const invalidMcpRisk = await mcp.send({
     jsonrpc: "2.0",
-    id: 11,
+    id: 12,
     method: "tools/call",
     params: {
       name: "task_update",
@@ -1106,7 +1133,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskFinalize = await mcp.send({
     jsonrpc: "2.0",
-    id: 12,
+    id: 13,
     method: "tools/call",
     params: {
       name: "task_finalize",
@@ -1120,7 +1147,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
-    id: 13,
+    id: 14,
     method: "tools/call",
     params: {
       name: "resume",
