@@ -38,6 +38,11 @@ export interface TaskVerificationUpdateOptions {
   summary?: string;
 }
 
+export interface TaskVerificationUpdateResult {
+  passport: TaskPassport;
+  changed: boolean;
+}
+
 export interface TaskUpdateOptions {
   objective?: string;
   constraints?: string[];
@@ -214,9 +219,19 @@ export function updateCurrentTaskPassport(root: string, options: TaskUpdateOptio
   });
 }
 
-export function updateCurrentTaskVerification(root: string, options: TaskVerificationUpdateOptions = {}): TaskPassport {
-  return updateCurrentTask(root, "verifying", "task-verify", (existing) => ({
-    verification: {
+export function updateCurrentTaskVerification(root: string, options: TaskVerificationUpdateOptions = {}): TaskVerificationUpdateResult {
+  return withPackWriteLock(root, () => {
+    const current = readCurrentTaskId(root);
+    if (!current) {
+      throw new Error("No current task. Run `agentpack task start <title>` first.");
+    }
+
+    const existing = readPassport(root, current);
+    if (CLOSED_STATUSES.has(existing.status)) {
+      throw new Error(`Cannot update closed task ${current}`);
+    }
+
+    const verification: TaskVerification = {
       status: parseVerificationStatus(options.status),
       evidence: uniqueStrings([
         ...(existing.verification?.evidence || []),
@@ -225,8 +240,35 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
       summary: options.summary === undefined
         ? existing.verification?.summary || ""
         : options.summary.trim()
+    };
+
+    if (existing.status === "verifying" && sameVerification(existing.verification, verification)) {
+      return { passport: existing, changed: false };
     }
-  }));
+
+    const now = new Date().toISOString();
+    const git = getGitInfo(root);
+    const passport: TaskPassport = {
+      ...existing,
+      status: "verifying",
+      verification,
+      currentHead: git.head,
+      updatedAt: now
+    };
+
+    writePassport(root, passport);
+    appendTaskEvent(root, passport.id, "task-verify", {
+      status: passport.status,
+      objective: passport.objective,
+      writeScope: passport.writeScope,
+      nextActions: passport.nextActions,
+      risk: passport.risk,
+      reason: passport.blockedReason || "",
+      verificationStatus: passport.verification.status,
+      evidence: passport.verification.evidence
+    });
+    return { passport, changed: true };
+  });
 }
 
 export function closeCurrentTask(root: string): TaskPassport {
@@ -641,6 +683,13 @@ function normalizeWriteScope(root: string, writeScope: string[]): string[] {
 
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function sameVerification(left: TaskVerification, right: TaskVerification): boolean {
+  return left.status === right.status &&
+    left.summary === right.summary &&
+    left.evidence.length === right.evidence.length &&
+    left.evidence.every((item, index) => item === right.evidence[index]);
 }
 
 function samePath(left: string, right: string): boolean {

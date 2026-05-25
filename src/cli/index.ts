@@ -435,11 +435,16 @@ function taskCommand(root: string, rest: string[]): void {
 
   if (subcommand === "verify" || subcommand === "update-verification") {
     const parsed = parseArgs(args);
-    const passport = updateCurrentTaskVerification(root, {
+    const result = updateCurrentTaskVerification(root, {
       status: stringOption(parsed.options.status),
       evidence: toArray(parsed.options.evidence),
       summary: redactForRoot(root, stringOption(parsed.options.summary))
     });
+    const { passport } = result;
+    if (!result.changed) {
+      process.stdout.write(`Verification unchanged for task ${passport.id} (${passport.verification.status})\n`);
+      return;
+    }
     process.stdout.write(`Updated verification for task ${passport.id} (${passport.verification.status})\n`);
     return;
   }

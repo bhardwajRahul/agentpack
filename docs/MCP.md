@@ -49,6 +49,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 
 `task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed.
 
+Repeated identical `task_update_verification` calls are no-ops, so transport retries or accidental duplicate calls do not add duplicate task events.
+
 `task_finalize` closes the current Task Passport only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `status`. It also accepts `evidence` IDs and a short `summary`, matching the CLI `task finalize` command.
 
 ## Smoke Test

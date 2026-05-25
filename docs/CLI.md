@@ -73,6 +73,8 @@ Use `agentpack task --help` for the task-focused command list.
 
 `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
 
+Repeated identical verification updates are treated as no-ops, so retrying the same `task verify` command does not add duplicate task events.
+
 When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
 
 ## Record Durable State

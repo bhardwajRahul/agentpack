@@ -402,11 +402,15 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "task_update_verification") {
-    const passport = updateCurrentTaskVerification(root, {
+    const result = updateCurrentTaskVerification(root, {
       status: text(args.status),
       evidence: stringArray(args.evidence),
       summary: redactForRoot(root, text(args.summary))
     });
+    const { passport } = result;
+    if (!result.changed) {
+      return toolText(`Verification unchanged for task ${passport.id} (${passport.verification.status}).`);
+    }
     return toolText(`Updated verification for task ${passport.id} (${passport.verification.status}).`);
   }
 

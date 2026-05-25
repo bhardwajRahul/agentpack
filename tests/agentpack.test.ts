@@ -632,6 +632,18 @@ test("manages a current task passport", () => {
   assert.equal(passed.verification.status, "passed");
   assert.deepEqual(passed.verification.evidence, ["evt_task_test"]);
   assert.equal(passed.verification.summary, "Focused task passport checks passed.");
+  const eventCountBeforeNoop = taskEventCount(dir, passed.id);
+  assert.match(run(dir, [
+    "task",
+    "verify",
+    "--status",
+    "passed",
+    "--evidence",
+    "evt_task_test",
+    "--summary",
+    "Focused task passport checks passed."
+  ]), /Verification unchanged for task .* \(passed\)/);
+  assert.equal(taskEventCount(dir, passed.id), eventCountBeforeNoop);
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Verification is/);
   const verifiedHandoff = run(dir, ["task", "handoff"]);
   assert.match(verifiedHandoff, /Verification: passed - Focused task passport checks passed\./);
@@ -1175,9 +1187,26 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.deepEqual(mcpUpdatedPassport.tags, ["mcp-task-update"]);
   assert.equal(mcpUpdatedPassport.risk, "medium");
 
-  const invalidMcpRisk = await mcp.send({
+  const eventCountBeforeMcpNoop = taskEventCount(dir, mcpUpdatedPassport.id);
+  const taskVerifyNoop = await mcp.send({
     jsonrpc: "2.0",
     id: 12,
+    method: "tools/call",
+    params: {
+      name: "task_update_verification",
+      arguments: {
+        status: "passed",
+        evidence: [evidenceId],
+        summary: "MCP smoke verification passed."
+      }
+    }
+  });
+  assert.match(taskVerifyNoop.result.content[0].text, /Verification unchanged for task .* \(passed\)/);
+  assert.equal(taskEventCount(dir, mcpUpdatedPassport.id), eventCountBeforeMcpNoop);
+
+  const invalidMcpRisk = await mcp.send({
+    jsonrpc: "2.0",
+    id: 13,
     method: "tools/call",
     params: {
       name: "task_update",
@@ -1190,7 +1219,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskFinalize = await mcp.send({
     jsonrpc: "2.0",
-    id: 13,
+    id: 14,
     method: "tools/call",
     params: {
       name: "task_finalize",
@@ -1204,7 +1233,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
-    id: 14,
+    id: 15,
     method: "tools/call",
     params: {
       name: "resume",
@@ -1261,6 +1290,11 @@ function runGit(cwd: string, args: string[]): string {
     cwd,
     encoding: "utf8"
   });
+}
+
+function taskEventCount(root: string, taskId: string): number {
+  const eventsPath = path.join(root, ".agentpack", "tasks", taskId, "events.jsonl");
+  return readFileSync(eventsPath, "utf8").split("\n").filter(Boolean).length;
 }
 
 interface McpMessage {
