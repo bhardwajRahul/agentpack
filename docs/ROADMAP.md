@@ -49,7 +49,8 @@ agentpack task switch claude-desktop-mcp-install
 agentpack task passport
 agentpack resume --preset agent
 agentpack checkpoint -m "Desktop config tested"
-agentpack task close
+agentpack task verify --status passed --summary "Desktop config tested"
+agentpack task finalize
 ```
 
 Target file shape:
@@ -96,27 +97,29 @@ The target is reliable continuation of the work that was worth preserving.
 
 ## Near-Term Roadmap
 
-### Now: v0.1.11 Dogfood
+### Now: Post-v0.1.12 Dogfood
 
-Goal: run one or two short working sessions without large new features.
+Goal: dogfood the released v0.1.12 package and the local post-release Task Passport ergonomics patch before deciding whether to cut v0.1.13.
 
-Watch where the workflow actually hurts:
+Recent dogfood confirmed these workflow pains and fixes:
 
-- `task audit` is too noisy
-- updating the current passport is awkward
-- the short current-task status view needs real dogfood feedback
-- the release flow is too manual
-- ledger cadence still nudges agents toward extra records
+- `task audit` was too noisy, so metadata drift is now separated from action-required task warnings
+- quick current-task inspection was missing, so `agentpack task status` now exists
+- ending a task required too many manual steps, so local main now has `agentpack task finalize`
+- the release flow is still manual, but it is tolerable enough to keep release automation deferred
+- ledger cadence still needs dogfood attention so agents avoid recording every micro-step
 
-Patch only blockers or very small reliability issues during this period.
+Patch only blockers or cohesive ergonomics improvements during this period. Prefer safe, reviewable chunks that move the product forward without turning every tiny observation into a release.
 
-### Current Patch: Ergonomics
+### Current Patch: Task Passport Ergonomics
 
-Keep this as one or two small improvements, not a broad feature batch:
+Implemented locally after v0.1.12:
 
 - `agentpack task status`: short human-readable current task view
 - `agentpack task finalize`: a small ritual for evidence-backed verification and close
 - softer audit output that separates action-required issues from accepted metadata warnings
+
+Dogfood these together before deciding on a v0.1.13 release. Do not describe `task finalize` as available in the published v0.1.12 package.
 
 ### Release Flow
 

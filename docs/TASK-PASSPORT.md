@@ -163,7 +163,7 @@ Closed statuses are `completed` and `abandoned`. Closed passports remain inspect
 
 ## CLI Shape
 
-Target first CLI surface:
+Current CLI surface:
 
 ```bash
 agentpack task start "Fix checkout discount bug" \

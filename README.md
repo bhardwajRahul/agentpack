@@ -57,6 +57,7 @@ The first version is intentionally small:
 - check whether recorded sources are unchanged, changed, or missing
 - create checkpoints with git status, git diff, and generated resume context
 - run a minimal local MCP server for coding-agent clients
+- manage a current Task Passport for task-scoped handoff and verification
 - export a budgeted markdown handoff for manual fallback workflows
 
 ## Install
@@ -174,6 +175,10 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `attach_evidence`
 - `record_source`
 - `source_status`
+- `task_audit`
+- `task_update`
+- `task_update_verification`
+- `task_finalize`
 - `checkpoint`
 - `resume`
 - `diff`
@@ -188,13 +193,14 @@ Current:
 - repo-local `.agentpack/` ledger
 - local MCP server
 - Codex, Claude Code, Claude Desktop, and Cursor installers
+- current Task Passport workflow for task-scoped handoff
 - reviewed source cache with file hashes
 - decisions, dead ends, evidence, checkpoints, and budgeted resumes
 - markdown fallback export
 
 Next:
 
-- task/workstream separation
+- workstream separation for multiple parked or handed-off task passports
 - semantic checkpoints and evidence-linked handoffs
 - explicit export/import bundles for worktrees, machines, and clients
 - orchestrator recipes

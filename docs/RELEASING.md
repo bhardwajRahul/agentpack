@@ -29,6 +29,9 @@ Release discipline:
   tarball have changed.
 - For small patch releases, write concise notes in the GitHub Release. Do not
   add a weak release-notes file to the repo just to have one.
+- After a release is published, new commits on `main` are next-release
+  candidates. Do not describe unreleased commands or behavior as available in
+  the already-published npm version.
 - The agent may create the GitHub Release when asked, but the human owner can
   check GitHub Actions and npm status manually. Do not add extra workflow/npm
   polling unless explicitly requested.
