@@ -207,55 +207,33 @@ function printHelp(): void {
 Portable task continuity for AI coding agents.
 
 Default workflow:
-  agentpack init, install a client, then let MCP-connected agents use the
-  generated project instructions. CLI commands are for setup, inspection,
-  debugging, demos, and fallback.
+  Initialize a repo, install an MCP client surface, then let connected agents
+  use the generated project instructions. The CLI is for setup, inspection,
+  task handoff, debugging, demos, and fallback.
 
-Usage:
+Setup:
   agentpack init
   agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
   agentpack doctor
   agentpack mcp [--root <path>]
 
-Primary task workflow:
-  agentpack task start <title> [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
+Task Passport:
+  agentpack task start <title> [--objective <text>] [--write-scope <path>] [--next <item>] [--risk low|medium|high]
   agentpack task status
-  agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
-  agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack task handoff
-  agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
-  agentpack checkpoint -m <summary> --status <text> --next <item>
-
-End-of-task ritual:
-  attach or capture meaningful evidence, verify the task, print a handoff,
-  then finalize when verification is passed, failed, or accepted.
-
-Advanced/debug commands:
-  agentpack set goal <text>
-  agentpack set status <text>
-  agentpack set next <item> [--next <item>]
-  agentpack task list
-  agentpack task passport
-  agentpack task switch <id>
-  agentpack task audit
-  agentpack task park|block|close
-  agentpack task update-verification [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task verify --status passed|failed|accepted [--evidence <id>] [--summary <text>]
+  agentpack task finalize
   agentpack task --help
-  agentpack source add <file> --summary <text>
-  agentpack source remove <file>
-  agentpack source prune --missing
-  agentpack source status [--json]
-  agentpack record decision <text>
-  agentpack record dead-end <text> --reason <text>
-  agentpack note <text>
-  agentpack evidence add --kind test-output --file test.log
-  agentpack run "npm test"
+
+Inspect and export:
   agentpack resume --preset agent [--query <text>]
+  agentpack source status [--json]
   agentpack export --to markdown --preset chat [--query <text>]
-  agentpack diff [from] [to]
-  agentpack replay
+
+More:
   agentpack --version
   agentpack --help
+  docs/CLI.md has the full manual and fallback command reference.
 
 MCP root resolution: --root, then AGENTPACK_ROOT, then current working directory.
 Install defaults to dry-run; pass --write to apply generated client config.
