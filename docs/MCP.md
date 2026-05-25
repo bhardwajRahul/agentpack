@@ -28,6 +28,7 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `record_source`
 - `source_status`
 - `task_audit`
+- `task_finalize`
 - `task_update`
 - `task_update_verification`
 - `checkpoint`
@@ -42,6 +43,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
 `task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed.
+
+`task_finalize` closes the current Task Passport only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `status`. It also accepts `evidence` IDs and a short `summary`, matching the CLI `task finalize` command.
 
 ## Smoke Test
 
@@ -67,6 +70,7 @@ The smoke test verifies:
 - `tools/call record_source`
 - `tools/call source_status`
 - `tools/call task_audit`
+- `tools/call task_finalize`
 - `tools/call task_update`
 - `tools/call task_update_verification`
 - `tools/call resume`

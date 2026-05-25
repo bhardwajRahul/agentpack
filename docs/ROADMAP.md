@@ -104,18 +104,18 @@ Watch where the workflow actually hurts:
 
 - `task audit` is too noisy
 - updating the current passport is awkward
-- a short current-task status view is missing
+- the short current-task status view needs real dogfood feedback
 - the release flow is too manual
 - ledger cadence still nudges agents toward extra records
 
 Patch only blockers or very small reliability issues during this period.
 
-### Next Patch: Ergonomics
+### Current Patch: Ergonomics
 
-Choose one or two small improvements, not a broad feature batch:
+Keep this as one or two small improvements, not a broad feature batch:
 
 - `agentpack task status`: short human-readable current task view
-- `agentpack task finalize` or `agentpack task close --verified`: a small ritual for evidence, verification, checkpoint, and close
+- `agentpack task finalize`: a small ritual for evidence-backed verification and close
 - softer audit output that separates action-required issues from accepted metadata warnings
 
 ### Release Flow

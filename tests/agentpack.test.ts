@@ -129,6 +129,7 @@ test("exposes expected MCP tools", () => {
     "resume",
     "source_status",
     "task_audit",
+    "task_finalize",
     "task_update",
     "task_update_verification"
   ]);
@@ -548,6 +549,7 @@ test("manages a current task passport", () => {
   const verifying = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(verifying.status, "verifying");
   assert.equal(verifying.verification.status, "pending");
+  assert.match(runExpectError(dir, ["task", "finalize"]), /task finalize requires verification status passed, failed, or accepted/);
 
   assert.match(run(dir, [
     "task",
@@ -565,9 +567,10 @@ test("manages a current task passport", () => {
   assert.equal(passed.verification.summary, "Focused task passport checks passed.");
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Verification is/);
 
-  assert.match(run(dir, ["task", "close"]), /Closed task/);
+  assert.match(run(dir, ["task", "finalize"]), /Finalized task .* \(passed\)/);
   const closed = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(closed.status, "completed");
+  assert.equal(closed.verification.status, "passed");
   assert.equal(typeof closed.closedAt, "string");
   assert.match(runExpectError(dir, ["task", "block", "--reason", "Too late"]), /Cannot update closed task/);
 
@@ -577,6 +580,19 @@ test("manages a current task passport", () => {
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Task has no write scope/);
 
   assert.match(run(dir, ["task", "close"]), /Closed task/);
+  assert.match(run(dir, ["task", "start", "Finalize direct", "--write-scope", "."]), /Started task task_/);
+  assert.match(run(dir, [
+    "task",
+    "finalize",
+    "--status",
+    "accepted",
+    "--summary",
+    "Small docs task accepted."
+  ]), /Finalized task .* \(accepted\)/);
+  const finalized = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(finalized.status, "completed");
+  assert.equal(finalized.verification.status, "accepted");
+  assert.equal(finalized.verification.summary, "Small docs task accepted.");
   assert.match(runExpectError(dir, [
     "task",
     "start",
@@ -1088,9 +1104,23 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.equal(invalidMcpRisk.error?.message, "Unknown task risk: urgent");
 
-  const resume = await mcp.send({
+  const taskFinalize = await mcp.send({
     jsonrpc: "2.0",
     id: 12,
+    method: "tools/call",
+    params: {
+      name: "task_finalize",
+      arguments: {}
+    }
+  });
+  assert.match(taskFinalize.result.content[0].text, /Finalized task .* \(passed\)/);
+  const finalizedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(finalizedPassport.status, "completed");
+  assert.equal(finalizedPassport.verification.status, "passed");
+
+  const resume = await mcp.send({
+    jsonrpc: "2.0",
+    id: 13,
     method: "tools/call",
     params: {
       name: "resume",

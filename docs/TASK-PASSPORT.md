@@ -150,10 +150,10 @@ active -> parked            task park
 parked -> active            task switch/resume
 active -> blocked           task block
 blocked -> active           task unblock/resume
-active -> verifying         task update-verification
+active -> verifying         task verify
 verifying -> active         verification found more work
-verifying -> completed      verification passed
-active -> completed         small/docs task accepted directly
+verifying -> completed      task finalize
+active -> completed         task finalize --status accepted
 active -> abandoned         task abandon
 parked -> abandoned         stale parked task is discarded
 blocked -> abandoned        blocked task is discarded
@@ -180,7 +180,7 @@ agentpack task audit
 agentpack task park
 agentpack task block --reason "Waiting for API decision"
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
-agentpack task close
+agentpack task finalize
 ```
 
 `resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
@@ -194,6 +194,8 @@ agentpack task close
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
 `task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
+
+`task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task close` remains available for explicit manual closure.
 
 ## Role Lanes
 

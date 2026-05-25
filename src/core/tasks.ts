@@ -65,6 +65,7 @@ export interface TaskAuditReport {
 
 const CLOSED_STATUSES = new Set<TaskStatus>(["completed", "abandoned"]);
 const VERIFICATION_STATUSES = new Set<TaskVerification["status"]>(["unknown", "pending", "passed", "failed", "accepted"]);
+const FINAL_VERIFICATION_STATUSES = new Set<TaskVerification["status"]>(["passed", "failed", "accepted"]);
 
 export function startTask(root: string, options: TaskStartOptions): TaskPassport {
   if (!options.title.trim()) {
@@ -231,6 +232,33 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
 export function closeCurrentTask(root: string): TaskPassport {
   return updateCurrentTask(root, "completed", "task-close", {
     closedAt: new Date().toISOString()
+  });
+}
+
+export function finalizeCurrentTask(root: string, options: TaskVerificationUpdateOptions = {}): TaskPassport {
+  return updateCurrentTask(root, "completed", "task-finalize", (existing) => {
+    const explicitStatus = options.status !== undefined && String(options.status).trim() !== "";
+    const verificationStatus = !explicitStatus
+      ? existing.verification.status
+      : parseVerificationStatus(options.status);
+
+    if (!FINAL_VERIFICATION_STATUSES.has(verificationStatus)) {
+      throw new Error("task finalize requires verification status passed, failed, or accepted; run `agentpack task verify --status passed|failed|accepted` first or pass `--status`.");
+    }
+
+    return {
+      closedAt: new Date().toISOString(),
+      verification: {
+        status: verificationStatus,
+        evidence: uniqueStrings([
+          ...(existing.verification?.evidence || []),
+          ...(options.evidence || [])
+        ]),
+        summary: options.summary === undefined
+          ? existing.verification?.summary || ""
+          : options.summary.trim()
+      }
+    };
   });
 }
 

@@ -11,6 +11,7 @@ import {
   auditCurrentTask,
   blockCurrentTask,
   closeCurrentTask,
+  finalizeCurrentTask,
   formatCurrentTaskStatus,
   formatTaskAuditReport,
   getCurrentPassport,
@@ -215,6 +216,7 @@ Primary task workflow:
   agentpack task status
   agentpack task update [--objective <text>] [--constraint <text>] [--write-scope <path>] [--next <item>] [--tag <tag>] [--risk low|medium|high]
   agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack checkpoint -m <summary> --status <text> --next <item>
 
 Advanced/debug commands:
@@ -402,13 +404,24 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
+  if (subcommand === "finalize") {
+    const parsed = parseArgs(args);
+    const passport = finalizeCurrentTask(root, {
+      status: stringOption(parsed.options.status),
+      evidence: toArray(parsed.options.evidence),
+      summary: redactForRoot(root, stringOption(parsed.options.summary))
+    });
+    process.stdout.write(`Finalized task ${passport.id} (${passport.verification.status})\n`);
+    return;
+  }
+
   if (subcommand === "close") {
     const passport = closeCurrentTask(root);
     process.stdout.write(`Closed task ${passport.id}\n`);
     return;
   }
 
-  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, verify, update-verification, and close");
+  throw new Error("task command supports start, update, list, status, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
 }
 
 function sourceCommand(root: string, rest: string[]): void {

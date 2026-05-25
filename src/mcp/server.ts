@@ -5,7 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, finalizeCurrentTask, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -119,6 +119,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         status: {
           type: "string",
           enum: ["unknown", "pending", "passed", "failed", "accepted"]
+        },
+        evidence: { type: "array", items: { type: "string" } },
+        summary: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "task_finalize",
+    description: "Finalize the current Task Passport by requiring or setting a final verification status, then closing the task.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["passed", "failed", "accepted"]
         },
         evidence: { type: "array", items: { type: "string" } },
         summary: { type: "string" }
@@ -381,6 +396,15 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       summary: redactForRoot(root, text(args.summary))
     });
     return toolText(`Updated verification for task ${passport.id} (${passport.verification.status}).`);
+  }
+
+  if (name === "task_finalize") {
+    const passport = finalizeCurrentTask(root, {
+      status: text(args.status),
+      evidence: stringArray(args.evidence),
+      summary: redactForRoot(root, text(args.summary))
+    });
+    return toolText(`Finalized task ${passport.id} (${passport.verification.status}).`);
   }
 
   if (name === "task_update") {
