@@ -50,6 +50,57 @@ agentpack source status
 
 Expected takeaway: the new session gets the goal, status, decisions, dead ends, source-cache guidance, and next action under a compact budget. Lower token usage is a side effect of less rediscovery; the main value is continuity.
 
+## Handoff Continuity Smoke
+
+Scenario: before a release, verify that an installed Agentpack package can create
+a handoff that a fresh agent can understand from repo-local task state alone.
+
+1. In a clean scratch repo, install Agentpack from the current tarball or the
+   published package, then initialize the repo:
+
+```bash
+agentpack --version
+agentpack resume --help
+agentpack init
+agentpack doctor
+```
+
+2. Create a tiny source file, record the durable source conclusion, and start a
+   Task Passport with a concrete objective, constraint, write scope, and next
+   action:
+
+```bash
+agentpack source add README.md --summary "README describes the scratch task and what the next agent should verify."
+agentpack task start "Check handoff clarity" \
+  --objective "Confirm a fresh agent can understand the task from resume output alone" \
+  --constraint "Do not rely on chat-only context" \
+  --write-scope README.md \
+  --next "Inspect resume output as the next agent handoff"
+```
+
+3. Inspect the handoff:
+
+```bash
+agentpack task status
+agentpack task audit
+agentpack resume --preset chat --query "handoff clarity"
+agentpack install codex --dry-run
+```
+
+4. Record the result and finalize the task:
+
+```bash
+agentpack evidence add --kind dogfood --content "Resume exposed the task objective, constraint, write scope, source conclusion, verification state, and next action."
+agentpack task verify --status passed --evidence evt_... --summary "Fresh-agent handoff is understandable from Agentpack state alone."
+agentpack task finalize
+agentpack resume --preset quick --query "handoff clarity"
+```
+
+Expected takeaway: the fresh-agent handoff should show the current Task
+Passport, source-cache conclusion, verification state, and evidence without
+requiring old chat context. If the task is closed, any remaining task next
+actions should be clearly labeled as historical rather than active work.
+
 ## Multi-Client Repo Setup
 
 Scenario: a developer wants the same repo task state available in more than one coding-agent client.

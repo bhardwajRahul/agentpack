@@ -93,10 +93,17 @@ Before `npm version`:
   staleness are ok; errors are not).
 - `npm pack --dry-run` shows the expected set of files and a reasonable
   tarball size (~85 kB at the time of writing).
-- README, CHANGELOG (if any), and docs reflect the version about to ship.
+- README and docs reflect the version about to ship.
 - Changes to install flows, MCP launchers, or generated client config are
   dogfooded in at least one non-Agentpack repo before release. Verify generated
   snippets point at stable package entrypoints, not transient shell shims.
+- Command-specific help is checked from the built or packed CLI, especially
+  `agentpack resume --help`, so help flags do not accidentally execute the
+  command or require an initialized pack.
+- Handoff clarity is checked with a clean installed package flow: `init`,
+  `doctor`, Task Passport lifecycle, `resume`, and `install codex --dry-run`.
+  Closed-task resume output should label remaining task next actions as
+  historical, not active work.
 - Do not cut a release while basic install, doctor, MCP startup, or resume flows
   are suspect. Prefer fixing and shipping one follow-up patch over rushing
   multiple releases that churn the same core workflow.
