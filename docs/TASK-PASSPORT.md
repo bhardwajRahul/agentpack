@@ -185,7 +185,7 @@ agentpack task finalize
 agentpack task --help
 ```
 
-`resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it.
+`resume` and MCP `load_context` read the current passport automatically when one exists, then show the broader repo-level ledger below it. If the current pointer still references a closed passport, `resume` labels its next actions as historical so they are not mistaken for active instructions.
 
 The normal human-facing sequence is: start the task, keep status/scope/next actions current, record verification with evidence, print a handoff when another agent or chat may continue, then finalize only after verification is final.
 

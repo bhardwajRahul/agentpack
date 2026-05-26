@@ -148,6 +148,9 @@ function readCurrentTaskForResume(root: string): TaskPassport | null {
 
 function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string[] {
   const drift = formatTaskDrift(passport, git);
+  const nextActionsLabel = isClosedTask(passport)
+    ? "Task next actions (historical; task is closed)"
+    : "Task next actions";
   return [
     `- ID: ${passport.id}`,
     `- Title: ${passport.title}`,
@@ -162,10 +165,14 @@ function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string
     ...passport.writeScope.map((item) => `  - ${item}`),
     `- Verification: ${passport.verification.status}${passport.verification.summary ? ` - ${passport.verification.summary}` : ""}`,
     passport.verification.evidence.length ? `- Verification evidence: ${passport.verification.evidence.join(", ")}` : null,
-    passport.nextActions.length ? "- Task next actions:" : "- Task next actions: Not set",
+    passport.nextActions.length ? `- ${nextActionsLabel}:` : `- ${nextActionsLabel}: Not set`,
     ...passport.nextActions.map((item) => `  - ${item}`),
     drift
   ].filter((line): line is string => Boolean(line));
+}
+
+function isClosedTask(passport: TaskPassport): boolean {
+  return passport.status === "completed" || passport.status === "abandoned";
 }
 
 function formatTaskDrift(passport: TaskPassport, git: GitInfo): string | null {

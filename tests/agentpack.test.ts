@@ -669,6 +669,9 @@ test("manages a current task passport", () => {
   assert.equal(closed.status, "completed");
   assert.equal(closed.verification.status, "passed");
   assert.equal(typeof closed.closedAt, "string");
+  const closedResume = run(dir, ["resume", "--preset", "agent"]);
+  assert.match(closedResume, /Status: completed/);
+  assert.match(closedResume, /Task next actions \(historical; task is closed\):\n  - Wire CLI/);
   assert.match(runExpectError(dir, ["task", "block", "--reason", "Too late"]), /Cannot update closed task/);
 
   assert.match(run(dir, ["task", "start", "Repo-wide follow-up", "--write-scope", "."]), /Started task task_/);
