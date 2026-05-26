@@ -36,13 +36,17 @@ During work:
 - call \`record_source\` only when you have a durable conclusion about an important file; avoid repeated records for the same file unless the conclusion changed
 - call \`record_decision\` for durable technical/product decisions, not every preference
 - call \`record_dead_end\` when an approach failed and should not be repeated
-- call \`attach_evidence\` for meaningful verification, review findings, commits, or command output worth preserving
+- call \`attach_evidence\` for meaningful verification, review findings, or command output worth preserving
 
 Avoid turning Agentpack into an activity log:
 - do not record every file read, mode switch, minor diff check, or routine command
 - do not call \`source_status\` repeatedly when \`load_context\`, \`task_audit\`, or a recent status check already answered the question
 - do not call \`record_source\` for every changed file just to make an audit warning disappear; prefer a checkpoint summary for batch changes and refresh source records only when the durable conclusion changed
 - for small tasks, prefer one aggregated verification evidence and one checkpoint; add source records only for important implementation files with reusable conclusions
+- for small verified slices, attach one evidence item for the meaningful verification result
+- link that evidence from \`task_update_verification\`, or from \`task_finalize\` when finalize performs the verification update
+- mention commit hashes in checkpoint/finalize summaries instead of attaching separate commit evidence
+- attach separate commit, tag, workflow, or publish evidence only when that output is itself part of the verification contract
 
 Default cadence:
 - start with Agentpack context
