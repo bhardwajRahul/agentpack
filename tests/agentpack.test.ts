@@ -47,6 +47,20 @@ test("--version and --help run without an initialized pack", () => {
   assert.match(taskHelp, /Common workflow/);
   assert.match(taskHelp, /task handoff/);
   assert.match(taskHelp, /task finalize refuses unknown or pending verification/);
+
+  const resumeHelp = run(dir, ["resume", "--help"]);
+  assert.match(resumeHelp, /agentpack resume/);
+  assert.match(resumeHelp, /--preset quick\|chat\|agent\|deep/);
+  assert.doesNotMatch(resumeHelp, /Pack root:/);
+
+  const installHelp = run(dir, ["install", "--help"]);
+  assert.match(installHelp, /agentpack install codex\|claude\|claude-desktop\|cursor/);
+  assert.match(installHelp, /Defaults to dry-run/);
+
+  const initHelp = run(dir, ["init", "--help"]);
+  assert.match(initHelp, /agentpack init/);
+  assert.match(initHelp, /Initialize \.agentpack\//);
+  assert.equal(existsSync(path.join(dir, ".agentpack")), false);
 });
 
 test("creates a pack, records source context, checkpoints, and exports handoff", () => {

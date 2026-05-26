@@ -4,6 +4,8 @@ Agentpack's default workflow is MCP-connected: generated project instructions gu
 
 Use the CLI directly when you want to inspect state yourself, debug an MCP setup, run a demo, or create a manual handoff for a web chat that cannot connect to local stdio MCP.
 
+Use `agentpack <command> --help` for command-specific help. These help screens do not require an initialized `.agentpack/` directory and do not execute the command.
+
 ## Inspect State
 
 ```bash

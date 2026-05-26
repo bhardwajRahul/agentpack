@@ -70,6 +70,10 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     return;
   }
 
+  if (isExplicitHelpRequest(rest[0]) && printCommandHelp(command)) {
+    return;
+  }
+
   if (command === "init") {
     const packPath = initPack(cwd);
     process.stdout.write(`Initialized Agentpack at ${packPath}\n`);
@@ -246,6 +250,131 @@ Budget presets: ${formatBudgetPresets()}
 
 function isHelpRequest(value: string | undefined): boolean {
   return !value || value === "--help" || value === "-h" || value === "help";
+}
+
+function isExplicitHelpRequest(value: string | undefined): boolean {
+  return value === "--help" || value === "-h" || value === "help";
+}
+
+function printCommandHelp(command: string): boolean {
+  if (command === "task") {
+    printTaskHelp();
+    return true;
+  }
+
+  const helpText = commandHelpText(command);
+  if (!helpText) {
+    return false;
+  }
+  process.stdout.write(`${helpText}\n`);
+  return true;
+}
+
+function commandHelpText(command: string): string {
+  if (command === "init") {
+    return `agentpack init
+
+Initialize .agentpack/ in the current repository and add local Agentpack files to .gitignore.`;
+  }
+
+  if (command === "install") {
+    return `agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
+
+Generate MCP client configuration and project instructions for one client surface.
+Defaults to dry-run; pass --write to apply generated files.`;
+  }
+
+  if (command === "mcp") {
+    return `agentpack mcp [--root <path>]
+
+Start the Agentpack MCP stdio server.
+Root resolution: --root, then AGENTPACK_ROOT, then current working directory.`;
+  }
+
+  if (command === "doctor") {
+    return `agentpack doctor
+
+Check local Agentpack setup, generated client config, git state, source-cache health, and Node runtime.`;
+  }
+
+  if (command === "resume") {
+    return `agentpack resume [--preset quick|chat|agent|deep] [--budget <tokens>] [--query <text>]
+
+Print a compact markdown handoff for the current repository.
+Budget presets: ${formatBudgetPresets()}`;
+  }
+
+  if (command === "source") {
+    return `agentpack source status [--json] [--changed] [--missing]
+agentpack source add <file> --summary <text> [--snippet <text>]
+agentpack source review <file> --summary <text> [--snippet <text>]
+agentpack source remove <file>
+agentpack source prune --missing
+
+Record, inspect, refresh, and prune durable source conclusions.`;
+  }
+
+  if (command === "evidence") {
+    return `agentpack evidence add [--kind <type>] [--file <path>] [--content <text>] [--command <text>] [--exitCode <code>]
+
+Attach meaningful verification, review, command, or note evidence to the ledger.`;
+  }
+
+  if (command === "checkpoint") {
+    return `agentpack checkpoint [-m <summary>] [--status <text>] [--next <item>]
+
+Create a task-state checkpoint with an optional status and next actions.`;
+  }
+
+  if (command === "export") {
+    return `agentpack export [--to markdown|chatgpt|<name>] [--preset quick|chat|agent|deep] [--budget <tokens>] [--query <text>]
+
+Write a markdown handoff under .agentpack/exports/ for clients that cannot use MCP.`;
+  }
+
+  if (command === "diff") {
+    return `agentpack diff [from-checkpoint] [to-checkpoint]
+
+Compare two checkpoints, defaulting to recent checkpoint history when ids are omitted.`;
+  }
+
+  if (command === "replay") {
+    return `agentpack replay [--limit <count>]
+
+Print recent ledger events for debugging and handoff inspection.`;
+  }
+
+  if (command === "status") {
+    return `agentpack status
+
+Print raw Agentpack repo state as JSON. Mostly useful for debugging.`;
+  }
+
+  if (command === "record") {
+    return `agentpack record decision|dead-end|note <text> [--reason <text>] [--file <path>] [--evidence <id>]
+
+Record durable decisions, failed approaches, or notes that future agents should reuse.`;
+  }
+
+  if (command === "note") {
+    return `agentpack note <text>
+
+Record a lightweight local task-state note.`;
+  }
+
+  if (command === "run") {
+    return `agentpack run <command>
+
+Run a shell command from the repository root and attach stdout, stderr, and exit code as evidence.`;
+  }
+
+  if (command === "set") {
+    return `agentpack set goal|status|next <text>
+
+Update the repo-level goal, current status, or next actions.`;
+  }
+
+  return "";
 }
 
 function printTaskHelp(): void {
