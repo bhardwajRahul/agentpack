@@ -37,6 +37,7 @@ import {
 import {
   addEvidence,
   addSourceRecord,
+  formatLedgerStatus,
   formatSourceStatuses,
   getSourceStatus,
   getSourceStatuses,
@@ -123,6 +124,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "source") {
     sourceCommand(root, rest);
+    return;
+  }
+
+  if (command === "ledger") {
+    ledgerCommand(root, rest);
     return;
   }
 
@@ -235,6 +241,7 @@ Task Passport:
 Inspect and export:
   agentpack resume --preset agent [--query <text>]
   agentpack source status [--json] [--changed] [--missing]
+  agentpack ledger status
   agentpack export --to markdown --preset chat [--query <text>]
 
 More:
@@ -312,6 +319,13 @@ agentpack source remove <file>
 agentpack source prune --missing
 
 Record, inspect, refresh, and prune durable source conclusions.`;
+  }
+
+  if (command === "ledger") {
+    return `agentpack ledger status
+
+Print a read-only ledger hygiene inventory: task counts, event/evidence/checkpoint/export sizes, source-cache status counts, and referenced evidence counts.
+No cleanup is performed.`;
   }
 
   if (command === "evidence") {
@@ -673,6 +687,22 @@ function sourceCommand(root: string, rest: string[]): void {
   });
 
   process.stdout.write(`Recorded source ${source.path} (${source.hash.slice(0, 12)})\n`);
+}
+
+function ledgerCommand(root: string, rest: string[]): void {
+  const subcommand = rest[0];
+
+  if (isHelpRequest(subcommand)) {
+    process.stdout.write(`${commandHelpText("ledger")}\n`);
+    return;
+  }
+
+  if (subcommand === "status") {
+    process.stdout.write(`${formatLedgerStatus(root)}\n`);
+    return;
+  }
+
+  throw new Error("ledger command supports `status`");
 }
 
 function sourceStatusFilters(options: Record<string, ArgValue>): SourceStatusKind[] {

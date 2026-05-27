@@ -1,8 +1,12 @@
 # Task Passport
 
-Task Passport is the handoff artifact for one coherent unit of agentic work.
+Task Passport is the handoff artifact for one coherent unit of agent work.
+
+It exists for continuity, not bureaucracy.
 
 It captures the reviewed state a future agent needs in order to continue the current task without rediscovering context, repeating dead ends, or guessing what is safe to touch.
+
+It stores reviewed durable state, not raw agent activity.
 
 ## Model
 
@@ -193,9 +197,9 @@ The normal human-facing sequence is: start the task, keep status/scope/next acti
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 
-`task handoff` prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
+**`task handoff`** prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
-`task audit` is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, closed-current-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so stale source records do not look like action-required task failures.
+**`task audit`** is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, closed-current-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so stale source records do not look like action-required task failures.
 
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
@@ -205,14 +209,14 @@ The normal human-facing sequence is: start the task, keep status/scope/next acti
 
 ## Role Lanes
 
-Roles are coordination lanes inside one passport, not separate tasks.
+Roles are coordination lanes inside one passport, not separate tasks or runtime workers.
 
 - Scout: read-oriented; records source conclusions, risks, and known unknowns
 - Builder: write-oriented; works inside the declared write scope
 - Reviewer: read-oriented; checks diff, tests, risks, and regression surface
 - Archivist: state-oriented; records evidence, checkpoints, and handoff notes
 
-For v1, roles should be metadata and prompts, not a multi-agent runtime. Orchestrators can later map their own workers onto these lanes.
+For v1, roles should be metadata and prompts, not a multi-agent runtime, scheduler, or orchestration system. External orchestrators can later map their own workers onto these lanes without Agentpack becoming the runtime.
 
 ## Consistency Rules
 

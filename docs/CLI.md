@@ -13,6 +13,7 @@ agentpack resume --preset agent --query "MCP install"
 agentpack source status
 agentpack source status --changed
 agentpack source status --missing
+agentpack ledger status
 agentpack replay
 agentpack diff
 ```
@@ -35,6 +36,8 @@ agentpack source remove docs/old-file.md
 ```
 
 `source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
+
+`ledger status` prints a read-only hygiene inventory: task counts, event/evidence/checkpoint/export sizes, referenced evidence counts, and source-cache status counts. It does not delete, compact, archive, or refresh anything.
 
 ## Task Passports
 

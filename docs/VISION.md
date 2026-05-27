@@ -4,7 +4,9 @@
 
 Agentpack makes agent continuity native to the repo.
 
-It is a neutral task passport for agentic workspaces: a compact, portable record of decisions, source conclusions, evidence, dead ends, checkpoints, and next actions that survives chat compaction, client switches, worktree handoffs, machines, branches, and orchestrators.
+Git stores code state. Agentpack stores reviewed task state.
+
+It is a neutral task passport for coding-agent workspaces: a compact, portable record of decisions, source conclusions, evidence, dead ends, checkpoints, and next actions that survives chat compaction, client switches, worktree handoffs, machines, and branches.
 
 ## Product Bet
 
@@ -18,23 +20,23 @@ Codex, Claude Code, Cursor, LangGraph, Temporal, OpenAI Agents SDK, and similar 
 
 - repo-native continuity
 - task passports as the handoff artifact
-- semantic checkpoints
+- checkpoints tied to reviewed task state
 - source-inspection cache
 - dead-end memory
 - evidence-linked handoffs
 - MCP-first access
 - portable bundles between worktrees, machines, and clients
-- orchestrator recipes later
+- integration recipes after the local workflow is stable
 
 ## Task Passport Model
 
-A Task Passport is the handoff artifact for one coherent unit of agentic work. It should capture the objective, constraints, write scope, relevant source conclusions, decisions, dead ends, evidence, verification state, checkpoints, and next actions.
+A Task Passport is the handoff artifact for one coherent unit of agent work. It should capture the objective, constraints, write scope, relevant source conclusions, decisions, dead ends, evidence, verification state, checkpoints, and next actions.
 
 See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the target schema and state transitions.
 
 One active Task Passport should own the work in a repo worktree by default. A repo can keep many closed or parked passports over time, but Agentpack should not turn one working directory into a backlog or a multi-task merge engine.
 
-Workstreams are how passports stay separated across repo work, branches, and worktrees. They are for history, parked work, and handoff boundaries, not a substitute for issue tracking or code conflict resolution.
+Workstream support should stay modest: separate passports across branches and worktrees, keep parked work visible, and protect handoff boundaries. It should not turn Agentpack into a backlog manager or code conflict resolver.
 
 Multi-role agents should collaborate inside one Task Passport:
 
@@ -43,11 +45,10 @@ Multi-role agents should collaborate inside one Task Passport:
 - Reviewer: check the diff, risks, and verification
 - Archivist: record evidence, checkpoints, and handoff state
 
-Agentpack should support those role lanes as lightweight prompts, metadata, and consistency checks before it attempts any heavier orchestration.
+Agentpack should support those role lanes as lightweight prompts, metadata, and consistency checks. They are not a runtime, scheduler, or swarm orchestration layer.
 
 ## Operating Principles
 
-- Git stores code state. Agentpack stores reviewed task state.
 - Execution engines run the work. Agentpack preserves what future agents need to continue it.
 - Continuity should be native to the repo, not reconstructed from chat history.
 - One Task Passport owns the current work; multiple roles can contribute to it.

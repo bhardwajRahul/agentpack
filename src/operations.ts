@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getFileRecord, normalizePath, sha256File } from "./core/hash.js";
 import { getGitInfo } from "./core/git.js";
+import { listTasks, readPassport } from "./core/tasks.js";
 import {
   appendEvent,
   getPackPath,
+  listCheckpoints,
   readEvents,
   readSources,
   withPackWriteLock,
@@ -12,7 +14,7 @@ import {
 } from "./core/store.js";
 import { createId } from "./core/ids.js";
 import { redactForRoot } from "./core/redaction.js";
-import type { AgentpackEvent, SourceRecord } from "./core/types.js";
+import type { AgentpackEvent, SourceRecord, TaskStatus } from "./core/types.js";
 
 interface SourceRecordOptions {
   summary?: string;
@@ -40,6 +42,37 @@ export interface SourceStatus {
 }
 
 export type SourceStatusKind = SourceStatus["status"];
+
+export interface LedgerStatus {
+  tasks: Record<TaskStatus, number>;
+  events: {
+    count: number;
+    bytes: number;
+  };
+  evidence: {
+    files: number;
+    bytes: number;
+    events: number;
+    referenced: number;
+    unreferenced: number;
+    oldest: string | null;
+  };
+  checkpoints: {
+    count: number;
+    bytes: number;
+    oldest: string | null;
+  };
+  exports: {
+    files: number;
+    bytes: number;
+  };
+  sources: {
+    recorded: number;
+    unchanged: number;
+    changed: number;
+    missing: number;
+  };
+}
 
 export function addSourceRecord(root: string, filePath: string, options: SourceRecordOptions = {}): SourceRecord {
   return writeSourceRecord(root, filePath, {
@@ -276,6 +309,60 @@ export function replayEvents(root: string, limit = 50): string {
   }).join("\n");
 }
 
+export function getLedgerStatus(root: string): LedgerStatus {
+  const events = readEvents(root);
+  const evidenceEvents = events.filter((event) => event.type === "evidence");
+  const referencedEvidence = referencedEvidenceIds(root);
+  const sourceCounts = countSourceStatuses(getSourceStatuses(root));
+  const checkpoints = listCheckpoints(root);
+  const evidenceStats = directoryStats(getPackPath(root, "evidence"));
+  const checkpointStats = directoryStats(getPackPath(root, "checkpoints"));
+  const exportStats = directoryStats(getPackPath(root, "exports"));
+
+  return {
+    tasks: countTasks(root),
+    events: {
+      count: events.length,
+      bytes: fileSize(getPackPath(root, "events.jsonl"))
+    },
+    evidence: {
+      files: evidenceStats.files,
+      bytes: evidenceStats.bytes,
+      events: evidenceEvents.length,
+      referenced: evidenceEvents.filter((event) => referencedEvidence.has(event.id)).length,
+      unreferenced: evidenceEvents.filter((event) => !referencedEvidence.has(event.id)).length,
+      oldest: oldestTimestamp(evidenceEvents)
+    },
+    checkpoints: {
+      count: checkpoints.length,
+      bytes: checkpointStats.bytes,
+      oldest: checkpoints[0] || null
+    },
+    exports: {
+      files: exportStats.files,
+      bytes: exportStats.bytes
+    },
+    sources: sourceCounts
+  };
+}
+
+export function formatLedgerStatus(root: string): string {
+  const status = getLedgerStatus(root);
+  return [
+    "Ledger status",
+    `Tasks: ${status.tasks.active} active, ${status.tasks.parked} parked, ${status.tasks.blocked} blocked, ${status.tasks.verifying} verifying, ${status.tasks.completed} completed, ${status.tasks.abandoned} abandoned`,
+    `Events: ${status.events.count} entries, ${formatBytes(status.events.bytes)}`,
+    `Evidence: ${status.evidence.files} files, ${formatBytes(status.evidence.bytes)} (${status.evidence.events} events, ${status.evidence.referenced} referenced, ${status.evidence.unreferenced} unreferenced)`,
+    `Checkpoints: ${status.checkpoints.count} snapshots, ${formatBytes(status.checkpoints.bytes)}`,
+    `Exports: ${status.exports.files} files, ${formatBytes(status.exports.bytes)}`,
+    `Sources: ${status.sources.recorded} recorded, ${status.sources.unchanged} unchanged, ${status.sources.changed} changed, ${status.sources.missing} missing`,
+    status.evidence.oldest ? `Oldest evidence: ${status.evidence.oldest}` : "Oldest evidence: none",
+    status.checkpoints.oldest ? `Oldest checkpoint: ${status.checkpoints.oldest}` : "Oldest checkpoint: none",
+    "",
+    "No cleanup was performed."
+  ].join("\n");
+}
+
 function readEvidenceContent(root: string, options: EvidenceOptions): string {
   const inputPath = options.file || options.path;
   if (inputPath) {
@@ -288,6 +375,93 @@ function readEvidenceContent(root: string, options: EvidenceOptions): string {
   }
 
   return String(options.content || options.text || "");
+}
+
+function countTasks(root: string): Record<TaskStatus, number> {
+  const counts: Record<TaskStatus, number> = {
+    active: 0,
+    parked: 0,
+    blocked: 0,
+    verifying: 0,
+    completed: 0,
+    abandoned: 0
+  };
+
+  for (const task of listTasks(root)) {
+    counts[task.status] += 1;
+  }
+
+  return counts;
+}
+
+function referencedEvidenceIds(root: string): Set<string> {
+  const ids = new Set<string>();
+  for (const task of listTasks(root)) {
+    try {
+      for (const evidenceId of readPassport(root, task.id).verification.evidence || []) {
+        ids.add(evidenceId);
+      }
+    } catch {
+      // Ledger status is diagnostic-only; unreadable task details should not crash the whole inventory.
+    }
+  }
+  return ids;
+}
+
+function countSourceStatuses(statuses: SourceStatus[]): LedgerStatus["sources"] {
+  const counts = {
+    recorded: statuses.length,
+    unchanged: 0,
+    changed: 0,
+    missing: 0
+  };
+
+  for (const source of statuses) {
+    counts[source.status] += 1;
+  }
+
+  return counts;
+}
+
+function directoryStats(dirPath: string): { files: number; bytes: number } {
+  if (!existsSync(dirPath)) {
+    return { files: 0, bytes: 0 };
+  }
+
+  let files = 0;
+  let bytes = 0;
+  for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
+    const entryPath = path.join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      const nested = directoryStats(entryPath);
+      files += nested.files;
+      bytes += nested.bytes;
+    } else if (entry.isFile()) {
+      files += 1;
+      bytes += statSync(entryPath).size;
+    }
+  }
+  return { files, bytes };
+}
+
+function fileSize(filePath: string): number {
+  return existsSync(filePath) ? statSync(filePath).size : 0;
+}
+
+function oldestTimestamp(events: AgentpackEvent[]): string | null {
+  const timestamps = events.map((event) => event.ts).filter(Boolean).sort();
+  return timestamps[0] || null;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  const kib = bytes / 1024;
+  if (kib < 1024) {
+    return `${kib.toFixed(1)} KiB`;
+  }
+  return `${(kib / 1024).toFixed(1)} MiB`;
 }
 
 function formatNoSourceRecords(gitStatuses: Map<string, string>): string {

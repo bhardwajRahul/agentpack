@@ -37,6 +37,7 @@ test("--version and --help run without an initialized pack", () => {
   assert.match(help, /Agentpack/);
   assert.match(help, /Default workflow/);
   assert.match(help, /Task Passport/);
+  assert.match(help, /agentpack ledger status/);
   assert.match(help, /docs\/CLI\.md has the full manual/);
   assert.doesNotMatch(help, /Advanced\/debug commands/);
   assert.doesNotMatch(help, /agentpack record decision/);
@@ -56,6 +57,10 @@ test("--version and --help run without an initialized pack", () => {
   const installHelp = run(dir, ["install", "--help"]);
   assert.match(installHelp, /agentpack install codex\|claude\|claude-desktop\|cursor/);
   assert.match(installHelp, /Defaults to dry-run/);
+
+  const ledgerHelp = run(dir, ["ledger", "--help"]);
+  assert.match(ledgerHelp, /agentpack ledger status/);
+  assert.match(ledgerHelp, /No cleanup is performed/);
 
   const initHelp = run(dir, ["init", "--help"]);
   assert.match(initHelp, /agentpack init/);
@@ -131,6 +136,16 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
 
   const sourceStatus = JSON.parse(run(dir, ["source", "status", "--json"]));
   assert.equal(sourceStatus[0].status, "changed");
+
+  const ledger = run(dir, ["ledger", "status"]);
+  assert.match(ledger, /Ledger status/);
+  assert.match(ledger, /Tasks: 0 active, 0 parked, 0 blocked, 0 verifying, 0 completed, 0 abandoned/);
+  assert.match(ledger, /Events: \d+ entries, /);
+  assert.match(ledger, /Evidence: 2 files, .* \(2 events, 0 referenced, 2 unreferenced\)/);
+  assert.match(ledger, /Checkpoints: 1 snapshots, /);
+  assert.match(ledger, /Exports: 2 files, /);
+  assert.match(ledger, /Sources: 1 recorded, 0 unchanged, 1 changed, 0 missing/);
+  assert.match(ledger, /No cleanup was performed\./);
 
   const doctor = run(dir, ["doctor"]);
   assert.match(doctor, /Agentpack doctor/);
