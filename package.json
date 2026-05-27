@@ -1,6 +1,6 @@
 {
   "name": "agentpack-cli",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Local task-state ledger for AI coding agents.",
   "type": "module",
   "repository": {
