@@ -43,7 +43,7 @@ Safe first steps are diagnostic:
 
 - count tasks, evidence, checkpoints, exports, events, and source records
 - identify missing source records
-- identify evidence events that are not referenced by task verification
+- identify evidence events that are not referenced by task verification or other event payloads
 - show old checkpoints or evidence as possible review targets
 
 These reports do not imply the data is bad. They give future agents and humans a
@@ -55,7 +55,7 @@ Do not automatically delete or refresh:
 
 - current task passports
 - parked, blocked, or verifying task passports
-- evidence referenced by task verification
+- evidence referenced by task verification or other event payloads
 - task events needed for replay/audit history
 - source records whose files changed
 - checkpoints for active or paused work

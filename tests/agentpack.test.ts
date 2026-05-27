@@ -82,7 +82,10 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(initialSourceStatus, /meaning: recorded summary is valid for the current file content/);
   run(dir, ["record", "decision", "Use local JSON and JSONL storage for v0."]);
   run(dir, ["note", "This is a local task-state note."]);
-  run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
+  const evidenceOutput = run(dir, ["evidence", "add", "--kind", "test-output", "--content", "Tests pass."]);
+  const decisionEvidenceId = evidenceOutput.match(/Attached evidence ([^\n]+)/)?.[1] || "";
+  assert.match(decisionEvidenceId, /^evt_/);
+  run(dir, ["record", "decision", "Evidence can support durable decisions.", "--evidence", decisionEvidenceId]);
   run(dir, ["run", process.execPath, "--version"]);
   run(dir, [
     "checkpoint",
@@ -141,7 +144,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(ledger, /Ledger status/);
   assert.match(ledger, /Tasks: 0 active, 0 parked, 0 blocked, 0 verifying, 0 completed, 0 abandoned/);
   assert.match(ledger, /Events: \d+ entries, /);
-  assert.match(ledger, /Evidence: 2 files, .* \(2 events, 0 referenced, 2 unreferenced\)/);
+  assert.match(ledger, /Evidence: 2 files, .* \(2 events, 1 referenced, 1 unreferenced\)/);
   assert.match(ledger, /Checkpoints: 1 snapshots, /);
   assert.match(ledger, /Exports: 2 files, /);
   assert.match(ledger, /Sources: 1 recorded, 0 unchanged, 1 changed, 0 missing/);

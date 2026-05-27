@@ -312,7 +312,7 @@ export function replayEvents(root: string, limit = 50): string {
 export function getLedgerStatus(root: string): LedgerStatus {
   const events = readEvents(root);
   const evidenceEvents = events.filter((event) => event.type === "evidence");
-  const referencedEvidence = referencedEvidenceIds(root);
+  const referencedEvidence = referencedEvidenceIds(root, events);
   const sourceCounts = countSourceStatuses(getSourceStatuses(root));
   const checkpoints = listCheckpoints(root);
   const evidenceStats = directoryStats(getPackPath(root, "evidence"));
@@ -394,8 +394,14 @@ function countTasks(root: string): Record<TaskStatus, number> {
   return counts;
 }
 
-function referencedEvidenceIds(root: string): Set<string> {
+function referencedEvidenceIds(root: string, events: AgentpackEvent[]): Set<string> {
   const ids = new Set<string>();
+  for (const event of events) {
+    for (const evidenceId of evidenceIdsFromEvent(event)) {
+      ids.add(evidenceId);
+    }
+  }
+
   for (const task of listTasks(root)) {
     try {
       for (const evidenceId of readPassport(root, task.id).verification.evidence || []) {
@@ -406,6 +412,16 @@ function referencedEvidenceIds(root: string): Set<string> {
     }
   }
   return ids;
+}
+
+function evidenceIdsFromEvent(event: AgentpackEvent): string[] {
+  if (!Array.isArray(event.evidence)) {
+    return [];
+  }
+
+  return event.evidence.filter(
+    (evidenceId): evidenceId is string => typeof evidenceId === "string" && evidenceId.length > 0
+  );
 }
 
 function countSourceStatuses(statuses: SourceStatus[]): LedgerStatus["sources"] {
