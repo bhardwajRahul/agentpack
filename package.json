@@ -1,6 +1,7 @@
 {
   "name": "agentpack-cli",
   "version": "0.1.16",
+  "mcpName": "io.github.ihorponom/agentpack",
   "description": "Local task-state ledger for AI coding agents.",
   "type": "module",
   "repository": {
