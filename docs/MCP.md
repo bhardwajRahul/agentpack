@@ -85,10 +85,11 @@ The smoke test verifies:
 - `tools/call task_audit`
 - `tools/call task_status`
 - `tools/call task_start`
-- `tools/call task_finalize`
 - `tools/call task_handoff`
+- `tools/call attach_evidence`
 - `tools/call task_update`
 - `tools/call task_update_verification`
+- `tools/call task_finalize`
 - `tools/call resume`
 - notification messages do not produce responses
 

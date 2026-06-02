@@ -151,8 +151,8 @@
       "column": "dispatch",
       "type": "tool",
       "title": "src/mcp/server.ts",
-      "subtitle": "397 lines",
-      "summary": "MCP tools: load_context, source_status, record_source, record_decision, record_dead_end, attach_evidence, checkpoint, diff, replay, resume.",
+      "subtitle": "578 lines",
+      "summary": "MCP tools expose context load, durable records, evidence, source status, Task Passport lifecycle, checkpoints, diffs, replay, and resume.",
       "files": [
         "src/mcp/server.ts",
         "docs/MCP.md"
@@ -164,7 +164,7 @@
       "type": "tool",
       "title": "CLI commands",
       "subtitle": "human surface",
-      "summary": "init · set · record · note · source · evidence · run · checkpoint · resume · export · diff · replay · doctor.",
+      "summary": "init · install · task · set · record · note · source · evidence · run · checkpoint · resume · export · diff · replay · ledger · doctor.",
       "files": [
         "src/cli/index.ts",
         "docs/CLI.md"

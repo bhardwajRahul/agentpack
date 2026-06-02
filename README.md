@@ -133,7 +133,7 @@ To verify the local MCP server without configuring an agent client yet:
 npm run mcp:smoke
 ```
 
-The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize`, `tools/list`, and a short `resume` flow, then deletes the temporary workspace.
+The smoke runner creates a temporary Agentpack workspace, starts `agentpack mcp`, sends `initialize` and `tools/list`, exercises source status plus Task Passport lifecycle tools, then deletes the temporary workspace.
 
 ## Hybrid Agent Loop
 
@@ -179,6 +179,8 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `source_status`
 - `task_audit`
 - `task_handoff`
+- `task_start`
+- `task_status`
 - `task_update`
 - `task_update_verification`
 - `task_finalize`

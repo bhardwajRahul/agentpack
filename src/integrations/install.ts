@@ -32,6 +32,12 @@ At the start of a task:
 - call \`load_context\` with a small preset first
 - call \`source_status\` only when you need a full stale-source check beyond the context you just loaded
 
+Task lifecycle gate:
+- before implementation, confirm the current Task Passport is the right active task for this phase and branch
+- if the current task is verifying, blocked, closed, or has unexplained branch/head drift, stop and resolve it before editing code
+- finalize/close the old task or create/switch to the correct active task first; do not mutate a review task into implementation work
+- keep one active task per coherent phase: review, stabilization, rewrite, deployment
+
 During work:
 - call \`record_source\` only when you have a durable conclusion about an important file; avoid repeated records for the same file unless the conclusion changed
 - call \`record_decision\` for durable technical/product decisions, not every preference
