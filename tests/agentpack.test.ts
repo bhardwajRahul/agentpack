@@ -172,6 +172,8 @@ test("exposes expected MCP tools", () => {
     "task_audit",
     "task_finalize",
     "task_handoff",
+    "task_start",
+    "task_status",
     "task_update",
     "task_update_verification"
   ]);
@@ -1139,19 +1141,76 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.match(taskAudit.result.content[0].text, /Task audit/);
   assert.match(taskAudit.result.content[0].text, /No current task passport/);
 
-  run(dir, [
-    "task",
-    "start",
-    "MCP verification flow",
-    "--write-scope",
-    "index.js",
-    "--next",
-    "Finish MCP verification"
-  ]);
+  const taskStatusBeforeStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "tools/call",
+    params: {
+      name: "task_status",
+      arguments: {}
+    }
+  });
+  assert.match(taskStatusBeforeStart.result.content[0].text, /Task status/);
+  assert.match(taskStatusBeforeStart.result.content[0].text, /No current task passport/);
+
+  const taskStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "tools/call",
+    params: {
+      name: "task_start",
+      arguments: {
+        title: "MCP verification flow",
+        objective: "Exercise MCP task lifecycle flow.",
+        constraints: ["Keep task lifecycle reachable through MCP."],
+        writeScope: ["index.js"],
+        nextActions: ["Finish MCP verification"],
+        tags: ["mcp-lifecycle"],
+        risk: "medium"
+      }
+    }
+  });
+  assert.match(taskStart.result.content[0].text, /Started task task_/);
+  const startedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(startedPassport.title, "MCP verification flow");
+  assert.equal(startedPassport.objective, "Exercise MCP task lifecycle flow.");
+  assert.deepEqual(startedPassport.constraints, ["Keep task lifecycle reachable through MCP."]);
+  assert.deepEqual(startedPassport.writeScope, ["index.js"]);
+  assert.deepEqual(startedPassport.nextActions, ["Finish MCP verification"]);
+  assert.deepEqual(startedPassport.tags, ["mcp-lifecycle"]);
+  assert.equal(startedPassport.risk, "medium");
+
+  const taskStatusAfterStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 10,
+    method: "tools/call",
+    params: {
+      name: "task_status",
+      arguments: {}
+    }
+  });
+  assert.match(taskStatusAfterStart.result.content[0].text, /MCP verification flow \[active\]/);
+  assert.match(taskStatusAfterStart.result.content[0].text, /ID: task_/);
+  assert.match(taskStatusAfterStart.result.content[0].text, /Verification: unknown/);
+  assert.match(taskStatusAfterStart.result.content[0].text, /Next: Finish MCP verification/);
+  assert.match(taskStatusAfterStart.result.content[0].text, /Write scope: index\.js/);
+
+  const duplicateTaskStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 11,
+    method: "tools/call",
+    params: {
+      name: "task_start",
+      arguments: {
+        title: "Overlapping MCP task"
+      }
+    }
+  });
+  assert.match(duplicateTaskStart.error?.message, /park or close it before starting a new task/);
 
   const taskHandoff = await mcp.send({
     jsonrpc: "2.0",
-    id: 8,
+    id: 12,
     method: "tools/call",
     params: {
       name: "task_handoff",
@@ -1164,7 +1223,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const evidence = await mcp.send({
     jsonrpc: "2.0",
-    id: 9,
+    id: 13,
     method: "tools/call",
     params: {
       name: "attach_evidence",
@@ -1179,7 +1238,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskVerify = await mcp.send({
     jsonrpc: "2.0",
-    id: 10,
+    id: 14,
     method: "tools/call",
     params: {
       name: "task_update_verification",
@@ -1199,7 +1258,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskUpdate = await mcp.send({
     jsonrpc: "2.0",
-    id: 11,
+    id: 15,
     method: "tools/call",
     params: {
       name: "task_update",
@@ -1216,16 +1275,16 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.match(taskUpdate.result.content[0].text, /Updated task .*/);
   const mcpUpdatedPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(mcpUpdatedPassport.objective, "Exercise MCP task update flow.");
-  assert.deepEqual(mcpUpdatedPassport.constraints, ["Keep MCP task updates additive."]);
+  assert.deepEqual(mcpUpdatedPassport.constraints, ["Keep task lifecycle reachable through MCP.", "Keep MCP task updates additive."]);
   assert.deepEqual(mcpUpdatedPassport.writeScope, ["index.js", "."]);
   assert.deepEqual(mcpUpdatedPassport.nextActions, ["Finish MCP verification", "Inspect updated passport"]);
-  assert.deepEqual(mcpUpdatedPassport.tags, ["mcp-task-update"]);
+  assert.deepEqual(mcpUpdatedPassport.tags, ["mcp-lifecycle", "mcp-task-update"]);
   assert.equal(mcpUpdatedPassport.risk, "medium");
 
   const eventCountBeforeMcpNoop = taskEventCount(dir, mcpUpdatedPassport.id);
   const taskVerifyNoop = await mcp.send({
     jsonrpc: "2.0",
-    id: 12,
+    id: 16,
     method: "tools/call",
     params: {
       name: "task_update_verification",
@@ -1241,7 +1300,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const invalidMcpRisk = await mcp.send({
     jsonrpc: "2.0",
-    id: 13,
+    id: 17,
     method: "tools/call",
     params: {
       name: "task_update",
@@ -1254,7 +1313,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const taskFinalize = await mcp.send({
     jsonrpc: "2.0",
-    id: 14,
+    id: 18,
     method: "tools/call",
     params: {
       name: "task_finalize",
@@ -1268,7 +1327,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
 
   const resume = await mcp.send({
     jsonrpc: "2.0",
-    id: 15,
+    id: 19,
     method: "tools/call",
     params: {
       name: "resume",

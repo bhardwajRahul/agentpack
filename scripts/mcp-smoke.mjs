@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_update", "task_update_verification"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_start", "task_status", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -61,15 +61,27 @@ try {
   });
   assertMatch(initialAudit.result?.content?.[0]?.text || "", /No current task passport/, "task_audit reports missing task before start");
 
-  runCli([
-    "task",
-    "start",
-    "MCP smoke verification",
-    "--write-scope",
-    "index.js",
-    "--next",
-    "Complete smoke verification"
-  ]);
+  const initialTaskStatus = await client.request("tools/call", {
+    name: "task_status",
+    arguments: {}
+  });
+  assertMatch(initialTaskStatus.result?.content?.[0]?.text || "", /No current task passport/, "task_status reports missing task before start");
+
+  const taskStart = await client.request("tools/call", {
+    name: "task_start",
+    arguments: {
+      title: "MCP smoke verification",
+      writeScope: ["index.js"],
+      nextActions: ["Complete smoke verification"]
+    }
+  });
+  assertMatch(taskStart.result?.content?.[0]?.text || "", /Started task task_/, "task_start creates the current passport");
+
+  const activeTaskStatus = await client.request("tools/call", {
+    name: "task_status",
+    arguments: {}
+  });
+  assertMatch(activeTaskStatus.result?.content?.[0]?.text || "", /MCP smoke verification \[active\]/, "task_status reports the active task");
 
   const taskHandoff = await client.request("tools/call", {
     name: "task_handoff",
@@ -126,7 +138,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_status -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

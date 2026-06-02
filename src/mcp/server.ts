@@ -5,7 +5,7 @@ import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, 
 import type { Readable, Writable } from "node:stream";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatTaskAuditReport, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, startTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -113,6 +113,34 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "task_handoff",
     description: "Generate a compact current Task Passport handoff for switching chats, clients, worktrees, or agents.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "task_start",
+    description: "Create a new current Task Passport when no active task blocks starting one.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        objective: { type: "string" },
+        constraints: { type: "array", items: { type: "string" } },
+        writeScope: { type: "array", items: { type: "string" } },
+        nextActions: { type: "array", items: { type: "string" } },
+        tags: { type: "array", items: { type: "string" } },
+        risk: {
+          type: "string",
+          enum: ["unknown", "low", "medium", "high"]
+        }
+      },
+      required: ["title"]
+    }
+  },
+  {
+    name: "task_status",
+    description: "Print a quick current Task Passport status without running a source-cache audit.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -399,6 +427,30 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "task_handoff") {
     return toolText(redactForRoot(root, formatCurrentTaskHandoff(root, getSourceStatuses(root))));
+  }
+
+  if (name === "task_start") {
+    const startOptions: TaskStartOptions = {
+      title: redactForRoot(root, text(args.title)),
+      constraints: stringArray(args.constraints).map((item) => redactForRoot(root, item)),
+      writeScope: stringArray(args.writeScope),
+      nextActions: stringArray(args.nextActions).map((item) => redactForRoot(root, item)),
+      tags: stringArray(args.tags)
+    };
+    const objective = redactForRoot(root, text(args.objective));
+    const risk = taskRisk(args.risk);
+    if (objective) {
+      startOptions.objective = objective;
+    }
+    if (risk) {
+      startOptions.risk = risk;
+    }
+    const passport = startTask(root, startOptions);
+    return toolText(`Started task ${passport.id}.`);
+  }
+
+  if (name === "task_status") {
+    return toolText(redactForRoot(root, formatCurrentTaskStatus(root)));
   }
 
   if (name === "task_update_verification") {

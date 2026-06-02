@@ -32,6 +32,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `task_audit`
 - `task_finalize`
 - `task_handoff`
+- `task_start`
+- `task_status`
 - `task_update`
 - `task_update_verification`
 - `checkpoint`
@@ -44,6 +46,10 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 `task_audit` checks the current Task Passport for continuity risks: missing or unreadable passport state, closed current task, missing next actions, open verification, missing write scope, branch/head drift, worktree mismatch, and source-cache metadata drift. Pass `{ "json": true }` for structured output.
 
 `task_handoff` generates a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
+
+`task_start` creates a new current Task Passport. It accepts `title`, `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`, matching the CLI start semantics. It refuses to replace an active, blocked, or verifying current task; park or close that task through the CLI before starting unrelated MCP work.
+
+`task_status` prints the same quick current-task view as `agentpack task status`. It does not scan the source cache and should not be used as a substitute for `task_audit`.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
@@ -77,6 +83,8 @@ The smoke test verifies:
 - `tools/call record_source`
 - `tools/call source_status`
 - `tools/call task_audit`
+- `tools/call task_status`
+- `tools/call task_start`
 - `tools/call task_finalize`
 - `tools/call task_handoff`
 - `tools/call task_update`
