@@ -342,7 +342,7 @@ function checkClaudeDesktopConfig(root: string): DoctorCheck {
   const issues = agentpackServers.flatMap(([name, server]) => claudeDesktopServerIssues(name, server));
 
   if (!hasCurrentRoot) {
-    issues.push(`Agentpack Desktop servers point elsewhere: ${roots.map(([name, configuredRoot]) => `${name}=${configuredRoot}`).join(", ") || "no root configured"}`);
+    issues.push(`no Claude Desktop Agentpack server points at this repo; only fix this if you expect Claude Desktop to use this repo. Existing Agentpack Desktop roots: ${roots.map(([name, configuredRoot]) => `${name}=${configuredRoot}`).join(", ") || "no root configured"}`);
   }
 
   return {

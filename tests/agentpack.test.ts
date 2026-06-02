@@ -366,6 +366,45 @@ test("doctor names the Claude Desktop server key for the current repo", () => {
   }
 });
 
+test("doctor clarifies when Claude Desktop points only at other repos", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-desktop-other-repo-test-"));
+  const otherRoot = mkdtempSync(path.join(os.tmpdir(), "agentpack-other-root-"));
+  const fakeHome = mkdtempSync(path.join(os.tmpdir(), "agentpack-home-test-"));
+  mkdirSync(path.join(fakeHome, "Library", "Application Support", "Claude"), { recursive: true });
+
+  run(dir, ["init"]);
+  writeFileSync(
+    path.join(fakeHome, "Library", "Application Support", "Claude", "claude_desktop_config.json"),
+    JSON.stringify({
+      mcpServers: {
+        "agentpack-other": {
+          command: process.execPath,
+          args: [cli, "mcp", "--root", otherRoot],
+          env: {
+            AGENTPACK_ROOT: otherRoot
+          }
+        }
+      }
+    }, null, 2),
+    "utf8"
+  );
+
+  const originalHome = process.env.HOME;
+  try {
+    process.env.HOME = fakeHome;
+    const doctor = buildDoctorReport(dir).text;
+    assert.match(doctor, /\[warn\] Claude Desktop: no Claude Desktop Agentpack server points at this repo/);
+    assert.match(doctor, /only fix this if you expect Claude Desktop to use this repo/);
+    assert.match(doctor, /Existing Agentpack Desktop roots: agentpack-other=/);
+  } finally {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+  }
+});
+
 test("mcp root resolution prefers --root, then AGENTPACK_ROOT, then cwd", () => {
   const originalRoot = process.env.AGENTPACK_ROOT;
 
@@ -1061,6 +1100,8 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     params: {}
   });
   assert.equal(initialize.result.serverInfo.name, "agentpack");
+  const pkg = JSON.parse(readFileSync(path.join(repoRoot, "..", "package.json"), "utf8")) as { version: string };
+  assert.equal(initialize.result.serverInfo.version, pkg.version);
 
   const beforeNotification = mcp.messages.length;
   mcp.input.write(`${JSON.stringify({
