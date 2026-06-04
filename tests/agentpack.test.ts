@@ -521,11 +521,14 @@ test("release preflight is read-only and checks release prep basics", async () =
     "-m",
     "initial"
   ]);
+  runGit(dir, ["branch", "-M", "main"]);
+  addReleaseRemote(dir);
 
   const preflight = run(dir, ["release", "preflight"]);
   assert.match(preflight, /Agentpack release preflight/);
   assert.match(preflight, /\[ok\] package\.json: agentpack-cli@1\.2\.3/);
   assert.match(preflight, /\[ok\] package-lock\.json: version matches 1\.2\.3/);
+  assert.match(preflight, /\[ok\] Git: main @ [0-9a-f]+, in sync with origin\/main/);
   assert.match(preflight, /\[ok\] Publish workflow: Trusted Publisher release workflow is present/);
   assert.match(preflight, /\[ok\] Release docs: weekly cadence and pre-flight checklist are documented/);
   assert.match(preflight, /Release actions are intentionally manual/);
@@ -543,6 +546,58 @@ test("release preflight is read-only and checks release prep basics", async () =
   });
   assert.match(releasePreflight.result.content[0].text, /Agentpack release preflight/);
   assert.match(releasePreflight.result.content[0].text, /Release actions are intentionally manual/);
+});
+
+test("release preflight blocks upstream drift and token-based npm auth", () => {
+  const aheadDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-ahead-test-"));
+  writeReleaseFixture(aheadDir);
+  initializeReleaseRepo(aheadDir);
+  writeFileSync(path.join(aheadDir, "README.md"), "# Local change\n", "utf8");
+  runGit(aheadDir, ["add", "README.md"]);
+  commit(aheadDir, "local change");
+
+  const ahead = runExpectFailureOutput(aheadDir, ["release", "preflight"]);
+  assert.match(ahead, /\[fail\] Git: main is ahead of origin\/main by 1 commit\(s\); push reviewed commits before release prep/);
+  assert.match(ahead, /Result: fix failed checks before release prep/);
+
+  const behindDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-behind-test-"));
+  writeReleaseFixture(behindDir);
+  const remote = initializeReleaseRepo(behindDir);
+  const cloneDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-upstream-clone-"));
+  runGit(os.tmpdir(), ["clone", remote, cloneDir]);
+  runGit(cloneDir, ["config", "user.name", "Agentpack Test"]);
+  runGit(cloneDir, ["config", "user.email", "test@example.com"]);
+  writeFileSync(path.join(cloneDir, "README.md"), "# Remote change\n", "utf8");
+  runGit(cloneDir, ["add", "README.md"]);
+  commit(cloneDir, "remote change");
+  runGit(cloneDir, ["push", "origin", "main"]);
+  runGit(behindDir, ["fetch", "origin"]);
+
+  const behind = runExpectFailureOutput(behindDir, ["release", "preflight"]);
+  assert.match(behind, /\[fail\] Git: main is behind origin\/main by 1 commit\(s\); update main before release prep/);
+
+  const tokenDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-token-test-"));
+  writeReleaseFixture(tokenDir, [
+    "name: Publish to npm",
+    "on:",
+    "  release:",
+    "    types: [published]",
+    "permissions:",
+    "  contents: read",
+    "  id-token: write",
+    "jobs:",
+    "  publish:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: npm publish --access public",
+    "        env:",
+    "          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}",
+    ""
+  ].join("\n"));
+  initializeReleaseRepo(tokenDir);
+
+  const token = runExpectFailureOutput(tokenDir, ["release", "preflight"]);
+  assert.match(token, /\[fail\] Publish workflow: must not reference NPM_TOKEN or NODE_AUTH_TOKEN when using Trusted Publisher/);
 });
 
 test("requires semantic review to refresh changed source records", () => {
@@ -1566,11 +1621,12 @@ function runAsync(cwd: string, args: string[]): Promise<string> {
 function runGit(cwd: string, args: string[]): string {
   return execFileSync("git", args, {
     cwd,
-    encoding: "utf8"
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
   });
 }
 
-function writeReleaseFixture(dir: string): void {
+function writeReleaseFixture(dir: string, publishWorkflow?: string): void {
   mkdirSync(path.join(dir, ".github", "workflows"), { recursive: true });
   mkdirSync(path.join(dir, "docs"), { recursive: true });
   writeFileSync(path.join(dir, "package.json"), JSON.stringify({
@@ -1592,7 +1648,7 @@ function writeReleaseFixture(dir: string): void {
       }
     }
   }, null, 2), "utf8");
-  writeFileSync(path.join(dir, ".github", "workflows", "publish.yml"), [
+  writeFileSync(path.join(dir, ".github", "workflows", "publish.yml"), publishWorkflow || [
     "name: Publish to npm",
     "on:",
     "  release:",
@@ -1617,6 +1673,37 @@ function writeReleaseFixture(dir: string): void {
     "- npm test",
     ""
   ].join("\n"), "utf8");
+}
+
+function initializeReleaseRepo(dir: string): string {
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  runGit(dir, ["add", ".gitignore", ".github", "docs", "package.json", "package-lock.json"]);
+  commit(dir, "initial");
+  runGit(dir, ["branch", "-M", "main"]);
+  return addReleaseRemote(dir);
+}
+
+function addReleaseRemote(dir: string): string {
+  const remote = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-remote-"));
+  runGit(remote, ["init", "--bare"]);
+  runGit(dir, ["remote", "add", "origin", remote]);
+  runGit(dir, ["push", "-u", "origin", "main"]);
+  return remote;
+}
+
+function commit(dir: string, message: string): void {
+  runGit(dir, [
+    "-c",
+    "user.name=Agentpack Test",
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    message
+  ]);
 }
 
 function taskEventCount(root: string, taskId: string): number {

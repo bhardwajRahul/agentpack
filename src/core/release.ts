@@ -112,7 +112,26 @@ function checkGit(root: string): ReleaseCheck {
   if (git.branch !== "main") {
     return { status: "warn", name: "Git", detail: `current branch is ${git.branch}; normal releases are cut from main` };
   }
-  return { status: "ok", name: "Git", detail: `${git.branch} @ ${git.head || "unknown"}` };
+  if (!git.upstream) {
+    return { status: "fail", name: "Git", detail: "main has no upstream; push main and set upstream before release prep" };
+  }
+  if (git.ahead === null || git.behind === null) {
+    return { status: "fail", name: "Git", detail: `could not compare main with ${git.upstream}; verify upstream state before release prep` };
+  }
+  if (git.ahead > 0 && git.behind > 0) {
+    return {
+      status: "fail",
+      name: "Git",
+      detail: `main and ${git.upstream} have diverged (${git.ahead} ahead, ${git.behind} behind); reconcile before release prep`
+    };
+  }
+  if (git.ahead > 0) {
+    return { status: "fail", name: "Git", detail: `main is ahead of ${git.upstream} by ${git.ahead} commit(s); push reviewed commits before release prep` };
+  }
+  if (git.behind > 0) {
+    return { status: "fail", name: "Git", detail: `main is behind ${git.upstream} by ${git.behind} commit(s); update main before release prep` };
+  }
+  return { status: "ok", name: "Git", detail: `${git.branch} @ ${git.head || "unknown"}, in sync with ${git.upstream}` };
 }
 
 function checkPublishWorkflow(root: string): ReleaseCheck {
@@ -131,6 +150,9 @@ function checkPublishWorkflow(root: string): ReleaseCheck {
   }
   if (!content.includes("npm publish --access public")) {
     issues.push("does not publish with npm publish --access public");
+  }
+  if (/\b(?:NPM_TOKEN|NODE_AUTH_TOKEN)\b/.test(content)) {
+    issues.push("must not reference NPM_TOKEN or NODE_AUTH_TOKEN when using Trusted Publisher");
   }
 
   return issues.length

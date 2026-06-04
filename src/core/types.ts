@@ -82,6 +82,9 @@ export interface GitInfo {
   topLevel?: string;
   branch: string | null;
   head: string | null;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
   status: string;
   diff: string;
 }

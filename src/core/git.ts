@@ -21,17 +21,34 @@ export function getGitInfo(root: string): GitInfo {
       available: false,
       branch: null,
       head: null,
+      upstream: null,
+      ahead: null,
+      behind: null,
       status: "",
       diff: ""
     };
   }
+
+  const upstream = runGit(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) || null;
+  const counts = upstream ? parseAheadBehind(runGit(root, ["rev-list", "--left-right", "--count", `HEAD...${upstream}`])) : null;
 
   return {
     available: true,
     topLevel,
     branch: runGit(root, ["branch", "--show-current"]) || "detached",
     head: runGit(root, ["rev-parse", "--short", "HEAD"]),
+    upstream,
+    ahead: counts?.ahead ?? null,
+    behind: counts?.behind ?? null,
     status: runGit(root, ["status", "--short"]),
     diff: runGit(root, ["diff", "--"])
   };
+}
+
+function parseAheadBehind(output: string): { ahead: number; behind: number } | null {
+  const [aheadRaw, behindRaw] = output.trim().split(/\s+/);
+  const ahead = Number.parseInt(aheadRaw || "", 10);
+  const behind = Number.parseInt(behindRaw || "", 10);
+
+  return Number.isFinite(ahead) && Number.isFinite(behind) ? { ahead, behind } : null;
 }
