@@ -564,7 +564,7 @@ test("release preflight blocks upstream drift and token-based npm auth", () => {
   writeReleaseFixture(behindDir);
   const remote = initializeReleaseRepo(behindDir);
   const cloneDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-upstream-clone-"));
-  runGit(os.tmpdir(), ["clone", remote, cloneDir]);
+  runGit(os.tmpdir(), ["clone", "--branch", "main", remote, cloneDir]);
   runGit(cloneDir, ["config", "user.name", "Agentpack Test"]);
   runGit(cloneDir, ["config", "user.email", "test@example.com"]);
   writeFileSync(path.join(cloneDir, "README.md"), "# Remote change\n", "utf8");
