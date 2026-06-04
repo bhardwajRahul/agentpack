@@ -62,6 +62,10 @@ test("--version and --help run without an initialized pack", () => {
   assert.match(ledgerHelp, /agentpack ledger status/);
   assert.match(ledgerHelp, /No cleanup is performed/);
 
+  const releaseHelp = run(dir, ["release", "--help"]);
+  assert.match(releaseHelp, /agentpack release preflight/);
+  assert.match(releaseHelp, /does not push, tag, publish, or create GitHub Releases/);
+
   const initHelp = run(dir, ["init", "--help"]);
   assert.match(initHelp, /agentpack init/);
   assert.match(initHelp, /Initialize \.agentpack\//);
@@ -166,6 +170,7 @@ test("exposes expected MCP tools", () => {
     "record_dead_end",
     "record_decision",
     "record_source",
+    "release_preflight",
     "replay",
     "resume",
     "source_status",
@@ -491,6 +496,53 @@ test("removes explicit and missing source records", () => {
     .map((line) => JSON.parse(line) as { type: string; path?: string; count?: number });
   assert.equal(events.some((event) => event.type === "source-prune" && event.count === 1), true);
   assert.equal(events.some((event) => event.type === "source-remove" && event.path === "active.js"), true);
+});
+
+test("release preflight is read-only and checks release prep basics", async () => {
+  const noPackDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-nopack-"));
+  const noPack = runExpectFailureOutput(noPackDir, ["release", "preflight"]);
+  assert.match(noPack, /Agentpack release preflight/);
+  assert.match(noPack, /\[fail\] Pack: No \.agentpack directory found/);
+  assert.match(noPack, /Result: fix failed checks before release prep/);
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-release-test-"));
+  writeReleaseFixture(dir);
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  runGit(dir, ["add", ".gitignore", ".github", "docs", "package.json", "package-lock.json"]);
+  runGit(dir, [
+    "-c",
+    "user.name=Agentpack Test",
+    "-c",
+    "user.email=test@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    "initial"
+  ]);
+
+  const preflight = run(dir, ["release", "preflight"]);
+  assert.match(preflight, /Agentpack release preflight/);
+  assert.match(preflight, /\[ok\] package\.json: agentpack-cli@1\.2\.3/);
+  assert.match(preflight, /\[ok\] package-lock\.json: version matches 1\.2\.3/);
+  assert.match(preflight, /\[ok\] Publish workflow: Trusted Publisher release workflow is present/);
+  assert.match(preflight, /\[ok\] Release docs: weekly cadence and pre-flight checklist are documented/);
+  assert.match(preflight, /Release actions are intentionally manual/);
+  assert.match(preflight, /Result: ready for release-prep checks/);
+
+  const mcp = createMcpHarness(dir);
+  const releasePreflight = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "release_preflight",
+      arguments: {}
+    }
+  });
+  assert.match(releasePreflight.result.content[0].text, /Agentpack release preflight/);
+  assert.match(releasePreflight.result.content[0].text, /Release actions are intentionally manual/);
 });
 
 test("requires semantic review to refresh changed source records", () => {
@@ -1489,6 +1541,16 @@ function runExpectError(cwd: string, args: string[]): string {
   assert.fail(`Expected command to fail: agentpack ${args.join(" ")}`);
 }
 
+function runExpectFailureOutput(cwd: string, args: string[]): string {
+  try {
+    run(cwd, args);
+  } catch (error) {
+    const failure = error as { stdout?: Buffer | string; stderr?: Buffer | string; message?: string };
+    return String(failure.stdout || failure.stderr || failure.message || error);
+  }
+  assert.fail(`Expected command to fail: agentpack ${args.join(" ")}`);
+}
+
 function runAsync(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(process.execPath, [cli, ...args], { cwd, encoding: "utf8" }, (error, stdout, stderr) => {
@@ -1506,6 +1568,55 @@ function runGit(cwd: string, args: string[]): string {
     cwd,
     encoding: "utf8"
   });
+}
+
+function writeReleaseFixture(dir: string): void {
+  mkdirSync(path.join(dir, ".github", "workflows"), { recursive: true });
+  mkdirSync(path.join(dir, "docs"), { recursive: true });
+  writeFileSync(path.join(dir, "package.json"), JSON.stringify({
+    name: "agentpack-cli",
+    version: "1.2.3",
+    publishConfig: {
+      access: "public",
+      provenance: true
+    }
+  }, null, 2), "utf8");
+  writeFileSync(path.join(dir, "package-lock.json"), JSON.stringify({
+    name: "agentpack-cli",
+    version: "1.2.3",
+    lockfileVersion: 3,
+    packages: {
+      "": {
+        name: "agentpack-cli",
+        version: "1.2.3"
+      }
+    }
+  }, null, 2), "utf8");
+  writeFileSync(path.join(dir, ".github", "workflows", "publish.yml"), [
+    "name: Publish to npm",
+    "on:",
+    "  release:",
+    "    types: [published]",
+    "permissions:",
+    "  contents: read",
+    "  id-token: write",
+    "jobs:",
+    "  publish:",
+    "    runs-on: ubuntu-latest",
+    "    steps:",
+    "      - run: npm publish --access public",
+    ""
+  ].join("\n"), "utf8");
+  writeFileSync(path.join(dir, "docs", "RELEASING.md"), [
+    "# Releasing",
+    "",
+    "Use a weekly release cadence for normal releases.",
+    "",
+    "## Pre-flight checklist",
+    "",
+    "- npm test",
+    ""
+  ].join("\n"), "utf8");
 }
 
 function taskEventCount(root: string, taskId: string): number {

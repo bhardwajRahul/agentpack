@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_park", "task_start", "task_status", "task_update", "task_update_verification"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_park", "task_start", "task_status", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -60,6 +60,12 @@ try {
     arguments: {}
   });
   assertMatch(initialAudit.result?.content?.[0]?.text || "", /No current task passport/, "task_audit reports missing task before start");
+
+  const releasePreflight = await client.request("tools/call", {
+    name: "release_preflight",
+    arguments: {}
+  });
+  assertMatch(releasePreflight.result?.content?.[0]?.text || "", /Agentpack release preflight/, "release_preflight returns the release report");
 
   const initialTaskStatus = await client.request("tools/call", {
     name: "task_status",
@@ -153,7 +159,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_status -> task_start -> task_park -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

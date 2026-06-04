@@ -1,6 +1,7 @@
 import { appendEvent, requirePackRoot } from "../core/store.js";
 import { buildResume } from "../core/resume.js";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
+import { buildReleasePreflightReport } from "../core/release.js";
 import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -111,6 +112,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         json: { type: "boolean" }
       }
+    }
+  },
+  {
+    name: "release_preflight",
+    description: "Run a read-only release preflight report for local release preparation. Does not push, tag, publish, or create GitHub Releases.",
+    inputSchema: {
+      type: "object",
+      properties: {}
     }
   },
   {
@@ -434,6 +443,11 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       return toolText(redactForRoot(root, JSON.stringify(report, null, 2)));
     }
     return toolText(redactForRoot(root, formatTaskAuditReport(report)));
+  }
+
+  if (name === "release_preflight") {
+    const report = buildReleasePreflightReport(root);
+    return toolText(redactForRoot(root, report.text));
   }
 
   if (name === "task_handoff") {

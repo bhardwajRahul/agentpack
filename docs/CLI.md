@@ -16,6 +16,7 @@ agentpack source status --missing
 agentpack ledger status
 agentpack replay
 agentpack diff
+agentpack release preflight
 ```
 
 `resume --preset agent` shows the current goal, status, next actions, git state, durable decisions, dead ends, evidence, and source-cache guidance under a rough context budget.
@@ -38,6 +39,11 @@ agentpack source remove docs/old-file.md
 `source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
 
 `ledger status` prints a read-only hygiene inventory: task counts, event/evidence/checkpoint/export sizes, referenced evidence counts, and source-cache status counts. It does not delete, compact, archive, or refresh anything.
+
+`release preflight` prints a read-only release-prep report and checklist for
+this repo. It checks local release metadata and Trusted Publisher wiring, then
+prints the manual release-prep commands. It does not push, tag, publish, or
+create GitHub Releases.
 
 ## Task Passports
 

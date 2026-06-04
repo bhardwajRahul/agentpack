@@ -6,6 +6,7 @@ import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildResume } from "../core/resume.js";
 import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import { buildDoctorReport } from "../core/doctor.js";
+import { buildReleasePreflightReport } from "../core/release.js";
 import { redactForRoot } from "../core/redaction.js";
 import {
   auditCurrentTask,
@@ -91,6 +92,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     const report = buildDoctorReport(cwd);
     process.stdout.write(`${report.text}\n`);
     process.exitCode = report.ok ? 0 : 1;
+    return;
+  }
+
+  if (command === "release") {
+    releaseCommand(cwd, rest);
     return;
   }
 
@@ -243,6 +249,7 @@ Inspect and export:
   agentpack source status [--json] [--changed] [--missing]
   agentpack ledger status
   agentpack export --to markdown --preset chat [--query <text>]
+  agentpack release preflight
 
 More:
   agentpack --version
@@ -302,6 +309,12 @@ Root resolution: --root, then AGENTPACK_ROOT, then current working directory.`;
     return `agentpack doctor
 
 Check local Agentpack setup, generated client config, git state, source-cache health, and Node runtime.`;
+  }
+
+  if (command === "release") {
+    return `agentpack release preflight
+
+Print a read-only release-prep report and checklist. It does not push, tag, publish, or create GitHub Releases.`;
   }
 
   if (command === "resume") {
@@ -703,6 +716,24 @@ function ledgerCommand(root: string, rest: string[]): void {
   }
 
   throw new Error("ledger command supports `status`");
+}
+
+function releaseCommand(cwd: string, rest: string[]): void {
+  const subcommand = rest[0];
+
+  if (isHelpRequest(subcommand)) {
+    process.stdout.write(`${commandHelpText("release")}\n`);
+    return;
+  }
+
+  if (subcommand === "preflight") {
+    const report = buildReleasePreflightReport(cwd);
+    process.stdout.write(`${report.text}\n`);
+    process.exitCode = report.ok ? 0 : 1;
+    return;
+  }
+
+  throw new Error("release command supports `preflight`");
 }
 
 function sourceStatusFilters(options: Record<string, ArgValue>): SourceStatusKind[] {

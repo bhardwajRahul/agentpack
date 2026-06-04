@@ -92,6 +92,7 @@ fails, re-run from the Actions tab:
 
 Before `npm version`:
 
+- `agentpack release preflight` reports no failed checks.
 - `npm test` is green locally.
 - `agentpack doctor` is clean in the repo (warnings about source-cache
   staleness are ok; errors are not).
