@@ -978,10 +978,14 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(claudeInstall, /Installed Agentpack claude integration/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /agentpack:start/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /preserve existing functionality/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Coding defaults/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not log secrets/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /design mode: do not write code/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not mutate a review task into implementation work/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /avoid branch names with AI or agent-style prefixes/);
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
   assert.deepEqual(claudeMcp.mcpServers[serverName], {
     type: "stdio",
@@ -1060,6 +1064,10 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexInstall, /Remove any old ~\/\.codex\/config\.toml agentpack server/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /preserve existing functionality/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Git and PR hygiene/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not add AI or agent prefixes/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /`claude\/`, `codex\/`, `ai\/`, or `agent\/`/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Focused skills\/rules/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /treat named modes as explicit collaboration preferences/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);

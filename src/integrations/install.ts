@@ -26,6 +26,23 @@ Safety invariant:
 - verify meaningful changes with focused tests, smoke checks, or documented reasoning before handing off
 - if a requested change risks a regression, call out the risk and choose the safer path unless explicitly directed otherwise
 
+Coding defaults:
+- read the relevant code before changing it, then follow existing project patterns and helper APIs
+- keep changes small, focused, and reviewable; avoid unrelated refactors, formatting churn, dependency changes, or generated-file noise
+- prefer clear, boring code over clever abstractions; add abstractions only when they remove real complexity or match an established local pattern
+- treat security as a default: do not log secrets, weaken auth or validation, add unsafe shell execution, or broaden permissions without a clear reason
+- run the narrowest meaningful verification first, then broader checks when the risk or blast radius warrants it
+
+Git and PR hygiene:
+- use concise imperative commit messages, for example \`Add release preflight check\`
+- do not add AI or agent prefixes, model names, \`Co-authored-by\`, or AI attribution to commits, PR titles, PR bodies, release notes, or branch names
+- avoid branch names with AI or agent-style prefixes such as \`claude/\`, \`codex/\`, \`ai/\`, or \`agent/\`
+- keep commits logically small; separate docs, tests, feature changes, and release prep when practical
+- before staging or committing, inspect the diff and avoid including unrelated user changes
+
+Focused skills/rules:
+- when the client supports skills, rules, or sub-instructions, keep coding workflow, git hygiene, secure coding review, and frontend QA as focused opt-in guidance rather than expanding the always-on project instructions
+
 ${collaborationModesSection()}
 
 At the start of a task:
