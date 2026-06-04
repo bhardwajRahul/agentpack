@@ -19,6 +19,12 @@ npm provenance via a Trusted Publisher. No `NPM_TOKEN` is stored in the repo.
 
 ## Cutting a release
 
+Cadence and branching:
+
+- Use a weekly release cadence for normal releases. Collect finished feature,
+  fix, docs, and polish commits during the week, then cut one coherent release
+  with release notes.
+
 Release discipline:
 
 - A normal push to `main` never publishes to npm.
@@ -35,8 +41,6 @@ Release discipline:
 - The agent may create the GitHub Release when asked, but the human owner can
   check GitHub Actions and npm status manually. Do not add extra workflow/npm
   polling unless explicitly requested.
-- This flow is still too manual; prefer adding a single `release:patch` helper
-  later once the exact release contract is stable.
 
 ```bash
 # 1. After feature/code commits are reviewed and pushed, create a separate release-prep commit for the version bump.
