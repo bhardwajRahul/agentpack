@@ -32,6 +32,7 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `task_audit`
 - `task_finalize`
 - `task_handoff`
+- `task_park`
 - `task_start`
 - `task_status`
 - `task_update`
@@ -47,9 +48,11 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 
 `task_handoff` generates a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
-`task_start` creates a new current Task Passport. It accepts `title`, `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`, matching the CLI start semantics. It refuses to replace an active, blocked, or verifying current task; park or close that task through the CLI before starting unrelated MCP work.
+`task_start` creates a new current Task Passport. It accepts `title`, `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`, matching the CLI start semantics. It refuses to replace an active, blocked, or verifying current task; call `task_park` or close that task before starting unrelated MCP work.
 
 `task_status` prints the same quick current-task view as `agentpack task status`. It does not scan the source cache and should not be used as a substitute for `task_audit`.
+
+`task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable through the CLI and can be resumed later.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
@@ -85,6 +88,7 @@ The smoke test verifies:
 - `tools/call task_audit`
 - `tools/call task_status`
 - `tools/call task_start`
+- `tools/call task_park`
 - `tools/call task_handoff`
 - `tools/call attach_evidence`
 - `tools/call task_update`

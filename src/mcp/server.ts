@@ -8,7 +8,7 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, startTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, parkCurrentTask, startTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -144,6 +144,14 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "task_status",
     description: "Print a quick current Task Passport status without running a source-cache audit.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
+    name: "task_park",
+    description: "Park the current Task Passport so unrelated work can start without finalizing the parked task.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -454,6 +462,11 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "task_status") {
     return toolText(redactForRoot(root, formatCurrentTaskStatus(root)));
+  }
+
+  if (name === "task_park") {
+    const passport = parkCurrentTask(root);
+    return toolText(`Parked task ${passport.id}.`);
   }
 
   if (name === "task_update_verification") {

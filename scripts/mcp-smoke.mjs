@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_start", "task_status", "task_update", "task_update_verification"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_park", "task_start", "task_status", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -66,6 +66,21 @@ try {
     arguments: {}
   });
   assertMatch(initialTaskStatus.result?.content?.[0]?.text || "", /No current task passport/, "task_status reports missing task before start");
+
+  const parkableTaskStart = await client.request("tools/call", {
+    name: "task_start",
+    arguments: {
+      title: "MCP smoke parked task",
+      nextActions: ["Resume after smoke"]
+    }
+  });
+  assertMatch(parkableTaskStart.result?.content?.[0]?.text || "", /Started task task_/, "task_start creates a task that can be parked");
+
+  const taskPark = await client.request("tools/call", {
+    name: "task_park",
+    arguments: {}
+  });
+  assertMatch(taskPark.result?.content?.[0]?.text || "", /Parked task task_/, "task_park parks the current passport");
 
   const taskStart = await client.request("tools/call", {
     name: "task_start",
@@ -138,7 +153,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_status -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> task_status -> task_start -> task_park -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

@@ -179,6 +179,7 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `source_status`
 - `task_audit`
 - `task_handoff`
+- `task_park`
 - `task_start`
 - `task_status`
 - `task_update`

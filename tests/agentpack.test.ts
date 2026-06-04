@@ -172,6 +172,7 @@ test("exposes expected MCP tools", () => {
     "task_audit",
     "task_finalize",
     "task_handoff",
+    "task_park",
     "task_start",
     "task_status",
     "task_update",
@@ -983,7 +984,8 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /design mode: do not write code/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Task lifecycle gate/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not mutate a review task into implementation work/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /park deferred work with `task_park`\/`task park`/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not finalize a task just to free the current slot/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /avoid branch names with AI or agent-style prefixes/);
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
@@ -1048,6 +1050,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /review mode: review the current diff/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Task lifecycle gate/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or accepted/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
   assert.equal(cursorMcp.mcpServers[serverName].type, "stdio");
@@ -1073,6 +1076,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /verifying, blocked, closed/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not mutate a review task into implementation work/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Avoid turning Agentpack into an activity log/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record_source` only when you have a durable conclusion/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` only when you need a full stale-source check/);
@@ -1090,6 +1094,70 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexSnippet, /args = \["mcp"\]/);
   assert.doesNotMatch(codexSnippet, /args = \["mcp", "--root"/);
   assert.doesNotMatch(codexSnippet, /cwd =/);
+});
+
+test("parks current task over MCP so a new task can start", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-park-test-"));
+  writeFileSync(path.join(dir, "index.js"), "console.log('park')\n", "utf8");
+  run(dir, ["init"]);
+
+  const mcp = createMcpHarness(dir);
+
+  const taskStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "task_start",
+      arguments: {
+        title: "Parkable MCP task",
+        nextActions: ["Resume later"]
+      }
+    }
+  });
+  assert.match(taskStart.result.content[0].text, /Started task task_/);
+
+  const taskPark = await mcp.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "task_park",
+      arguments: {}
+    }
+  });
+  assert.match(taskPark.result.content[0].text, /Parked task task_/);
+  const parkedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(parkedPassport.status, "parked");
+  assert.equal(parkedPassport.title, "Parkable MCP task");
+
+  const replacementStart = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "task_start",
+      arguments: {
+        title: "Replacement MCP task"
+      }
+    }
+  });
+  assert.match(replacementStart.result.content[0].text, /Started task task_/);
+
+  const status = await mcp.send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "task_status",
+      arguments: {}
+    }
+  });
+  assert.match(status.result.content[0].text, /Replacement MCP task \[active\]/);
+
+  const tasks = run(dir, ["task", "list"]);
+  assert.match(tasks, /- task_.* \[parked\] Parkable MCP task/);
+  assert.match(tasks, /\* task_.* \[active\] Replacement MCP task/);
 });
 
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {

@@ -197,7 +197,7 @@ The normal human-facing sequence is: start the task, keep status/scope/next acti
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 
-MCP exposes the same minimal start/status path for connected agents through `task_start` and `task_status`, so agents can begin task-scoped work without falling back to the CLI. Broader lifecycle operations such as parking, switching, blocking, and explicit close remain CLI-only until dogfooding shows they are needed through MCP.
+MCP exposes the same minimal start/status path for connected agents through `task_start` and `task_status`, plus `task_park` for intentionally deferring the current task before starting unrelated work. Broader lifecycle operations such as switching, blocking, and explicit close remain CLI-only until dogfooding shows they are needed through MCP.
 
 **`task handoff`** prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
