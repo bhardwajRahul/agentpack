@@ -1174,6 +1174,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /design mode: do not write code/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Task lifecycle gate/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /treat review mode as a scope check/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /park deferred work with `task_park`\/`task park`/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not finalize a task just to free the current slot/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
@@ -1240,6 +1241,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /review mode: review the current diff/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Task lifecycle gate/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /separate review task only for unrelated reviews/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or explicitly accepted as complete/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
@@ -1266,6 +1268,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /verifying, blocked, closed/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep reviews that verify the current active\/verifying task inside that task/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not mutate a review task into implementation work/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Avoid turning Agentpack into an activity log/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record_source` only when you have a durable conclusion/);

@@ -13,10 +13,11 @@ Generated Codex, Claude Code, and Cursor instructions tell connected agents to u
 1. Start by calling `load_context` with a focused query and compact preset.
 2. Call `source_status` only when you need a full stale-source check beyond the context you just loaded.
 3. Record durable decisions, dead ends, evidence, and reviewed source conclusions while working.
-4. Call `checkpoint` after meaningful progress so the next session inherits status, next actions, git state, and compact resume context.
-5. Call `task_handoff` before switching chats, clients, worktrees, or agents.
-6. When a Task Passport is verified and genuinely complete, call `task_finalize` to close it instead of leaving the next agent to infer whether the work is done.
-7. When work is paused only so unrelated work can start, call `task_park` instead of `task_finalize`.
+4. Keep reviews that verify the current active/verifying task inside that task as evidence and checkpoint context; use a separate review task only for unrelated reviews.
+5. Call `checkpoint` after meaningful progress so the next session inherits status, next actions, git state, and compact resume context.
+6. Call `task_handoff` before switching chats, clients, worktrees, or agents.
+7. When a Task Passport is verified and genuinely complete, call `task_finalize` to close it instead of leaving the next agent to infer whether the work is done.
+8. When work is paused only so unrelated work can start, call `task_park` instead of `task_finalize`.
 
 For small tasks, prefer one aggregated evidence item plus one checkpoint summary. Do not call `source_status` repeatedly when `load_context`, `task_audit`, or a recent status check already answered the question. Do not call `record_source` for every changed file just to clear an audit warning; refresh a source record only when its durable conclusion changed.
 

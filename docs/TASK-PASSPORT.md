@@ -197,6 +197,11 @@ Temporary work switching uses `task park`, not `task finalize`. Parking keeps a
 passport open and switchable while unrelated work becomes current. Finalization
 means the task is complete, failed, or explicitly accepted as-is.
 
+Review requests follow the same current-task check. A review that verifies the
+current active or verifying task is verification work for that passport; record
+the review evidence and checkpoint there. Start, switch, or park into a separate
+review task only when the review is unrelated to the current task.
+
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.

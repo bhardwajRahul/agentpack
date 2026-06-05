@@ -42,6 +42,7 @@ Default cadence:
 - At task start, load Agentpack context.
 - Before implementation, confirm the current Task Passport is the right active task for this phase and branch.
 - If the current task is verifying, blocked, closed, or has unexplained branch/head drift, resolve that lifecycle state before editing code.
+- Treat review requests as verification for the current task when they match its active/verifying scope; use a separate review task only for unrelated reviews.
 - Call source status only when you need a full stale-source check beyond the loaded context.
 - During normal coding, keep working locally; record only durable decisions, dead ends, source conclusions, and evidence.
 - Sequence state-changing Agentpack calls; do not run them in parallel with audit, status, or checkpoint calls.
