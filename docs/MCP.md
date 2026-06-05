@@ -46,6 +46,8 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 
 `load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources remain visible as compact path/status/topic/guidance stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering. This saves tokens without hiding which recorded files exist.
 
+`source_status` accepts `changed`, `missing`, and `json` booleans. Pass `{ "changed": true }`, `{ "missing": true }`, or both to focus MCP output on stale source-cache records instead of dumping every unchanged source conclusion.
+
 `task_audit` checks the current Task Passport for continuity risks: missing or unreadable passport state, closed current task, missing next actions, open verification, missing write scope, branch/head drift, worktree mismatch, and source-cache metadata drift. Pass `{ "json": true }` for structured output.
 
 `release_preflight` prints the same read-only release-prep report as

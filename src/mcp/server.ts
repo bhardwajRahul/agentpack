@@ -2,7 +2,7 @@ import { appendEvent, requirePackRoot } from "../core/store.js";
 import { buildResume } from "../core/resume.js";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import { buildReleasePreflightReport } from "../core/release.js";
-import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents } from "../operations.js";
+import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents, type SourceStatusKind } from "../operations.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
@@ -100,7 +100,9 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        json: { type: "boolean" }
+        json: { type: "boolean" },
+        changed: { type: "boolean" },
+        missing: { type: "boolean" }
       }
     }
   },
@@ -432,10 +434,11 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "source_status") {
+    const filters = sourceStatusFilters(args);
     if (booleanValue(args.json, false)) {
-      return toolText(redactForRoot(root, JSON.stringify(getSourceStatuses(root), null, 2)));
+      return toolText(redactForRoot(root, JSON.stringify(getSourceStatuses(root, filters), null, 2)));
     }
-    return toolText(formatSourceStatuses(root));
+    return toolText(formatSourceStatuses(root, filters));
   }
 
   if (name === "task_audit") {
@@ -593,6 +596,17 @@ function stringArray(value: unknown): string[] {
 
 function booleanValue(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function sourceStatusFilters(args: Record<string, unknown>): SourceStatusKind[] {
+  const filters: SourceStatusKind[] = [];
+  if (booleanValue(args.changed, false)) {
+    filters.push("changed");
+  }
+  if (booleanValue(args.missing, false)) {
+    filters.push("missing");
+  }
+  return filters;
 }
 
 function taskRisk(value: unknown): "low" | "medium" | "high" | "unknown" | undefined {

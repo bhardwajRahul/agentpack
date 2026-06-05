@@ -648,6 +648,80 @@ test("requires semantic review to refresh changed source records", () => {
   assert.equal(events.some((event) => event.type === "source-review" && event.path === "reviewed.js"), true);
 });
 
+test("filters MCP source_status to changed and missing records", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-source-status-test-"));
+  writeFileSync(path.join(dir, "active.js"), "console.log('active')\n", "utf8");
+  writeFileSync(path.join(dir, "changed.js"), "console.log('changed v1')\n", "utf8");
+  writeFileSync(path.join(dir, "missing.js"), "console.log('missing')\n", "utf8");
+
+  run(dir, ["init"]);
+  run(dir, ["source", "add", "active.js", "--summary", "Active source was inspected."]);
+  run(dir, ["source", "add", "changed.js", "--summary", "Changed source was inspected."]);
+  run(dir, ["source", "add", "missing.js", "--summary", "Missing source was inspected."]);
+  writeFileSync(path.join(dir, "changed.js"), "console.log('changed v2')\n", "utf8");
+  unlinkSync(path.join(dir, "missing.js"));
+
+  const mcp = createMcpHarness(dir);
+  const tools = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/list",
+    params: {}
+  });
+  const sourceStatusTool = tools.result.tools.find((tool: { name: string }) => tool.name === "source_status");
+  assert.ok(sourceStatusTool);
+  assert.ok(sourceStatusTool.inputSchema.properties.changed);
+  assert.ok(sourceStatusTool.inputSchema.properties.missing);
+
+  const changed = await mcp.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "source_status",
+      arguments: {
+        changed: true
+      }
+    }
+  });
+  assert.match(changed.result.content[0].text, /CHANGED changed\.js/);
+  assert.doesNotMatch(changed.result.content[0].text, /UNCHANGED active\.js/);
+  assert.doesNotMatch(changed.result.content[0].text, /MISSING missing\.js/);
+
+  const stale = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "source_status",
+      arguments: {
+        changed: true,
+        missing: true
+      }
+    }
+  });
+  assert.match(stale.result.content[0].text, /CHANGED changed\.js/);
+  assert.match(stale.result.content[0].text, /MISSING missing\.js/);
+  assert.doesNotMatch(stale.result.content[0].text, /UNCHANGED active\.js/);
+
+  const missingJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "source_status",
+      arguments: {
+        missing: true,
+        json: true
+      }
+    }
+  });
+  const parsed = JSON.parse(missingJson.result.content[0].text) as Array<{ path: string; status: string }>;
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.path, "missing.js");
+  assert.equal(parsed[0]?.status, "missing");
+});
+
 test("manages a current task passport", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-test-"));
   mkdirSync(path.join(dir, "src"));
