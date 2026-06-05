@@ -417,7 +417,7 @@ Common workflow:
   agentpack task update [--objective <text>] [--write-scope <path>] [--next <item>] [--risk low|medium|high]
   agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack task handoff
-  agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>]
+  agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>] [--force]
 
 Inspection and coordination:
   agentpack task list
@@ -434,6 +434,7 @@ Notes:
   task audit is the diagnostic continuity check.
   task handoff is the compact summary for another chat, client, worktree, or agent.
   task finalize refuses unknown or pending verification by default.
+  task finalize --status accepted refuses tasks with remaining next actions unless --force is passed.
 `);
 }
 
@@ -610,7 +611,8 @@ function taskCommand(root: string, rest: string[]): void {
     const passport = finalizeCurrentTask(root, {
       status: stringOption(parsed.options.status),
       evidence: toArray(parsed.options.evidence),
-      summary: redactForRoot(root, stringOption(parsed.options.summary))
+      summary: redactForRoot(root, stringOption(parsed.options.summary)),
+      force: parsed.options.force === true
     });
     process.stdout.write(`Finalized task ${passport.id} (${passport.verification.status})\n`);
     return;

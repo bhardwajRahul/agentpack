@@ -847,14 +847,23 @@ test("manages a current task passport", () => {
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Task has no write scope/);
 
   assert.match(run(dir, ["task", "close"]), /Closed task/);
-  assert.match(run(dir, ["task", "start", "Finalize direct", "--write-scope", "."]), /Started task task_/);
-  assert.match(run(dir, [
+  assert.match(run(dir, ["task", "start", "Finalize direct", "--write-scope", ".", "--next", "Resume later"]), /Started task task_/);
+  assert.match(runExpectError(dir, [
     "task",
     "finalize",
     "--status",
     "accepted",
     "--summary",
     "Small docs task accepted."
+  ]), /Use `agentpack task park` for deferred work/);
+  assert.match(run(dir, [
+    "task",
+    "finalize",
+    "--status",
+    "accepted",
+    "--summary",
+    "Small docs task accepted.",
+    "--force"
   ]), /Finalized task .* \(accepted\)/);
   const finalized = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(finalized.status, "completed");
@@ -1157,7 +1166,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /review mode: review the current diff/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Task lifecycle gate/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or accepted/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or explicitly accepted as complete/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
   assert.equal(cursorMcp.mcpServers[serverName].type, "stdio");
@@ -1224,9 +1233,23 @@ test("parks current task over MCP so a new task can start", async () => {
   });
   assert.match(taskStart.result.content[0].text, /Started task task_/);
 
-  const taskPark = await mcp.send({
+  const refusedFinalize = await mcp.send({
     jsonrpc: "2.0",
     id: 2,
+    method: "tools/call",
+    params: {
+      name: "task_finalize",
+      arguments: {
+        status: "accepted",
+        summary: "Pause for another task."
+      }
+    }
+  });
+  assert.match(refusedFinalize.error?.message, /Use `agentpack task park` for deferred work/);
+
+  const taskPark = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
     method: "tools/call",
     params: {
       name: "task_park",
@@ -1240,7 +1263,7 @@ test("parks current task over MCP so a new task can start", async () => {
 
   const replacementStart = await mcp.send({
     jsonrpc: "2.0",
-    id: 3,
+    id: 4,
     method: "tools/call",
     params: {
       name: "task_start",
@@ -1253,7 +1276,7 @@ test("parks current task over MCP so a new task can start", async () => {
 
   const status = await mcp.send({
     jsonrpc: "2.0",
-    id: 4,
+    id: 5,
     method: "tools/call",
     params: {
       name: "task_status",

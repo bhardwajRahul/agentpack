@@ -47,6 +47,9 @@ Default cadence:
 - Sequence state-changing Agentpack calls; do not run them in parallel with audit, status, or checkpoint calls.
 - At the end of a coherent step, record aggregated evidence, update status and next actions, then checkpoint.
 - Use full safe mode for risky or release-like changes: record important findings as they happen and run the full verification loop.
+- Park deferred work before switching to an unrelated task. Do not use accepted
+  finalization as a pause; finalization means the task is complete or
+  intentionally accepted as-is.
 
 This keeps Agentpack useful without turning every micro-step into ledger traffic. The intended default cost is one context load near the start and one durable save near the end.
 

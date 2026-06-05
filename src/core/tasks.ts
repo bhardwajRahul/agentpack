@@ -38,6 +38,10 @@ export interface TaskVerificationUpdateOptions {
   summary?: string;
 }
 
+export interface TaskFinalizeOptions extends TaskVerificationUpdateOptions {
+  force?: boolean;
+}
+
 export interface TaskVerificationUpdateResult {
   passport: TaskPassport;
   changed: boolean;
@@ -277,7 +281,7 @@ export function closeCurrentTask(root: string): TaskPassport {
   });
 }
 
-export function finalizeCurrentTask(root: string, options: TaskVerificationUpdateOptions = {}): TaskPassport {
+export function finalizeCurrentTask(root: string, options: TaskFinalizeOptions = {}): TaskPassport {
   return updateCurrentTask(root, "completed", "task-finalize", (existing) => {
     const explicitStatus = options.status !== undefined && String(options.status).trim() !== "";
     const verificationStatus = !explicitStatus
@@ -286,6 +290,9 @@ export function finalizeCurrentTask(root: string, options: TaskVerificationUpdat
 
     if (!FINAL_VERIFICATION_STATUSES.has(verificationStatus)) {
       throw new Error("task finalize requires verification status passed, failed, or accepted; run `agentpack task verify --status passed|failed|accepted` first or pass `--status`.");
+    }
+    if (verificationStatus === "accepted" && existing.nextActions.length > 0 && !options.force) {
+      throw new Error("task finalize --status accepted refuses to close a task that still has next actions. Use `agentpack task park` for deferred work, clear or complete the next actions, or pass `--force` if this task is genuinely accepted as-is.");
     }
 
     return {

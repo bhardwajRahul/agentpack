@@ -76,6 +76,10 @@ The common workflow is:
 5. `task handoff` prints the compact summary for another chat, client, worktree, or agent.
 6. `task finalize` closes the task after verification is final.
 
+When work is deferred so another task can become current, use `task park`
+instead of `task finalize`. Finalization is the end-of-task ritual; parking is
+the pause-and-switch ritual.
+
 Use `agentpack task --help` for the task-focused command list.
 
 `task start` refuses to replace an active, blocked, or verifying current task; park or close the current task first when starting unrelated work. Invalid risk values are rejected instead of being treated as unknown.
@@ -83,6 +87,11 @@ Use `agentpack task --help` for the task-focused command list.
 `task audit` checks the current passport for branch/head drift, missing next actions, open verification, closed-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so they do not look like action-required task failures.
 
 `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
+
+`task finalize --status accepted` refuses to close a task that still has next
+actions, because that usually means the task should be parked instead. Pass
+`--force` only when those remaining next actions are intentionally historical
+and the task is genuinely accepted as-is.
 
 Repeated identical verification updates are treated as no-ops, so retrying the same `task verify` command does not add duplicate task events.
 

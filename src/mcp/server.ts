@@ -183,7 +183,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_finalize",
-    description: "Finalize the current Task Passport by requiring or setting a final verification status, then closing the task.",
+    description: "Finalize the current Task Passport by requiring or setting a final verification status, then closing the task. Use task_park for deferred work; accepted finalization with remaining next actions requires force.",
     inputSchema: {
       type: "object",
       properties: {
@@ -192,7 +192,8 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
           enum: ["passed", "failed", "accepted"]
         },
         evidence: { type: "array", items: { type: "string" } },
-        summary: { type: "string" }
+        summary: { type: "string" },
+        force: { type: "boolean" }
       }
     }
   },
@@ -500,7 +501,8 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
     const passport = finalizeCurrentTask(root, {
       status: text(args.status),
       evidence: stringArray(args.evidence),
-      summary: redactForRoot(root, text(args.summary))
+      summary: redactForRoot(root, text(args.summary)),
+      force: booleanValue(args.force, false)
     });
     return toolText(`Finalized task ${passport.id} (${passport.verification.status}).`);
   }

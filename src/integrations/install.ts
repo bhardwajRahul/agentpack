@@ -53,7 +53,8 @@ Task lifecycle gate:
 - before implementation, confirm the current Task Passport is the right active task for this phase and branch
 - if the current task is verifying, blocked, closed, or has unexplained branch/head drift, stop and resolve it before editing code
 - park deferred work with \`task_park\`/\`task park\`, or switch/close only when appropriate, before starting unrelated work
-- do not finalize a task just to free the current slot; finalization means verification is passed, failed, or accepted
+- do not finalize a task just to free the current slot; finalization means verification is passed, failed, or explicitly accepted as complete
+- if a task still has next actions and must pause for unrelated work, park it instead of using \`task_finalize\`/\`task finalize --status accepted\`; force accepted finalization only when the remaining next actions are intentionally historical
 - do not mutate a review task into implementation work
 - keep one active task per coherent phase: review, stabilization, rewrite, deployment
 

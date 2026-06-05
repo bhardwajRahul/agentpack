@@ -157,7 +157,7 @@ blocked -> active           task unblock/resume
 active -> verifying         task verify
 verifying -> active         verification found more work
 verifying -> completed      task finalize
-active -> completed         task finalize --status accepted
+active -> completed         task finalize --status accepted [--force when next actions remain]
 active -> abandoned         task abandon
 parked -> abandoned         stale parked task is discarded
 blocked -> abandoned        blocked task is discarded
@@ -193,6 +193,10 @@ agentpack task --help
 
 The normal human-facing sequence is: start the task, keep status/scope/next actions current, record verification with evidence, print a handoff when another agent or chat may continue, then finalize only after verification is final.
 
+Temporary work switching uses `task park`, not `task finalize`. Parking keeps a
+passport open and switchable while unrelated work becomes current. Finalization
+means the task is complete, failed, or explicitly accepted as-is.
+
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
@@ -207,7 +211,7 @@ MCP exposes the same minimal start/status path for connected agents through `tas
 
 `task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
 
-`task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task close` remains available for explicit manual closure.
+`task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task finalize --status accepted` also refuses to close a task with remaining next actions unless `--force` is passed; use `task park` for deferred work. `task close` remains available for explicit manual closure.
 
 ## Role Lanes
 
