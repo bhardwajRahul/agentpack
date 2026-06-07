@@ -121,6 +121,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   const tinyResume = run(dir, ["resume", "--budget", "80"]);
   assert.match(tinyResume, /Estimated usage: ~\d+ tokens/);
   assert.match(tinyResume, /Budget status: limited/);
+  assert.ok(estimatedTokensFromResume(tinyResume) <= 80);
 
   const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "agent"]);
   assert.match(exported, /chatgpt-handoff\.md/);
@@ -598,6 +599,56 @@ test("release preflight blocks upstream drift and token-based npm auth", () => {
 
   const token = runExpectFailureOutput(tokenDir, ["release", "preflight"]);
   assert.match(token, /\[fail\] Publish workflow: must not reference NPM_TOKEN or NODE_AUTH_TOKEN when using Trusted Publisher/);
+});
+
+test("resume surfaces upstream drift and local commits before optional ledger sections", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-resume-git-test-"));
+  writeReleaseFixture(dir);
+  initializeReleaseRepo(dir);
+  run(dir, ["set", "goal", "Keep release train context visible."]);
+  run(dir, [
+    "task",
+    "start",
+    "Prepare next release batch",
+    "--objective",
+    "Carry local commits as next-release candidates until the weekly batch.",
+    "--write-scope",
+    "README.md",
+    "--next",
+    "Review local commits before release prep"
+  ]);
+  writeFileSync(path.join(dir, "README.md"), "# Local release candidate\n", "utf8");
+  runGit(dir, ["add", "README.md"]);
+  commit(dir, "local release candidate");
+
+  run(dir, [
+    "record",
+    "decision",
+    "Use weekly batch release cadence; local commits remain next-release candidates until Thursday release prep."
+  ]);
+  run(dir, [
+    "task",
+    "verify",
+    "--status",
+    "passed",
+    "--summary",
+    "Context handoff checks passed."
+  ]);
+
+  for (let index = 0; index < 10; index += 1) {
+    run(dir, ["record", "decision", `Release decision ${index} should be optional under a tight budget.`]);
+  }
+
+  const resume = run(dir, ["resume", "--budget", "520", "--query", "release cadence local commits verification"]);
+  assert.ok(estimatedTokensFromResume(resume) <= 520);
+  assert.match(resume, /Upstream: origin\/main \(1 ahead, 0 behind\)/);
+  assert.match(resume, /Local commits ahead of upstream:\n  - [0-9a-f]+ local release candidate/);
+  assert.match(resume, /Relevant Context/);
+  assert.match(resume, /Use weekly batch release cadence; local commits remain next-release candidates until Thursday release prep/);
+  assert.match(resume, /Verification: passed - Context handoff checks passed\./);
+  assert.match(resume, /Review local commits before release prep/);
+  assert.match(resume, /Budget status: limited/);
+  assert.match(resume, /omitted Decisions, Evidence, Recent Timeline/);
 });
 
 test("requires semantic review to refresh changed source records", () => {
@@ -1733,6 +1784,14 @@ function runExpectFailureOutput(cwd: string, args: string[]): string {
     return String(failure.stdout || failure.stderr || failure.message || error);
   }
   assert.fail(`Expected command to fail: agentpack ${args.join(" ")}`);
+}
+
+function estimatedTokensFromResume(output: string): number {
+  const match = output.match(/Estimated usage: ~(\d+) tokens/);
+  assert.ok(match, "resume should include estimated token usage");
+  const tokenText = match[1];
+  assert.ok(tokenText, "resume should include numeric estimated token usage");
+  return Number.parseInt(tokenText, 10);
 }
 
 function runAsync(cwd: string, args: string[]): Promise<string> {

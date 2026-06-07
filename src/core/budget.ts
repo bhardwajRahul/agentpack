@@ -4,6 +4,11 @@ interface ResumeSection {
   required?: boolean;
 }
 
+interface PackSectionsOptions {
+  reserveTokens?: number;
+  omissionGuidance?: Record<string, string>;
+}
+
 export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(String(text || "").length / 4));
 }
@@ -32,12 +37,18 @@ export interface PackedSections {
   truncatedSections: string[];
 }
 
-export function packSections(header: string, sections: ResumeSection[], budget: number): PackedSections {
+export function packSections(
+  header: string,
+  sections: ResumeSection[],
+  budget: number,
+  options: PackSectionsOptions = {}
+): PackedSections {
   if (!budget) {
     const markdown = [header, ...sections.map((section) => section.text)].join("\n\n").trimEnd();
     return { markdown, omittedSections: [], truncatedSections: [] };
   }
 
+  const contentBudget = Math.max(1, budget - Math.max(0, options.reserveTokens || 0));
   const omittedSections: string[] = [];
   const truncatedSections: string[] = [];
   let output = header.trimEnd();
@@ -45,7 +56,7 @@ export function packSections(header: string, sections: ResumeSection[], budget: 
 
   for (const section of sections) {
     const sectionTokens = estimateTokens(section.text);
-    const remaining = budget - used;
+    const remaining = contentBudget - used;
 
     if (remaining <= 20) {
       omittedSections.push(section.title);
@@ -68,11 +79,24 @@ export function packSections(header: string, sections: ResumeSection[], budget: 
   }
 
   if (omittedSections.length > 0) {
-    const note = `\n\n## Omitted For Budget\n${omittedSections.map((title) => `- ${title}`).join("\n")}`;
-    if (estimateTokens(output + note) <= budget) {
+    const note = formatOmittedSections(omittedSections, options.omissionGuidance);
+    if (estimateTokens(output + note) <= contentBudget) {
       output += note;
+    } else {
+      const compactNote = `\n\n## Omitted For Budget\n- ${omittedSections.join(", ")}`;
+      if (estimateTokens(output + compactNote) <= contentBudget) {
+        output += compactNote;
+      }
     }
   }
 
   return { markdown: output.trimEnd(), omittedSections, truncatedSections };
+}
+
+function formatOmittedSections(omittedSections: string[], guidance: Record<string, string> = {}): string {
+  const lines = omittedSections.map((title) => {
+    const detail = guidance[title];
+    return detail ? `- ${title}: ${detail}` : `- ${title}`;
+  });
+  return `\n\n## Omitted For Budget\n${lines.join("\n")}`;
 }

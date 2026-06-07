@@ -32,6 +32,8 @@ try {
     tinyQuestionScenario(),
     latestDiffReviewScenario(),
     resumedImplementationScenario(),
+    tightBudgetContextScenario(),
+    freshAgentContextScenario(),
     staleSourceCacheScenario(),
     releasePrepHandoffScenario()
   ];
@@ -46,6 +48,14 @@ try {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     printReport(report);
+  }
+
+  const failedChecks = report.scenarios.flatMap((scenario) => (
+    scenario.utilityChecks || []
+  ).filter((check) => !check.passed).map((check) => `${scenario.id}: ${check.label}`));
+  if (failedChecks.length > 0) {
+    console.error(`Context utility check(s) failed:\n${failedChecks.map((check) => `- ${check}`).join("\n")}`);
+    process.exitCode = 1;
   }
 } finally {
   if (keepFixtures) {
@@ -371,6 +381,197 @@ function staleSourceCacheScenario() {
   };
 }
 
+function tightBudgetContextScenario() {
+  const dir = createFixture("tight-budget-context", {
+    "README.md": "# Tight budget fixture\n",
+    "docs/RELEASING.md": [
+      "# Releasing",
+      "",
+      "Normal releases use the weekly batch cadence.",
+      ""
+    ].join("\n"),
+    "src/index.ts": "export const ready = true;\n"
+  });
+  addOriginUpstream(dir, "tight-budget-context-origin.git");
+  runCli(dir, ["set", "goal", "Keep release context visible under a tight resume budget."]);
+  runCli(dir, [
+    "task",
+    "start",
+    "Continue weekly release batch",
+    "--objective",
+    "Carry local commits as next-release candidates without dumping the full ledger.",
+    "--constraint",
+    "Do not rewrite ledger facts to save tokens.",
+    "--constraint",
+    "Show omitted context explicitly when the budget is tight.",
+    "--write-scope",
+    "README.md",
+    "--write-scope",
+    "docs/RELEASING.md",
+    "--next",
+    "Review local commits before release prep",
+    "--risk",
+    "medium"
+  ]);
+
+  for (let index = 0; index < 14; index += 1) {
+    const filePath = `src/context-${index}.ts`;
+    writeFixtureFile(dir, filePath, `export const context${index} = ${index};\n`);
+    runCli(dir, [
+      "source",
+      "add",
+      filePath,
+      "--summary",
+      `Context source ${index} has a deliberately detailed recorded conclusion for tight-budget omission checks.`
+    ]);
+  }
+
+  for (let index = 0; index < 10; index += 1) {
+    runCli(dir, [
+      "record",
+      "decision",
+      `Decision ${index}: keep release-batch context explicit without lossy summarization.`
+    ]);
+  }
+
+  runCli(dir, [
+    "evidence",
+    "add",
+    "--kind",
+    "benchmark-fixture",
+    "--content",
+    "Tight budget fixture evidence should be omitted before current git context."
+  ]);
+  runCli(dir, [
+    "checkpoint",
+    "-m",
+    "Tight budget context fixture prepared",
+    "--status",
+    "Ready for compact resume",
+    "--next",
+    "Inspect omitted-section metadata"
+  ]);
+  writeFixtureFile(dir, "README.md", "# Local release candidate\n");
+  runGit(dir, ["add", "README.md"]);
+  commitFixture(dir, "local release candidate");
+
+  return {
+    id: "tight_budget_context",
+    label: "Tight-budget context",
+    question: "Recover current task and local commits under a tight context budget.",
+    agentpackCommand: "agentpack resume --budget 220 --query \"release local commits budget\"",
+    agentpackOutput: runCli(dir, ["resume", "--budget", "220", "--query", "release local commits budget"]),
+    directCommand: "git status --short --branch && git log --oneline origin/main..HEAD",
+    directOutput: [
+      runGit(dir, ["status", "--short", "--branch"]),
+      runGit(dir, ["log", "--oneline", "origin/main..HEAD"])
+    ].join("\n"),
+    utilityChecks: [
+      maxEstimatedUsage(220),
+      mustInclude("local upstream drift", "Upstream: origin/main (1 ahead, 0 behind)"),
+      mustInclude("local commit subject", "local release candidate")
+    ]
+  };
+}
+
+function freshAgentContextScenario() {
+  const dir = createFixture("fresh-agent-context", {
+    "README.md": "# Fresh agent fixture\n",
+    "docs/RELEASING.md": [
+      "# Releasing",
+      "",
+      "Normal releases use the weekly batch cadence.",
+      ""
+    ].join("\n"),
+    "src/context.ts": "export const context = true;\n"
+  });
+  addOriginUpstream(dir, "fresh-agent-context-origin.git");
+  runCli(dir, ["set", "goal", "Make task context portable to a fresh agent."]);
+  runCli(dir, [
+    "task",
+    "start",
+    "Improve context transfer",
+    "--objective",
+    "Help a fresh agent recover the accepted task, release cadence, local commits, risks, next actions, and verification.",
+    "--constraint",
+    "Budget is a contract and stress test, not the product goal.",
+    "--constraint",
+    "Token count is diagnostic; context utility is the product metric.",
+    "--write-scope",
+    "src/context.ts",
+    "--write-scope",
+    "docs/RELEASING.md",
+    "--next",
+    "Review local commits before release prep",
+    "--risk",
+    "medium"
+  ]);
+  runCli(dir, [
+    "source",
+    "add",
+    "docs/RELEASING.md",
+    "--summary",
+    "Release docs describe the weekly batch cadence for normal releases."
+  ]);
+  runCli(dir, [
+    "record",
+    "decision",
+    "Use weekly batch release cadence; local commits remain next-release candidates until Thursday release prep."
+  ]);
+  runCli(dir, [
+    "evidence",
+    "add",
+    "--kind",
+    "test-output",
+    "--content",
+    "Context handoff checks passed."
+  ]);
+  runCli(dir, [
+    "task",
+    "verify",
+    "--status",
+    "passed",
+    "--summary",
+    "Context handoff checks passed."
+  ]);
+  runCli(dir, [
+    "checkpoint",
+    "-m",
+    "Fresh-agent context ready",
+    "--status",
+    "Ready for handoff",
+    "--next",
+    "Review local commits before release prep"
+  ]);
+  writeFixtureFile(dir, "README.md", "# Local release candidate\n");
+  runGit(dir, ["add", "README.md"]);
+  commitFixture(dir, "local release candidate");
+
+  return {
+    id: "fresh_agent_context",
+    label: "Fresh-agent context",
+    question: "Can a fresh agent recover the accepted task and release context without ledger archaeology?",
+    agentpackCommand: "agentpack resume --budget 900 --query \"release cadence local commits verification next actions\"",
+    agentpackOutput: runCli(dir, ["resume", "--budget", "900", "--query", "release cadence local commits verification next actions"]),
+    directCommand: "git status --short --branch && git log --oneline origin/main..HEAD && cat docs/RELEASING.md",
+    directOutput: [
+      runGit(dir, ["status", "--short", "--branch"]),
+      runGit(dir, ["log", "--oneline", "origin/main..HEAD"]),
+      readFiles(dir, ["docs/RELEASING.md"])
+    ].join("\n"),
+    utilityChecks: [
+      maxEstimatedUsage(900),
+      mustInclude("accepted task objective", "Help a fresh agent recover the accepted task"),
+      mustInclude("risk", "Risk: medium"),
+      mustInclude("next action", "Review local commits before release prep"),
+      mustInclude("verification", "Verification: passed - Context handoff checks passed."),
+      mustInclude("local upstream drift", "Upstream: origin/main (1 ahead, 0 behind)"),
+      mustInclude("local commit subject", "local release candidate"),
+      mustInclude("release cadence decision", "Use weekly batch release cadence; local commits remain next-release candidates until Thursday release prep")
+    ]
+  };
+}
+
 function releasePrepHandoffScenario() {
   const dir = createFixture("release-prep-handoff", {
     "package.json": JSON.stringify({
@@ -490,6 +691,28 @@ function createFixture(name, files) {
   return dir;
 }
 
+function addOriginUpstream(dir, name) {
+  const remote = path.join(fixturesRoot, name);
+  mkdirSync(remote, { recursive: true });
+  runGit(remote, ["init", "--bare"]);
+  runGit(dir, ["remote", "add", "origin", remote]);
+  runGit(dir, ["push", "-u", "origin", "main"]);
+}
+
+function commitFixture(dir, message) {
+  runGit(dir, [
+    "-c",
+    "user.name=Agentpack Benchmark",
+    "-c",
+    "user.email=benchmark@example.com",
+    "-c",
+    "commit.gpgsign=false",
+    "commit",
+    "-m",
+    message
+  ]);
+}
+
 function writeFixtureFile(root, filePath, content) {
   const absolutePath = path.join(root, filePath);
   mkdirSync(path.dirname(absolutePath), { recursive: true });
@@ -501,6 +724,17 @@ function summarizeScenario(scenario) {
   const mcp = measure(wrapMcpText(scenario.agentpackOutput));
   const direct = measure(scenario.directOutput);
   const sectionBreakdown = measureMarkdownSections(scenario.agentpackOutput);
+  const summary = {
+    agentpack,
+    mcp,
+    direct,
+    sectionBreakdown
+  };
+  const utilityChecks = (scenario.utilityChecks || []).map((check) => ({
+    label: check.label,
+    passed: Boolean(check.check(scenario.agentpackOutput, summary))
+  }));
+
   return {
     id: scenario.id,
     label: scenario.label,
@@ -518,8 +752,31 @@ function summarizeScenario(scenario) {
       agentpackTokens: agentpack.estimatedTokens - direct.estimatedTokens,
       mcpTokens: mcp.estimatedTokens - direct.estimatedTokens
     },
-    ...(sectionBreakdown.length > 0 ? { sectionBreakdown } : {})
+    ...(sectionBreakdown.length > 0 ? { sectionBreakdown } : {}),
+    ...(utilityChecks.length > 0 ? { utilityChecks } : {})
   };
+}
+
+function mustInclude(label, text) {
+  return {
+    label,
+    check: (output) => output.includes(text)
+  };
+}
+
+function maxEstimatedUsage(maxTokens) {
+  return {
+    label: `estimated usage <= ${maxTokens}`,
+    check: (output) => {
+      const tokens = estimatedUsageFromOutput(output);
+      return tokens !== null && tokens <= maxTokens;
+    }
+  };
+}
+
+function estimatedUsageFromOutput(output) {
+  const match = String(output || "").match(/Estimated usage: ~(\d+) tokens/u);
+  return match ? Number.parseInt(match[1], 10) : null;
 }
 
 function measure(output) {
@@ -656,6 +913,25 @@ function printReport(report) {
     );
   }
 
+  const utilityRows = report.scenarios.flatMap((scenario) => (
+    scenario.utilityChecks || []
+  ).map((check) => [
+    scenario.id,
+    check.label,
+    check.passed ? "pass" : "fail"
+  ]));
+
+  if (utilityRows.length > 0) {
+    lines.push(
+      "Context utility checks:",
+      table([
+        ["Scenario", "Check", "Status"],
+        ...utilityRows
+      ]),
+      ""
+    );
+  }
+
   lines.push(
     "Commands:",
     ...report.scenarios.flatMap((scenario) => [
@@ -665,6 +941,7 @@ function printReport(report) {
     "",
     "Notes:",
     "- Token counts use Agentpack's rough local estimate, not a model tokenizer.",
+    "- Utility checks assert must-have handoff signals; token counts diagnose cost, not value by themselves.",
     "- Direct baselines show the likely git/file reads an agent would do without Agentpack context.",
     "- Positive deltas are overhead; negative deltas mean Agentpack output was shorter than the direct baseline.",
     "- Section breakdown attributes Markdown resume growth to buckets such as Source Cache, Evidence, and Current Task Passport."

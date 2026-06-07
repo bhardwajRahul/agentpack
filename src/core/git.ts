@@ -24,6 +24,7 @@ export function getGitInfo(root: string): GitInfo {
       upstream: null,
       ahead: null,
       behind: null,
+      aheadCommits: [],
       status: "",
       diff: ""
     };
@@ -31,6 +32,11 @@ export function getGitInfo(root: string): GitInfo {
 
   const upstream = runGit(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]) || null;
   const counts = upstream ? parseAheadBehind(runGit(root, ["rev-list", "--left-right", "--count", `HEAD...${upstream}`])) : null;
+  const aheadCommits = upstream && counts && counts.ahead > 0
+    ? runGit(root, ["log", "--oneline", "--no-decorate", "--max-count=5", `${upstream}..HEAD`])
+      .split("\n")
+      .filter(Boolean)
+    : [];
 
   return {
     available: true,
@@ -40,6 +46,7 @@ export function getGitInfo(root: string): GitInfo {
     upstream,
     ahead: counts?.ahead ?? null,
     behind: counts?.behind ?? null,
+    aheadCommits,
     status: runGit(root, ["status", "--short"]),
     diff: runGit(root, ["diff", "--"])
   };

@@ -15,6 +15,17 @@ import { redact } from "./redaction.js";
 import { getCurrentPassport } from "./tasks.js";
 import type { AgentpackConfig, AgentpackEvent, GitInfo, SourceRecord, TaskPassport } from "./types.js";
 
+const BUDGET_METADATA_RESERVE_TOKENS = 48;
+const MAX_QUERY_RELEVANT_SOURCE_ENTRIES = 8;
+const MAX_QUERY_UNRELATED_SOURCE_STUBS = 12;
+const SECTION_OMISSION_GUIDANCE: Record<string, string> = {
+  "Source Cache": "rerun with a larger budget, use a narrower query, or call `source_status` for stale details.",
+  "Decisions": "rerun with a larger budget or a query that names the decision topic.",
+  "Dead Ends": "rerun with a larger budget when avoiding prior failed approaches matters.",
+  "Evidence": "rerun with a larger budget when verification details matter.",
+  "Recent Timeline": "use `agentpack replay` for full chronology."
+};
+
 interface ResumeOptions {
   budget?: number;
   query?: string;
@@ -38,6 +49,9 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
   const events = readEvents(root);
   const git = getGitInfo(root);
   const currentTask = readCurrentTaskForResume(root);
+  const relevantContext = budget > 0 && budget <= 1200
+    ? formatRelevantContext(root, sources, events, options.query)
+    : [];
   const generatedAt = new Date().toISOString();
 
   const header = [
@@ -64,19 +78,23 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
           : ["- Not set"])
       ])
     },
+    {
+      title: "Git State",
+      required: true,
+      text: section("Git State", formatGit(git))
+    },
+    relevantContext.length ? {
+      title: "Relevant Context",
+      required: true,
+      text: section("Relevant Context", relevantContext)
+    } : null,
     currentTask ? {
       title: "Current Task Passport",
       required: true,
       text: section("Current Task Passport", formatCurrentTaskPassport(currentTask, git))
     } : null,
     {
-      title: "Git State",
-      required: true,
-      text: section("Git State", formatGit(git))
-    },
-    {
       title: "Source Cache",
-      required: true,
       text: section("Source Cache", formatSources(root, sources, options.query))
     },
     {
@@ -97,8 +115,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
     }
   ].filter((entry): entry is { title: string; required?: boolean; text: string } => Boolean(entry));
 
-  const { markdown, omittedSections, truncatedSections } = packSections(header, sections, budget);
-  const redacted = withStableBudgetMetadata(markdown, config, budget, omittedSections, truncatedSections);
+  const { redacted, omittedSections, truncatedSections } = packResumeSections(header, sections, config, budget);
 
   return {
     markdown: redacted,
@@ -134,10 +151,23 @@ function formatGit(git: GitInfo): string[] {
   return [
     `- Branch: ${git.branch || "unknown"}`,
     `- Commit: ${git.head || "unknown"}`,
+    git.upstream ? `- Upstream: ${formatGitTracking(git)}` : "- Upstream: not set",
+    git.aheadCommits.length ? "- Local commits ahead of upstream:" : null,
+    ...git.aheadCommits.map((commit) => `  - ${commit}`),
+    git.ahead !== null && git.aheadCommits.length > 0 && git.ahead > git.aheadCommits.length
+      ? `  - ...and ${git.ahead - git.aheadCommits.length} more`
+      : null,
     "- Changed files:",
     ...(git.status ? git.status.split("\n").map((line) => `  - ${line}`) : ["  - None"]),
     git.diff ? `- Current diff characters: ${git.diff.length}` : "- Current diff: none"
-  ];
+  ].filter((line): line is string => Boolean(line));
+}
+
+function formatGitTracking(git: GitInfo): string {
+  const counts = git.ahead === null || git.behind === null
+    ? "comparison unavailable"
+    : `${git.ahead} ahead, ${git.behind} behind`;
+  return `${git.upstream || "unknown"} (${counts})`;
 }
 
 function readCurrentTaskForResume(root: string): TaskPassport | null {
@@ -193,6 +223,89 @@ function formatTaskDrift(passport: TaskPassport, git: GitInfo): string | null {
   return drift.length ? `- Drift: ${drift.join("; ")}. Verify task state before continuing.` : "- Drift: none detected.";
 }
 
+function formatRelevantContext(root: string, sources: SourceRecord[], events: AgentpackEvent[], query = ""): string[] {
+  const queryTerms = tokenizeQuery(query);
+  if (!queryTerms.length) {
+    return [];
+  }
+
+  const relevantDecisions = events
+    .filter((event) => event.type === "decision")
+    .map((event) => ({ event, score: scoreEvent(event, queryTerms) }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || text(right.event.ts).localeCompare(text(left.event.ts)));
+  const selectedDecisions = selectDiverseScored(
+    relevantDecisions,
+    queryTerms,
+    4,
+    (entry, term) => scoreEvent(entry.event, [term])
+  );
+  const relevantSources = buildSourceEntries(root, sources, queryTerms)
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.source.path.localeCompare(right.source.path));
+  const selectedSources = selectDiverseScored(
+    relevantSources,
+    queryTerms,
+    4,
+    (entry, term) => scoreSource(entry.source, [term])
+  );
+
+  const lines = [
+    selectedDecisions.length ? "- Query-relevant decisions:" : null,
+    ...selectedDecisions.map(({ event }) => {
+      const files = stringArray(event.files);
+      const filesText = files.length ? ` Files: ${files.slice(0, 3).join(", ")}.` : "";
+      return `  - ${event.ts}: ${shortLabel(event)}${filesText}`;
+    }),
+    selectedSources.length ? "- Query-relevant source records:" : null,
+    ...selectedSources.map((entry) => (
+      `  - ${entry.source.path}: status ${entry.status}; topic ${topicHint(entry.source.summary, 100)}; guidance ${entry.guidance}`
+    )),
+    selectedDecisions.length || selectedSources.length
+      ? "- Bulk details remain in Source Cache, Decisions, Evidence, and Recent Timeline when budget allows."
+      : null
+  ].filter((line): line is string => Boolean(line));
+
+  return lines;
+}
+
+function selectDiverseScored<T extends { score: number }>(
+  entries: T[],
+  queryTerms: string[],
+  limit: number,
+  scoreForTerm: (entry: T, term: string) => number
+): T[] {
+  const selected: T[] = [];
+  const selectedSet = new Set<T>();
+  const add = (entry: T | undefined) => {
+    if (entry && !selectedSet.has(entry) && selected.length < limit) {
+      selected.push(entry);
+      selectedSet.add(entry);
+    }
+  };
+
+  for (const term of queryTerms) {
+    const bestForTerm = entries
+      .filter((entry) => !selectedSet.has(entry))
+      .map((entry) => ({ entry, termScore: scoreForTerm(entry, term) }))
+      .filter(({ termScore }) => termScore > 0)
+      .sort((left, right) => right.termScore - left.termScore || right.entry.score - left.entry.score)[0]?.entry;
+    add(bestForTerm);
+    if (selected.length >= limit) {
+      return selected;
+    }
+  }
+
+  for (const entry of entries) {
+    add(entry);
+    if (selected.length >= limit) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
 function formatSources(root: string, sources: SourceRecord[], query = ""): string[] {
   if (!sources.length) {
     return [
@@ -202,7 +315,69 @@ function formatSources(root: string, sources: SourceRecord[], query = ""): strin
   }
 
   const queryTerms = tokenizeQuery(query);
-  const entries = sources.map((source) => {
+  const entries = buildSourceEntries(root, sources, queryTerms);
+
+  if (!queryTerms.length) {
+    return entries.map((entry) => formatSourceEntry(entry, "full"));
+  }
+
+  const matched = entries
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.source.path.localeCompare(right.source.path));
+  const matchedPaths = new Set(matched.map((entry) => entry.source.path));
+  const unmatched = entries.filter((entry) => !matchedPaths.has(entry.source.path));
+  const unmatchedStale = unmatched
+    .filter((entry) => entry.status !== "unchanged")
+    .sort((left, right) => left.source.path.localeCompare(right.source.path));
+  const unmatchedUnchanged = unmatched.filter((entry) => entry.status === "unchanged");
+  const compactEntries = [...unmatchedStale, ...unmatchedUnchanged];
+  const matchedStaleCount = matched.filter((entry) => entry.status !== "unchanged").length;
+  const unmatchedStaleCount = unmatchedStale.length;
+  const visibleMatched = matched.slice(0, MAX_QUERY_RELEVANT_SOURCE_ENTRIES);
+  const omittedMatchedCount = Math.max(0, matched.length - visibleMatched.length);
+  const visibleCompactEntries = compactEntries.slice(0, MAX_QUERY_UNRELATED_SOURCE_STUBS);
+  const omittedCompactCount = Math.max(0, compactEntries.length - visibleCompactEntries.length);
+  const visibleMatchedStaleCount = visibleMatched.filter((entry) => entry.status !== "unchanged").length;
+
+  if (!matched.length) {
+    return [
+      omittedCompactCount > 0
+        ? `- Query filter: no source summaries matched \`${query}\`; showing ${visibleCompactEntries.length} of ${entries.length} compact source stub(s), omitting ${omittedCompactCount}.`
+        : `- Query filter: no source summaries matched \`${query}\`; showing compact stubs for all ${entries.length} recorded source(s).`,
+      unmatchedStaleCount > 0
+        ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
+        : null,
+      omittedCompactCount > 0
+        ? "- Omitted source stubs are query-unrelated; rerun without `--query` or call `source_status` for full Source Cache details."
+        : null,
+      "- Rerun without `--query` when you need the full Source Cache.",
+      ...visibleCompactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
+    ].filter((line): line is string => Boolean(line));
+  }
+
+  return [
+    omittedMatchedCount > 0 || omittedCompactCount > 0
+      ? `- Query filter: full summaries for ${visibleMatched.length} of ${matched.length} query-relevant source(s), compact stubs for ${visibleCompactEntries.length} of ${unmatched.length} query-unrelated source(s).`
+      : `- Query filter: full summaries for ${matched.length} query-relevant source(s), compact stubs for ${unmatched.length} query-unrelated source(s).`,
+    matchedStaleCount > 0
+      ? omittedMatchedCount > 0
+        ? `- Query-relevant stale source records shown in full: ${visibleMatchedStaleCount} of ${matchedStaleCount} changed/missing.`
+        : `- Query-relevant stale source records shown in full: ${matchedStaleCount} changed/missing.`
+      : null,
+    unmatchedStaleCount > 0
+      ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
+      : null,
+    omittedMatchedCount > 0 || omittedCompactCount > 0
+      ? `- Source entries omitted for compactness: ${omittedMatchedCount} query-relevant, ${omittedCompactCount} query-unrelated; rerun with a narrower query or larger budget for details.`
+      : null,
+    "- Compact stubs keep path/status/topic/guidance; full summaries require `source_status` or an unfiltered resume.",
+    ...visibleMatched.map((entry) => formatSourceEntry(entry, "full")),
+    ...visibleCompactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
+  ].filter((line): line is string => Boolean(line));
+}
+
+function buildSourceEntries(root: string, sources: SourceRecord[], queryTerms: string[]): SourceEntry[] {
+  return sources.map((source) => {
     const absolutePath = path.join(root, source.path);
     let status = "missing";
     if (existsSync(absolutePath)) {
@@ -224,45 +399,6 @@ function formatSources(root: string, sources: SourceRecord[], query = ""): strin
       score: queryTerms.length > 0 ? scoreSource(source, queryTerms) : 0
     };
   });
-
-  if (!queryTerms.length) {
-    return entries.map((entry) => formatSourceEntry(entry, "full"));
-  }
-
-  const matched = entries
-    .filter((entry) => entry.score > 0)
-    .sort((left, right) => right.score - left.score || left.source.path.localeCompare(right.source.path));
-  const matchedPaths = new Set(matched.map((entry) => entry.source.path));
-  const unmatched = entries.filter((entry) => !matchedPaths.has(entry.source.path));
-  const unmatchedStale = unmatched
-    .filter((entry) => entry.status !== "unchanged")
-    .sort((left, right) => left.source.path.localeCompare(right.source.path));
-  const unmatchedUnchanged = unmatched.filter((entry) => entry.status === "unchanged");
-  const compactEntries = [...unmatchedStale, ...unmatchedUnchanged];
-  const matchedStaleCount = matched.filter((entry) => entry.status !== "unchanged").length;
-  const unmatchedStaleCount = unmatchedStale.length;
-
-  if (!matched.length) {
-    return [
-      `- Query filter: no source summaries matched \`${query}\`; showing compact stubs for all ${entries.length} recorded source(s).`,
-      unmatchedStaleCount > 0
-        ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
-        : null,
-      "- Rerun without `--query` when you need the full Source Cache.",
-      ...compactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
-    ].filter((line): line is string => Boolean(line));
-  }
-
-  return [
-    `- Query filter: full summaries for ${matched.length} query-relevant source(s), compact stubs for ${unmatched.length} query-unrelated source(s).`,
-    matchedStaleCount > 0 ? `- Query-relevant stale source records shown in full: ${matchedStaleCount} changed/missing.` : null,
-    unmatchedStaleCount > 0
-      ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
-      : null,
-    "- Compact stubs keep path/status/topic/guidance; full summaries require `source_status` or an unfiltered resume.",
-    ...matched.map((entry) => formatSourceEntry(entry, "full")),
-    ...compactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
-  ].filter((line): line is string => Boolean(line));
 }
 
 function sourceEntryStubMode(entry: SourceEntry): SourceEntryMode {
@@ -343,6 +479,25 @@ function scoreSource(source: SourceRecord, queryTerms: string[]): number {
     score += scoreField(term, pathText, pathTokens, 6, 3);
     score += scoreField(term, summaryText, summaryTokens, 3, 1);
     score += scoreField(term, snippetText, snippetTokens, 1, 1);
+  }
+
+  return score;
+}
+
+function scoreEvent(event: AgentpackEvent, queryTerms: string[]): number {
+  const eventText = [
+    text(event.text),
+    text(event.summary),
+    text(event.reason),
+    text(event.kind),
+    ...stringArray(event.files)
+  ].join(" ");
+  const normalized = normalizedText(eventText);
+  const tokens = uniqueTokens(eventText);
+  let score = 0;
+
+  for (const term of queryTerms) {
+    score += scoreField(term, normalized, tokens, 4, 2);
   }
 
   return score;
@@ -530,6 +685,44 @@ function truncateOneLine(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
+function packResumeSections(
+  header: string,
+  sections: Array<{ title: string; required?: boolean; text: string }>,
+  config: Partial<AgentpackConfig>,
+  budget: number
+): { redacted: string; omittedSections: string[]; truncatedSections: string[] } {
+  if (!budget) {
+    const { markdown, omittedSections, truncatedSections } = packSections(header, sections, budget);
+    return {
+      redacted: withStableBudgetMetadata(markdown, config, budget, omittedSections, truncatedSections),
+      omittedSections,
+      truncatedSections
+    };
+  }
+
+  let reserveTokens = BUDGET_METADATA_RESERVE_TOKENS;
+  let fallback: { redacted: string; omittedSections: string[]; truncatedSections: string[] } | null = null;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { markdown, omittedSections, truncatedSections } = packSections(header, sections, budget, {
+      reserveTokens,
+      omissionGuidance: SECTION_OMISSION_GUIDANCE
+    });
+    const redacted = withStableBudgetMetadata(markdown, config, budget, omittedSections, truncatedSections);
+    const usedTokens = estimateTokens(redacted);
+    const packed = { redacted, omittedSections, truncatedSections };
+    fallback = packed;
+
+    if (usedTokens <= budget) {
+      return packed;
+    }
+
+    reserveTokens = Math.min(budget - 1, reserveTokens + usedTokens - budget + 4);
+  }
+
+  return fallback || { redacted: header.trimEnd(), omittedSections: sections.map((section) => section.title), truncatedSections: [] };
+}
+
 function withStableBudgetMetadata(
   markdown: string,
   config: Partial<AgentpackConfig>,
@@ -571,7 +764,19 @@ function addBudgetMetadata(
   const status = formatBudgetStatus(budget, omittedSections, truncatedSections);
 
   lines.splice(budgetLineIndex + 1, 0, usage, `Budget status: ${status}`);
-  return lines.join("\n");
+  const full = lines.join("\n");
+  if (!budget || estimateTokens(full) <= budget) {
+    return full;
+  }
+
+  const compactLines = markdown.split("\n");
+  compactLines.splice(
+    budgetLineIndex + 1,
+    0,
+    `Estimated usage: ~${estimatedTokens} tokens`,
+    `Budget status: ${formatCompactBudgetStatus(budget, omittedSections, truncatedSections)}`
+  );
+  return compactLines.join("\n");
 }
 
 function formatBudgetStatus(budget: number, omittedSections: string[], truncatedSections: string[]): string {
@@ -588,4 +793,20 @@ function formatBudgetStatus(budget: number, omittedSections: string[], truncated
   }
 
   return details.length > 0 ? `limited; ${details.join("; ")}` : "within target";
+}
+
+function formatCompactBudgetStatus(budget: number, omittedSections: string[], truncatedSections: string[]): string {
+  if (!budget) {
+    return "unbounded";
+  }
+
+  const details = [];
+  if (truncatedSections.length > 0) {
+    details.push(`${truncatedSections.length} truncated`);
+  }
+  if (omittedSections.length > 0) {
+    details.push(`${omittedSections.length} omitted`);
+  }
+
+  return details.length > 0 ? `limited; ${details.join(", ")}` : "within target";
 }

@@ -85,6 +85,7 @@ export interface GitInfo {
   upstream: string | null;
   ahead: number | null;
   behind: number | null;
+  aheadCommits: string[];
   status: string;
   diff: string;
 }

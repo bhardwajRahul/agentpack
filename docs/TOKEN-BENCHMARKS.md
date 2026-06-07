@@ -4,6 +4,12 @@ Agentpack should earn the context it asks an agent to spend. These benchmarks
 measure whether Agentpack outputs are carrying useful task state or just adding
 ritual overhead.
 
+Token counts are diagnostic, not the product goal. A larger output can be the
+right tradeoff when it preserves must-have handoff facts such as the accepted
+task, local commits ahead of upstream, release cadence, risk, next actions, and
+verification. A smaller output is bad if it forces a fresh agent into ledger
+archaeology.
+
 This is a repo-maintenance benchmark, not an installed `agentpack` command. Run
 it from a checkout of this repo:
 
@@ -28,6 +34,12 @@ outputs against direct git/file inspection baselines.
 - Tiny question: `agentpack task status` versus `git status --short --branch`.
 - Latest-diff review: quick resume with a review query versus status plus diff.
 - Resumed implementation: chat-budget resume versus status plus relevant file reads.
+- Tight-budget context: a small explicit resume budget that should preserve
+  current state, upstream drift, and local commits while omitting optional
+  ledger sections honestly.
+- Fresh-agent context: a budgeted resume that checks whether a new agent can
+  recover the accepted task, local commits, release cadence, risk, next action,
+  and verification without replaying the ledger.
 - Stale Source Cache triage: `source status --changed --missing` versus status plus diff.
 - Release-prep handoff: `task handoff` versus status, recent log, and release files.
 
@@ -47,6 +59,9 @@ The benchmark reports:
 - Section breakdown: Markdown resume outputs are split by `##` section so growth
   can be attributed to buckets such as Source Cache, Evidence, or Current Task
   Passport.
+- Context utility checks: scenario-specific must-have handoff signals. These
+  checks fail the benchmark when required context disappears, even if token
+  counts look small.
 
 Token counts use Agentpack's existing rough estimate:
 
@@ -59,8 +74,9 @@ Use it for relative comparison, not exact model billing.
 
 ## Reading Results
 
-Good overhead is context that avoids work: task objective, next action, source
-conclusions, verification status, stale-source guidance, and handoff warnings.
+Good overhead is context that avoids work: task objective, risk, next action,
+local commits, release cadence, source conclusions, verification status,
+stale-source guidance, and handoff warnings.
 
 Bad overhead is repeated ceremony: duplicated summaries, unchanged source dumps,
 large timelines, evidence previews that do not answer the scenario, or protocol
@@ -75,5 +91,10 @@ If a scenario grows, decide which bucket changed before optimizing:
 - Resume growth points to required section budgets and omitted/truncated
   metadata.
 
+Use explicit budgets as a contract: if a scenario asks for 900 estimated tokens,
+the reported usage should not exceed 900. Use very small budgets as stress
+tests for priority behavior, not as a target for normal handoffs.
+
 Prefer one narrow improvement at a time, then rerun the benchmark and a focused
-test or smoke check.
+test or smoke check. Optimize for useful context per token rather than raw token
+minimization.
