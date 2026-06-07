@@ -28,6 +28,8 @@ interface SourceEntry {
   score: number;
 }
 
+type SourceEntryMode = "full" | "stub" | "stale-stub";
+
 export function buildResume(root: string, options: ResumeOptions = {}) {
   const budget = Number(options.budget || 0);
   const state = readState(root);
@@ -228,37 +230,64 @@ function formatSources(root: string, sources: SourceRecord[], query = ""): strin
   }
 
   const matched = entries
-    .filter((entry) => entry.score > 0 || entry.status !== "unchanged")
+    .filter((entry) => entry.score > 0)
     .sort((left, right) => right.score - left.score || left.source.path.localeCompare(right.source.path));
   const matchedPaths = new Set(matched.map((entry) => entry.source.path));
   const unmatched = entries.filter((entry) => !matchedPaths.has(entry.source.path));
-  const staleCount = matched.filter((entry) => entry.status !== "unchanged").length;
+  const unmatchedStale = unmatched
+    .filter((entry) => entry.status !== "unchanged")
+    .sort((left, right) => left.source.path.localeCompare(right.source.path));
+  const unmatchedUnchanged = unmatched.filter((entry) => entry.status === "unchanged");
+  const compactEntries = [...unmatchedStale, ...unmatchedUnchanged];
+  const matchedStaleCount = matched.filter((entry) => entry.status !== "unchanged").length;
+  const unmatchedStaleCount = unmatchedStale.length;
 
   if (!matched.length) {
     return [
-      `- Query filter: no source summaries matched \`${query}\`; full Source Cache retained to avoid false-negative filtering.`,
-      ...entries.map((entry) => formatSourceEntry(entry, "full"))
-    ];
+      `- Query filter: no source summaries matched \`${query}\`; showing compact stubs for all ${entries.length} recorded source(s).`,
+      unmatchedStaleCount > 0
+        ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
+        : null,
+      "- Rerun without `--query` when you need the full Source Cache.",
+      ...compactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
+    ].filter((line): line is string => Boolean(line));
   }
 
   return [
-    `- Query filter: full summaries for ${matched.length} relevant or stale source(s), compact stubs for ${unmatched.length} unchanged source(s).`,
-    staleCount > 0 ? `- Stale source records shown in full: ${staleCount} changed/missing.` : null,
-    "- Compact stubs keep path/status/topic/guidance but omit full summaries to preserve budget.",
-    "- For full omitted summaries, call `source_status` or rerun without `--query`.",
+    `- Query filter: full summaries for ${matched.length} query-relevant source(s), compact stubs for ${unmatched.length} query-unrelated source(s).`,
+    matchedStaleCount > 0 ? `- Query-relevant stale source records shown in full: ${matchedStaleCount} changed/missing.` : null,
+    unmatchedStaleCount > 0
+      ? `- Query-unrelated stale stubs: ${unmatchedStaleCount} changed/missing; call \`source_status\` for full stale details.`
+      : null,
+    "- Compact stubs keep path/status/topic/guidance; full summaries require `source_status` or an unfiltered resume.",
     ...matched.map((entry) => formatSourceEntry(entry, "full")),
-    ...unmatched.map((entry) => formatSourceEntry(entry, "stub"))
+    ...compactEntries.map((entry) => formatSourceEntry(entry, sourceEntryStubMode(entry)))
   ].filter((line): line is string => Boolean(line));
 }
 
-function formatSourceEntry(entry: SourceEntry, mode: "full" | "stub"): string {
+function sourceEntryStubMode(entry: SourceEntry): SourceEntryMode {
+  return entry.status === "unchanged" ? "stub" : "stale-stub";
+}
+
+function formatSourceEntry(entry: SourceEntry, mode: SourceEntryMode): string {
+  if (mode === "stub") {
+    return [
+      `- ${entry.source.path}`,
+      `  - status: ${entry.status}; topic: ${topicHint(entry.source.summary)}; guidance: ${entry.guidance}`
+    ].join("\n");
+  }
+
+  if (mode === "stale-stub") {
+    return [
+      `- ${entry.source.path}`,
+      `  - status: ${entry.status}; topic: ${topicHint(entry.source.summary, 60)} (recorded); guidance: call \`source_status\` before relying`
+    ].join("\n");
+  }
+
   const lines = [
     `- ${entry.source.path}`,
     `  - status: ${entry.status}`,
-    mode === "stub" ? `  - topic: ${topicHint(entry.source.summary)}` : null,
-    mode === "full"
-      ? `  - summary: ${entry.source.summary || "No summary recorded."}`
-      : "  - summary: omitted by query filter",
+    `  - summary: ${entry.source.summary || "No summary recorded."}`,
     mode === "full" && entry.source.snippet ? `  - snippet: ${entry.source.snippet}` : null,
     `  - meaning: ${entry.meaning}`,
     `  - guidance: ${entry.guidance}`
@@ -354,14 +383,14 @@ function normalizedText(value: string): string {
   return String(value || "").toLowerCase();
 }
 
-function topicHint(summary: string): string {
+function topicHint(summary: string, maxLength = 80): string {
   const normalized = summary.replace(/\s+/g, " ").trim();
   if (!normalized) {
     return "No summary recorded.";
   }
 
   const sentenceMatch = normalized.match(/^(.+?[.!?])(?:\s|$)/u);
-  return truncateOneLine(sentenceMatch?.[1] || normalized, 80);
+  return truncateOneLine(sentenceMatch?.[1] || normalized, maxLength);
 }
 
 function formatEvents(events: AgentpackEvent[], type: string): string[] {

@@ -44,6 +44,9 @@ The benchmark reports:
 - Direct: the likely git/file output an agent would inspect without Agentpack.
 - AP-direct and MCP-direct: positive values are token overhead; negative values
   mean the Agentpack path was shorter than the direct baseline.
+- Section breakdown: Markdown resume outputs are split by `##` section so growth
+  can be attributed to buckets such as Source Cache, Evidence, or Current Task
+  Passport.
 
 Token counts use Agentpack's existing rough estimate:
 
@@ -66,7 +69,8 @@ metadata that dominates tiny calls.
 If a scenario grows, decide which bucket changed before optimizing:
 
 - MCP wrapper growth points to tool response shape or excessive envelope use.
-- Source Cache growth points to query filtering, stubs, or summary caps.
+- Source Cache growth points to query filtering, stale-source warning stubs, or
+  summary caps.
 - Evidence growth points to preview limits or evidence selection.
 - Resume growth points to required section budgets and omitted/truncated
   metadata.

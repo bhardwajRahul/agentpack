@@ -1073,7 +1073,9 @@ test("filters source cache summaries by query while preserving source stubs", ()
   mkdirSync(path.join(dir, "docs"), { recursive: true });
   writeFileSync(path.join(dir, "src", "auth.ts"), "export const auth = true;\n", "utf8");
   writeFileSync(path.join(dir, "src", "billing.ts"), "export const billing = true;\n", "utf8");
+  writeFileSync(path.join(dir, "src", "stale.ts"), "export const stale = 'v1';\n", "utf8");
   writeFileSync(path.join(dir, "docs", "setup.md"), "# Setup\n", "utf8");
+  writeFileSync(path.join(dir, "docs", "obsolete.md"), "# Obsolete\n", "utf8");
 
   run(dir, ["init"]);
   run(dir, [
@@ -1097,27 +1099,54 @@ test("filters source cache summaries by query while preserving source stubs", ()
     "--summary",
     "Developer setup docs for local MCP install."
   ]);
+  run(dir, [
+    "source",
+    "add",
+    "src/stale.ts",
+    "--summary",
+    "Stale source used to export a v1 marker."
+  ]);
+  run(dir, [
+    "source",
+    "add",
+    "docs/obsolete.md",
+    "--summary",
+    "Obsolete docs described a removed setup note."
+  ]);
+  writeFileSync(path.join(dir, "src", "stale.ts"), "export const stale = 'v2';\n", "utf8");
+  unlinkSync(path.join(dir, "docs", "obsolete.md"));
 
   const filtered = run(dir, ["resume", "--preset", "deep", "--query", "auth session"]);
-  assert.match(filtered, /Query filter: full summaries for 1 relevant or stale source\(s\), compact stubs for 2 unchanged source\(s\)/);
+  assert.match(filtered, /Query filter: full summaries for 1 query-relevant source\(s\), compact stubs for 4 query-unrelated source\(s\)/);
+  assert.match(filtered, /Query-unrelated stale stubs: 2 changed\/missing/);
   assert.match(filtered, /src\/auth\.ts/);
   assert.match(filtered, /Authentication middleware validates sessions/);
   assert.match(filtered, /src\/billing\.ts/);
   assert.match(filtered, /docs\/setup\.md/);
-  assert.match(filtered, /topic: Billing worker calculates invoices/);
-  assert.match(filtered, /topic: Developer setup docs/);
-  assert.match(filtered, /summary: omitted by query filter/);
+  assert.match(filtered, /src\/stale\.ts/);
+  assert.match(filtered, /docs\/obsolete\.md/);
+  assert.match(filtered, /status: unchanged; topic: Billing worker calculates invoices/);
+  assert.match(filtered, /status: unchanged; topic: Developer setup docs/);
+  assert.match(filtered, /status: changed; topic: Stale source used to export a v1 marker\. \(recorded\); guidance: call `source_status` before relying/);
+  assert.match(filtered, /status: missing; topic: Obsolete docs described a removed setup note\. \(recorded\); guidance: call `source_status` before relying/);
   assert.doesNotMatch(filtered, /summary: Billing worker calculates invoices/);
   assert.doesNotMatch(filtered, /summary: Developer setup docs/);
+  assert.doesNotMatch(filtered, /summary: Stale source used to export a v1 marker/);
+  assert.doesNotMatch(filtered, /summary: Obsolete docs described a removed setup note/);
 
   const unfiltered = run(dir, ["resume", "--preset", "deep"]);
   assert.match(unfiltered, /Billing worker calculates invoices/);
   assert.match(unfiltered, /Developer setup docs/);
+  assert.match(unfiltered, /summary: Stale source used to export a v1 marker/);
+  assert.match(unfiltered, /summary: Obsolete docs described a removed setup note/);
 
   const noMatch = run(dir, ["resume", "--preset", "deep", "--query", "vector database"]);
-  assert.match(noMatch, /full Source Cache retained to avoid false-negative filtering/);
+  assert.match(noMatch, /no source summaries matched `vector database`; showing compact stubs for all 5 recorded source\(s\)/);
   assert.match(noMatch, /Billing worker calculates invoices/);
   assert.match(noMatch, /Developer setup docs/);
+  assert.match(noMatch, /Query-unrelated stale stubs: 2 changed\/missing/);
+  assert.doesNotMatch(noMatch, /summary: Authentication middleware validates sessions/);
+  assert.doesNotMatch(noMatch, /summary: Billing worker calculates invoices/);
 });
 
 test("serializes concurrent source record writes", async () => {
@@ -1668,7 +1697,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.match(resume.result.content[0].text, /Exercise MCP smoke flow/);
   assert.match(resume.result.content[0].text, /Estimated usage: ~\d+ tokens/);
-  assert.match(resume.result.content[0].text, /Query filter: full summaries for 1 relevant or stale source\(s\), compact stubs for 1 unchanged source\(s\)/);
+  assert.match(resume.result.content[0].text, /Query filter: full summaries for 1 query-relevant source\(s\), compact stubs for 1 query-unrelated source\(s\)/);
   assert.match(resume.result.content[0].text, /MCP smoke source/);
   assert.match(resume.result.content[0].text, /topic: Unrelated billing source/);
   assert.doesNotMatch(resume.result.content[0].text, /summary: Unrelated billing source/);

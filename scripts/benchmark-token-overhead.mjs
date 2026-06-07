@@ -500,6 +500,7 @@ function summarizeScenario(scenario) {
   const agentpack = measure(scenario.agentpackOutput);
   const mcp = measure(wrapMcpText(scenario.agentpackOutput));
   const direct = measure(scenario.directOutput);
+  const sectionBreakdown = measureMarkdownSections(scenario.agentpackOutput);
   return {
     id: scenario.id,
     label: scenario.label,
@@ -516,7 +517,8 @@ function summarizeScenario(scenario) {
     deltaVsDirect: {
       agentpackTokens: agentpack.estimatedTokens - direct.estimatedTokens,
       mcpTokens: mcp.estimatedTokens - direct.estimatedTokens
-    }
+    },
+    ...(sectionBreakdown.length > 0 ? { sectionBreakdown } : {})
   };
 }
 
@@ -529,6 +531,42 @@ function measure(output) {
 
 function estimateTokens(output) {
   return Math.max(1, Math.ceil(String(output || "").length / 4));
+}
+
+function measureMarkdownSections(output) {
+  const text = String(output || "");
+  if (!/^## /mu.test(text)) {
+    return [];
+  }
+
+  const sections = [];
+  let title = "Header";
+  let lines = [];
+
+  for (const line of text.split("\n")) {
+    if (line.startsWith("## ")) {
+      pushMeasuredSection(sections, title, lines);
+      title = line.replace(/^##\s+/u, "").trim() || "Untitled";
+      lines = [line];
+    } else {
+      lines.push(line);
+    }
+  }
+
+  pushMeasuredSection(sections, title, lines);
+  return sections;
+}
+
+function pushMeasuredSection(sections, title, lines) {
+  const text = lines.join("\n").trim();
+  if (!text) {
+    return;
+  }
+
+  sections.push({
+    title,
+    ...measure(text)
+  });
 }
 
 function wrapMcpText(text) {
@@ -570,7 +608,15 @@ function readFiles(cwd, filePaths) {
 }
 
 function printReport(report) {
-  process.stdout.write([
+  const sectionRows = report.scenarios.flatMap((scenario) => (
+    scenario.sectionBreakdown || []
+  ).map((section) => [
+    scenario.id,
+    section.title,
+    formatTokenCount(section.estimatedTokens),
+    String(section.characters)
+  ]));
+  const lines = [
     "Agentpack token overhead benchmark",
     `Generated: ${report.generatedAt}`,
     `Estimate: ${report.estimate}`,
@@ -596,7 +642,21 @@ function printReport(report) {
         formatSignedTokenCount(scenario.deltaVsDirect.mcpTokens)
       ])
     ]),
-    "",
+    ""
+  ];
+
+  if (sectionRows.length > 0) {
+    lines.push(
+      "Agentpack section breakdown:",
+      table([
+        ["Scenario", "Section", "Tokens", "Characters"],
+        ...sectionRows
+      ]),
+      ""
+    );
+  }
+
+  lines.push(
     "Commands:",
     ...report.scenarios.flatMap((scenario) => [
       `- ${scenario.id}: ${scenario.agentpackCommand}`,
@@ -606,8 +666,11 @@ function printReport(report) {
     "Notes:",
     "- Token counts use Agentpack's rough local estimate, not a model tokenizer.",
     "- Direct baselines show the likely git/file reads an agent would do without Agentpack context.",
-    "- Positive deltas are overhead; negative deltas mean Agentpack output was shorter than the direct baseline."
-  ].join("\n"));
+    "- Positive deltas are overhead; negative deltas mean Agentpack output was shorter than the direct baseline.",
+    "- Section breakdown attributes Markdown resume growth to buckets such as Source Cache, Evidence, and Current Task Passport."
+  );
+
+  process.stdout.write(lines.join("\n"));
   process.stdout.write("\n");
 }
 
