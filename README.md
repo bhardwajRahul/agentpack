@@ -165,7 +165,7 @@ Agentpack keeps the v0 supply chain deliberately small:
 
 ## Context Budgets
 
-Agentpack compresses task state under rough context budgets so agents can resume with the useful state, not a pile of history. `load_context`, `resume`, and `export` can focus Source Cache with a local `--query` filter: matched sources keep full summaries/snippets, changed or missing records are always shown in full, and unrelated unchanged sources stay visible as compact stubs.
+Agentpack compresses task state under rough context budgets so agents can resume with the useful state, not a pile of history. `load_context`, `resume`, and `export` can focus Source Cache with a local `--query` filter: matched sources keep full summaries/snippets, query-unrelated sources stay visible as compact path/status/topic/guidance stubs, and stale query-unrelated records point agents to `source_status` before relying on them.
 
 See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 

@@ -98,7 +98,7 @@ Before `npm version`:
   health should show zero changed or missing records; review any source-cache
   warnings with `agentpack source status --changed --missing`.
 - `npm pack --dry-run` shows the expected set of files and a reasonable
-  tarball size (~85 kB at the time of writing).
+  tarball size (~150 kB at the time of writing).
 - README and docs reflect the version about to ship.
 - Changes to install flows, MCP launchers, or generated client config are
   dogfooded in at least one non-Agentpack repo before release. Verify generated

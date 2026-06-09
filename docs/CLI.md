@@ -133,4 +133,4 @@ For the normal coding-agent workflow, prefer MCP and `resume --preset agent`. Ma
 - `8000`: deeper coding-agent handoff
 - `16000`: large debugging session or review
 
-`--query` locally filters Source Cache: matched sources keep full summaries/snippets, changed or missing source records are always shown in full, and unrelated unchanged sources stay visible as compact stubs. If nothing matches, Agentpack keeps the full Source Cache to avoid false-negative filtering.
+`--query` locally filters Source Cache: matched sources keep full summaries/snippets, and query-unrelated sources stay visible as compact path/status/topic/guidance stubs. Changed or missing query-unrelated records are warning stubs, not trusted conclusions; run `agentpack source status --changed --missing` for full stale details. If nothing matches, Agentpack keeps compact stubs for all recorded sources and tells you to rerun without `--query` when the full Source Cache is needed.

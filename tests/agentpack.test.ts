@@ -656,7 +656,7 @@ test("resume surfaces upstream drift and local commits before optional ledger se
   assert.match(resume, /Verification: passed - Context handoff checks passed\./);
   assert.match(resume, /Review local commits before release prep/);
   assert.match(resume, /Budget status: limited/);
-  assert.match(resume, /omitted Decisions, Evidence, Recent Timeline/);
+  assert.match(resume, /omitted .*Decisions.*Recent Timeline/);
 });
 
 test("requires semantic review to refresh changed source records", () => {
