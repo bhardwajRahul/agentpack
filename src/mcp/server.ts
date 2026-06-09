@@ -96,7 +96,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "source_status",
-    description: "Check whether recorded source conclusions are still valid based on file hashes.",
+    description: "Check whether recorded source conclusions are unchanged, changed, or missing; use changed/missing filters for stale source-cache triage.",
     inputSchema: {
       type: "object",
       properties: {

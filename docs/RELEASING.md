@@ -94,8 +94,9 @@ Before `npm version`:
 
 - `agentpack release preflight` reports no failed checks.
 - `npm test` is green locally.
-- `agentpack doctor` is clean in the repo (warnings about source-cache
-  staleness are ok; errors are not).
+- `agentpack doctor` reports no errors. For release-like handoff, source-cache
+  health should show zero changed or missing records; review any source-cache
+  warnings with `agentpack source status --changed --missing`.
 - `npm pack --dry-run` shows the expected set of files and a reasonable
   tarball size (~85 kB at the time of writing).
 - README and docs reflect the version about to ship.

@@ -60,7 +60,7 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
   checks.push({
     status: changed || missing ? "warn" : "ok",
     name: "Sources",
-    detail: `${sourceStatuses.length} recorded, ${changed} changed, ${missing} missing`
+    detail: formatSourceHealth(sourceStatuses.length, changed, missing)
   });
 
   checks.push({
@@ -70,6 +70,13 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
   });
 
   return renderDoctor(checks);
+}
+
+function formatSourceHealth(recorded: number, changed: number, missing: number): string {
+  const summary = `${recorded} recorded, ${changed} changed, ${missing} missing`;
+  return changed || missing
+    ? `${summary}; run \`agentpack source status --changed --missing\` for details`
+    : summary;
 }
 
 function checkGitignore(root: string): DoctorCheck {

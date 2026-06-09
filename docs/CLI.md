@@ -14,6 +14,7 @@ agentpack source status
 agentpack source status --changed
 agentpack source status --missing
 agentpack ledger status
+agentpack doctor
 agentpack replay
 agentpack diff
 agentpack release preflight
@@ -39,6 +40,8 @@ agentpack source remove docs/old-file.md
 `source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
 
 `ledger status` prints a read-only hygiene inventory: task counts, event/evidence/checkpoint/export sizes, referenced evidence counts, and source-cache status counts. It does not delete, compact, archive, or refresh anything.
+
+`doctor` checks pack setup, local integration config, git availability, and source-cache health. Changed or missing source records are warnings, not setup failures; use `agentpack source status --changed --missing` to review details before a release-like handoff.
 
 `release preflight` prints a read-only release-prep report and checklist for
 this repo. It checks local release metadata and Trusted Publisher wiring, then

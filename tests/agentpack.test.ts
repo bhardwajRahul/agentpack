@@ -159,6 +159,7 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(doctor, /Agentpack doctor/);
   assert.match(doctor, /\[ok\] Pack/);
   assert.match(doctor, /\[ok\] \.gitignore/);
+  assert.match(doctor, /\[warn\] Sources: 1 recorded, 1 changed, 0 missing; run `agentpack source status --changed --missing` for details/);
 });
 
 test("exposes expected MCP tools", () => {
@@ -184,6 +185,10 @@ test("exposes expected MCP tools", () => {
     "task_update",
     "task_update_verification"
   ]);
+
+  const sourceStatusTool = TOOL_DEFINITIONS.find((tool) => tool.name === "source_status");
+  assert.match(sourceStatusTool?.description || "", /changed, or missing/);
+  assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
 });
 
 test("init appends to existing gitignore without overwriting project rules", () => {
@@ -476,6 +481,9 @@ test("removes explicit and missing source records", () => {
   const staleStatus = run(dir, ["source", "status"]);
   assert.match(staleStatus, /UNCHANGED active\.js/);
   assert.match(staleStatus, /MISSING stale\.js/);
+
+  const doctor = run(dir, ["doctor"]);
+  assert.match(doctor, /\[warn\] Sources: 2 recorded, 0 changed, 1 missing; run `agentpack source status --changed --missing` for details/);
 
   const prune = run(dir, ["source", "prune", "--missing"]);
   assert.match(prune, /Pruned 1 missing source record/);
