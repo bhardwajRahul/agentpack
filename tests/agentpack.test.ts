@@ -17,6 +17,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { resolveMcpStartDir } from "../src/cli/index.js";
 import { buildDoctorReport } from "../src/core/doctor.js";
+import { getGitInfo } from "../src/core/git.js";
+import { buildResume } from "../src/core/resume.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -122,6 +124,14 @@ test("creates a pack, records source context, checkpoints, and exports handoff",
   assert.match(tinyResume, /Estimated usage: ~\d+ tokens/);
   assert.match(tinyResume, /Budget status: limited/);
   assert.ok(estimatedTokensFromResume(tinyResume) <= 80);
+
+  const strictFallbackResume = buildResume(dir, { budget: 40 });
+  assert.ok(strictFallbackResume.estimatedTokens <= 40);
+  assert.match(strictFallbackResume.markdown, /\[Truncated to fit budget\]$/);
+
+  const markerlessFallbackResume = buildResume(dir, { budget: 5 });
+  assert.ok(markerlessFallbackResume.estimatedTokens <= 5);
+  assert.doesNotMatch(markerlessFallbackResume.markdown, /\[Truncated to fit budget\]/);
 
   const exported = run(dir, ["export", "--to", "chatgpt", "--preset", "agent"]);
   assert.match(exported, /chatgpt-handoff\.md/);
@@ -468,6 +478,36 @@ test("distinguishes source-cache status from git working tree status", () => {
   assert.match(status, /untracked other\.js/);
 });
 
+test("loads full git diff only when requested and preserves checkpoint patches", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-git-diff-test-"));
+  writeFileSync(path.join(dir, "tracked.txt"), "committed\n", "utf8");
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.email", "agentpack@example.com"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["add", "tracked.txt"]);
+  commit(dir, "initial");
+  run(dir, ["init"]);
+
+  writeFileSync(path.join(dir, "tracked.txt"), "committed\nworking tree marker\n", "utf8");
+
+  const summaryOnly = getGitInfo(dir);
+  assert.equal(summaryOnly.diff, "");
+  assert.match(summaryOnly.diffStat || "", /1 file changed/);
+  assert.match(buildResume(dir).markdown, /Current diff: 1 file changed, 1 insertion/);
+
+  const withDiff = getGitInfo(dir, { includeDiff: true });
+  assert.match(withDiff.diff, /working tree marker/);
+
+  run(dir, ["checkpoint", "-m", "Capture working tree patch."]);
+  const checkpoints = readdirSync(path.join(dir, ".agentpack", "checkpoints")).sort();
+  const latest = checkpoints[checkpoints.length - 1];
+  assert.ok(latest);
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "checkpoints", latest, "diff.patch"), "utf8"),
+    /working tree marker/
+  );
+});
+
 test("removes explicit and missing source records", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-source-prune-test-"));
   writeFileSync(path.join(dir, "active.js"), "console.log('active')\n", "utf8");
@@ -657,6 +697,31 @@ test("resume surfaces upstream drift and local commits before optional ledger se
   assert.match(resume, /Review local commits before release prep/);
   assert.match(resume, /Budget status: limited/);
   assert.match(resume, /omitted .*Decisions.*Recent Timeline/);
+});
+
+test("preserves query-relevant source context just above the compact context budget", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-resume-mid-budget-test-"));
+  run(dir, ["init"]);
+
+  for (let index = 0; index < 20; index += 1) {
+    const fileName = `source-${index}.js`;
+    writeFileSync(path.join(dir, fileName), `console.log(${index})\n`, "utf8");
+    run(dir, [
+      "source",
+      "add",
+      fileName,
+      "--summary",
+      index === 0
+        ? "Needle context must survive the mid-budget transition."
+        : `Unrelated source summary ${index} expands the filtered Source Cache.`
+    ]);
+  }
+
+  const resume = run(dir, ["resume", "--budget", "1201", "--query", "needle context"]);
+  assert.ok(estimatedTokensFromResume(resume) <= 1201);
+  assert.doesNotMatch(resume, /## Relevant Context/);
+  assert.match(resume, /## Source Cache/);
+  assert.match(resume, /Needle context must survive the mid-budget transition/);
 });
 
 test("requires semantic review to refresh changed source records", () => {

@@ -1,6 +1,10 @@
 import { execFileSync } from "node:child_process";
 import type { GitInfo } from "./types.js";
 
+interface GetGitInfoOptions {
+  includeDiff?: boolean;
+}
+
 function runGit(root: string, args: string[]): string {
   try {
     return execFileSync("git", args, {
@@ -13,7 +17,7 @@ function runGit(root: string, args: string[]): string {
   }
 }
 
-export function getGitInfo(root: string): GitInfo {
+export function getGitInfo(root: string, options: GetGitInfoOptions = {}): GitInfo {
   const topLevel = runGit(root, ["rev-parse", "--show-toplevel"]);
 
   if (!topLevel) {
@@ -26,6 +30,7 @@ export function getGitInfo(root: string): GitInfo {
       behind: null,
       aheadCommits: [],
       status: "",
+      diffStat: "",
       diff: ""
     };
   }
@@ -48,7 +53,8 @@ export function getGitInfo(root: string): GitInfo {
     behind: counts?.behind ?? null,
     aheadCommits,
     status: runGit(root, ["status", "--short"]),
-    diff: runGit(root, ["diff", "--"])
+    diffStat: runGit(root, ["diff", "--shortstat", "--"]),
+    diff: options.includeDiff ? runGit(root, ["diff", "--"]) : ""
   };
 }
 

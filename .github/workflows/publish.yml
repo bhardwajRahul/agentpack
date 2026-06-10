@@ -2,7 +2,7 @@ name: Publish to npm
 
 # Two triggers:
 #   - release: published — fires when a GitHub Release is published. Use this
-#     for the normal flow after `npm version <bump> && git push --follow-tags`
+#     for the normal flow after a separate version-bump commit and tag push,
 #     followed by `gh release create vX.Y.Z`.
 #   - workflow_dispatch — manual "Run workflow" button in the Actions tab.
 #     Useful as a fallback if a Release publish fires but Actions was paused,

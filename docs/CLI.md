@@ -126,7 +126,7 @@ For the normal coding-agent workflow, prefer MCP and `resume --preset agent`. Ma
 
 ## Budgets
 
-`--budget` is an approximate token target. The presets are:
+`--budget` is a hard ceiling for Agentpack's approximate local token estimate. The presets are:
 
 - `1200`: quick status ping
 - `4000`: compact manual handoff

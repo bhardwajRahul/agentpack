@@ -20,15 +20,21 @@ export function clipToTokenBudget(text: string, budget: number): string {
 
   const maxChars = Math.max(0, budget * 4);
   const value = String(text || "");
+  const truncationMarker = "\n\n[Truncated to fit budget]";
 
   if (value.length <= maxChars) {
     return value;
   }
 
-  const clipped = value.slice(0, maxChars);
+  if (truncationMarker.length >= maxChars) {
+    return value.slice(0, maxChars).trimEnd();
+  }
+
+  const contentChars = maxChars - truncationMarker.length;
+  const clipped = value.slice(0, contentChars);
   const newline = clipped.lastIndexOf("\n");
-  const boundary = newline > maxChars * 0.65 ? newline : maxChars;
-  return `${clipped.slice(0, boundary).trimEnd()}\n\n[Truncated to fit budget]`;
+  const boundary = newline > contentChars * 0.65 ? newline : contentChars;
+  return `${clipped.slice(0, boundary).trimEnd()}${truncationMarker}`;
 }
 
 export interface PackedSections {

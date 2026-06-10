@@ -33,7 +33,7 @@ export function createCheckpoint(root: string, options: CheckpointOptions = {}) 
   return withPackWriteLock(root, () => {
     const state = readState(root);
     const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
-    const git = getGitInfo(root);
+    const git = getGitInfo(root, { includeDiff: config.includeGitDiff !== false });
     const id = checkpointId();
     const checkpointPath = getPackPath(root, "checkpoints", id);
     const summary = redactForRoot(root, options.summary || "Checkpoint created.");

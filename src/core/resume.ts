@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { estimateTokens, packSections } from "./budget.js";
+import { clipToTokenBudget, estimateTokens, packSections } from "./budget.js";
 import { getGitInfo } from "./git.js";
 import { sha256File } from "./hash.js";
 import {
@@ -16,6 +16,9 @@ import { getCurrentPassport } from "./tasks.js";
 import type { AgentpackConfig, AgentpackEvent, GitInfo, SourceRecord, TaskPassport } from "./types.js";
 
 const BUDGET_METADATA_RESERVE_TOKENS = 48;
+const MAX_COMPACT_RELEVANT_CONTEXT_BUDGET = 1200;
+const MAX_RELEVANT_CONTEXT_DECISIONS = 4;
+const MAX_RELEVANT_CONTEXT_SOURCES = 4;
 const MAX_QUERY_RELEVANT_SOURCE_ENTRIES = 8;
 const MAX_QUERY_UNRELATED_SOURCE_STUBS = 12;
 const SECTION_OMISSION_GUIDANCE: Record<string, string> = {
@@ -49,7 +52,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
   const events = readEvents(root);
   const git = getGitInfo(root);
   const currentTask = readCurrentTaskForResume(root);
-  const relevantContext = budget > 0 && budget <= 1200
+  const relevantContext = budget > 0 && budget <= MAX_COMPACT_RELEVANT_CONTEXT_BUDGET
     ? formatRelevantContext(root, sources, events, options.query)
     : [];
   const generatedAt = new Date().toISOString();
@@ -95,6 +98,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
     } : null,
     {
       title: "Source Cache",
+      required: Boolean(options.query) && budget > MAX_COMPACT_RELEVANT_CONTEXT_BUDGET,
       text: section("Source Cache", formatSources(root, sources, options.query))
     },
     {
@@ -159,7 +163,7 @@ function formatGit(git: GitInfo): string[] {
       : null,
     "- Changed files:",
     ...(git.status ? git.status.split("\n").map((line) => `  - ${line}`) : ["  - None"]),
-    git.diff ? `- Current diff characters: ${git.diff.length}` : "- Current diff: none"
+    git.diffStat ? `- Current diff: ${git.diffStat.trim()}` : "- Current diff: none"
   ].filter((line): line is string => Boolean(line));
 }
 
@@ -237,7 +241,7 @@ function formatRelevantContext(root: string, sources: SourceRecord[], events: Ag
   const selectedDecisions = selectDiverseScored(
     relevantDecisions,
     queryTerms,
-    4,
+    MAX_RELEVANT_CONTEXT_DECISIONS,
     (entry, term) => scoreEvent(entry.event, [term])
   );
   const relevantSources = buildSourceEntries(root, sources, queryTerms)
@@ -246,7 +250,7 @@ function formatRelevantContext(root: string, sources: SourceRecord[], events: Ag
   const selectedSources = selectDiverseScored(
     relevantSources,
     queryTerms,
-    4,
+    MAX_RELEVANT_CONTEXT_SOURCES,
     (entry, term) => scoreSource(entry.source, [term])
   );
 
@@ -720,7 +724,18 @@ function packResumeSections(
     reserveTokens = Math.min(budget - 1, reserveTokens + usedTokens - budget + 4);
   }
 
-  return fallback || { redacted: header.trimEnd(), omittedSections: sections.map((section) => section.title), truncatedSections: [] };
+  if (fallback) {
+    return {
+      ...fallback,
+      redacted: clipToTokenBudget(fallback.redacted, budget)
+    };
+  }
+
+  return {
+    redacted: clipToTokenBudget(header.trimEnd(), budget),
+    omittedSections: sections.map((section) => section.title),
+    truncatedSections: []
+  };
 }
 
 function withStableBudgetMetadata(

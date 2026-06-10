@@ -259,7 +259,7 @@
       "column": "core",
       "type": "core",
       "title": "core/budget.ts",
-      "summary": "Token estimator + section packer. Required sections kept, optionals truncated, omissions reported.",
+      "summary": "Token estimator + section packer. Required sections are kept or clipped, optional sections are omitted, and bounded output honors the requested estimate ceiling.",
       "files": [
         "src/core/budget.ts",
         "src/core/presets.ts"

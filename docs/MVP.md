@@ -68,13 +68,13 @@ Team sharing is intentionally out of scope until after local-only workflows stab
 
 ## Budget Policy
 
-Budget packing is deterministic and approximate. The v0 token estimate is intentionally simple:
+Budget packing is deterministic. The v0 token estimate is intentionally approximate and simple:
 
 ```text
 estimated_tokens = ceil(characters / 4)
 ```
 
-Generated resumes include the requested budget, estimated usage, and a budget status line. If the requested budget is too small, Agentpack reports which required sections were truncated and which optional sections were omitted instead of silently dropping context.
+Generated resumes include the requested budget, estimated usage, and a budget status line. A positive explicit budget is a hard ceiling for the local estimate. If the requested budget is too small, Agentpack reports which required sections were truncated and which optional sections were omitted when that metadata fits; extremely small budgets use a strict clipped fallback.
 
 Resume sections are prioritized:
 
