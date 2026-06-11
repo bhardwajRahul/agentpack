@@ -1,0 +1,23 @@
+name: Mirror to Codeberg
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Push main and tags to Codeberg
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          remote="https://ihorponom:${CODEBERG_TOKEN}@codeberg.org/ihorponom/agentpack.git"
+          git fetch --quiet origin main
+          git push --force "$remote" "origin/main:refs/heads/main"
+          git push "$remote" --tags
