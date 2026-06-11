@@ -1,5 +1,10 @@
 # Agentpack
 
+[![npm version](https://img.shields.io/npm/v/agentpack-cli)](https://www.npmjs.com/package/agentpack-cli)
+[![CI](https://github.com/ihorponom/agentpack/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ihorponom/agentpack/actions/workflows/ci.yml)
+[![node](https://img.shields.io/node/v/agentpack-cli)](https://www.npmjs.com/package/agentpack-cli)
+[![license](https://img.shields.io/npm/l/agentpack-cli)](LICENSE)
+
 Repo-native task continuity for AI coding agents.
 
 > Coding agents forget. Agentpack gives them the task state they need to continue.
