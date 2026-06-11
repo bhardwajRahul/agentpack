@@ -189,9 +189,11 @@ test("exposes expected MCP tools", () => {
     "task_audit",
     "task_finalize",
     "task_handoff",
+    "task_list",
     "task_park",
     "task_start",
     "task_status",
+    "task_switch",
     "task_update",
     "task_update_verification"
   ]);
@@ -1518,6 +1520,92 @@ test("parks current task over MCP so a new task can start", async () => {
   const tasks = run(dir, ["task", "list"]);
   assert.match(tasks, /- task_.* \[parked\] Parkable MCP task/);
   assert.match(tasks, /\* task_.* \[active\] Replacement MCP task/);
+
+  const mcpList = await mcp.send({
+    jsonrpc: "2.0",
+    id: 6,
+    method: "tools/call",
+    params: {
+      name: "task_list",
+      arguments: {}
+    }
+  });
+  assert.match(mcpList.result.content[0].text, /- task_.* \[parked\] Parkable MCP task/);
+  assert.match(mcpList.result.content[0].text, /\* task_.* \[active\] Replacement MCP task/);
+
+  const mcpListJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 7,
+    method: "tools/call",
+    params: {
+      name: "task_list",
+      arguments: { json: true }
+    }
+  });
+  const parsedList: Array<{ id: string; title: string; status: string; current: boolean }> = JSON.parse(mcpListJson.result.content[0].text);
+  const parkedEntry = parsedList.find((task) => task.title === "Parkable MCP task");
+  const replacementEntry = parsedList.find((task) => task.title === "Replacement MCP task");
+  assert.ok(parkedEntry);
+  assert.ok(replacementEntry);
+  assert.equal(parkedEntry.status, "parked");
+  assert.equal(parkedEntry.current, false);
+
+  const emptySwitch = await mcp.send({
+    jsonrpc: "2.0",
+    id: 8,
+    method: "tools/call",
+    params: {
+      name: "task_switch",
+      arguments: { id: "  " }
+    }
+  });
+  assert.match(emptySwitch.error?.message, /task_switch requires a task id/);
+
+  const unknownSwitch = await mcp.send({
+    jsonrpc: "2.0",
+    id: 9,
+    method: "tools/call",
+    params: {
+      name: "task_switch",
+      arguments: { id: "task_missing" }
+    }
+  });
+  assert.match(unknownSwitch.error?.message, /Task passport not found: task_missing/);
+
+  const mcpSwitch = await mcp.send({
+    jsonrpc: "2.0",
+    id: 10,
+    method: "tools/call",
+    params: {
+      name: "task_switch",
+      arguments: { id: parkedEntry.id }
+    }
+  });
+  assert.match(mcpSwitch.result.content[0].text, /Switched to task task_.* \(parked\)\./);
+
+  const switchedStatus = await mcp.send({
+    jsonrpc: "2.0",
+    id: 11,
+    method: "tools/call",
+    params: {
+      name: "task_status",
+      arguments: {}
+    }
+  });
+  assert.match(switchedStatus.result.content[0].text, /Parkable MCP task \[parked\]/);
+
+  run(dir, ["task", "switch", replacementEntry.id]);
+  run(dir, ["task", "close"]);
+  const closedSwitch = await mcp.send({
+    jsonrpc: "2.0",
+    id: 12,
+    method: "tools/call",
+    params: {
+      name: "task_switch",
+      arguments: { id: replacementEntry.id }
+    }
+  });
+  assert.match(closedSwitch.error?.message, /Cannot switch to closed task/);
 });
 
 test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {

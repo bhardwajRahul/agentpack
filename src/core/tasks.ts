@@ -146,6 +146,16 @@ export function listTasks(root: string): TaskListItem[] {
     }));
 }
 
+export function formatTaskList(tasks: TaskListItem[]): string {
+  return tasks.map((task) => [
+    task.current ? "*" : "-",
+    task.id,
+    `[${task.status}]`,
+    task.title,
+    task.branch ? `(branch: ${task.branch})` : ""
+  ].filter(Boolean).join(" ")).join("\n");
+}
+
 export function getCurrentPassport(root: string): TaskPassport | null {
   const current = readCurrentTaskId(root);
   return current ? readPassport(root, current) : null;

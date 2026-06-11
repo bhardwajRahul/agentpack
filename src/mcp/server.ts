@@ -9,7 +9,7 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { resolveBudget } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, parkCurrentTask, startTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, formatTaskList, listTasks, parkCurrentTask, startTask, switchTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -158,6 +158,27 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {}
+    }
+  },
+  {
+    name: "task_list",
+    description: "List all Task Passports with id, status, title, and branch; the current task is marked with an asterisk.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        json: { type: "boolean" }
+      }
+    }
+  },
+  {
+    name: "task_switch",
+    description: "Switch the current Task Passport to another open task by id, for example to resume a parked task. Closed tasks cannot be switched to.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string" }
+      },
+      required: ["id"]
     }
   },
   {
@@ -480,6 +501,26 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "task_status") {
     return toolText(redactForRoot(root, formatCurrentTaskStatus(root)));
+  }
+
+  if (name === "task_list") {
+    const tasks = listTasks(root);
+    if (tasks.length === 0) {
+      return toolText("No task passports yet. Call `task_start` first.");
+    }
+    if (booleanValue(args.json, false)) {
+      return toolText(redactForRoot(root, JSON.stringify(tasks, null, 2)));
+    }
+    return toolText(redactForRoot(root, formatTaskList(tasks)));
+  }
+
+  if (name === "task_switch") {
+    const taskId = text(args.id).trim();
+    if (!taskId) {
+      throw new Error("task_switch requires a task id");
+    }
+    const passport = switchTask(root, taskId);
+    return toolText(`Switched to task ${passport.id} (${passport.status}).`);
   }
 
   if (name === "task_park") {

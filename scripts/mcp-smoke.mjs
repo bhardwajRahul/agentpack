@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_park", "task_start", "task_status", "task_update", "task_update_verification"]) {
+  for (const expected of ["load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -104,6 +104,28 @@ try {
   });
   assertMatch(activeTaskStatus.result?.content?.[0]?.text || "", /MCP smoke verification \[active\]/, "task_status reports the active task");
 
+  const taskList = await client.request("tools/call", {
+    name: "task_list",
+    arguments: {}
+  });
+  const taskListText = taskList.result?.content?.[0]?.text || "";
+  assertMatch(taskListText, /- task_.* \[parked\] MCP smoke parked task/, "task_list shows the parked task");
+  assertMatch(taskListText, /\* task_.* \[active\] MCP smoke verification/, "task_list marks the current task");
+
+  const parkedTaskId = taskListText.match(/- (task_\S+) \[parked\]/)?.[1] || "";
+  const activeTaskId = taskListText.match(/\* (task_\S+) \[active\]/)?.[1] || "";
+  const taskSwitch = await client.request("tools/call", {
+    name: "task_switch",
+    arguments: { id: parkedTaskId }
+  });
+  assertMatch(taskSwitch.result?.content?.[0]?.text || "", /Switched to task task_.* \(parked\)\./, "task_switch resumes the parked task");
+
+  const switchBack = await client.request("tools/call", {
+    name: "task_switch",
+    arguments: { id: activeTaskId }
+  });
+  assertMatch(switchBack.result?.content?.[0]?.text || "", /Switched to task task_.* \(active\)\./, "task_switch returns to the active task");
+
   const taskHandoff = await client.request("tools/call", {
     name: "task_handoff",
     arguments: {}
@@ -159,7 +181,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

@@ -16,6 +16,7 @@ import {
   formatCurrentTaskHandoff,
   formatCurrentTaskStatus,
   formatTaskAuditReport,
+  formatTaskList,
   getCurrentPassport,
   listTasks,
   parkCurrentTask,
@@ -508,13 +509,7 @@ function taskCommand(root: string, rest: string[]): void {
       return;
     }
 
-    process.stdout.write(`${tasks.map((task) => [
-      task.current ? "*" : "-",
-      task.id,
-      `[${task.status}]`,
-      task.title,
-      task.branch ? `(branch: ${task.branch})` : ""
-    ].filter(Boolean).join(" ")).join("\n")}\n`);
+    process.stdout.write(`${formatTaskList(tasks)}\n`);
     return;
   }
 

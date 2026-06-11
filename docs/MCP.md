@@ -35,9 +35,11 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `release_preflight`
 - `task_finalize`
 - `task_handoff`
+- `task_list`
 - `task_park`
 - `task_start`
 - `task_status`
+- `task_switch`
 - `task_update`
 - `task_update_verification`
 - `checkpoint`
@@ -62,7 +64,13 @@ push, tag, publish, or create GitHub Releases.
 
 `task_status` prints the same quick current-task view as `agentpack task status`. It does not scan the source cache and should not be used as a substitute for `task_audit`.
 
-`task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable through the CLI and can be resumed later.
+`task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
+
+`task_list` lists all Task Passports with id, status, title, and branch, matching `agentpack task list`; the current task is marked with `*`. Pass `{ "json": true }` for structured output.
+
+`task_switch` makes another open task current by `id`, for example to resume a parked task. It mirrors `agentpack task switch` exactly: closed tasks cannot be switched to.
+
+`task close` intentionally has no MCP equivalent. Closing a task without a verification verdict bypasses the lifecycle discipline that `task_park` and `task_finalize` enforce, so it stays a human CLI operation (`agentpack task close`). The full passport JSON view also stays CLI-only (`agentpack task passport`); `task_status` is the MCP summary equivalent.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
@@ -100,6 +108,8 @@ The smoke test verifies:
 - `tools/call task_status`
 - `tools/call task_start`
 - `tools/call task_park`
+- `tools/call task_list`
+- `tools/call task_switch`
 - `tools/call task_handoff`
 - `tools/call attach_evidence`
 - `tools/call task_update`
