@@ -185,10 +185,13 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `record_source`
 - `source_status`
 - `task_audit`
+- `release_preflight`
 - `task_handoff`
+- `task_list`
 - `task_park`
 - `task_start`
 - `task_status`
+- `task_switch`
 - `task_update`
 - `task_update_verification`
 - `task_finalize`
