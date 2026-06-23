@@ -1572,7 +1572,7 @@ test("parks current task over MCP so a new task can start", async () => {
   });
   assert.match(unknownSwitch.error?.message, /Task passport not found: task_missing/);
 
-  const mcpSwitch = await mcp.send({
+  const activeSwitch = await mcp.send({
     jsonrpc: "2.0",
     id: 10,
     method: "tools/call",
@@ -1581,24 +1581,47 @@ test("parks current task over MCP so a new task can start", async () => {
       arguments: { id: parkedEntry.id }
     }
   });
-  assert.match(mcpSwitch.result.content[0].text, /Switched to task task_.* \(parked\)\./);
+  assert.match(activeSwitch.error?.message, /park or finalize it first/);
+
+  await mcp.send({
+    jsonrpc: "2.0",
+    id: 11,
+    method: "tools/call",
+    params: {
+      name: "task_park",
+      arguments: {}
+    }
+  });
+
+  const mcpSwitch = await mcp.send({
+    jsonrpc: "2.0",
+    id: 12,
+    method: "tools/call",
+    params: {
+      name: "task_switch",
+      arguments: { id: parkedEntry.id }
+    }
+  });
+  assert.match(mcpSwitch.result.content[0].text, /Switched to task task_.* \(active\)\./);
 
   const switchedStatus = await mcp.send({
     jsonrpc: "2.0",
-    id: 11,
+    id: 13,
     method: "tools/call",
     params: {
       name: "task_status",
       arguments: {}
     }
   });
-  assert.match(switchedStatus.result.content[0].text, /Parkable MCP task \[parked\]/);
+  assert.match(switchedStatus.result.content[0].text, /Parkable MCP task \[active\]/);
+
+  run(dir, ["task", "park"]);
 
   run(dir, ["task", "switch", replacementEntry.id]);
   run(dir, ["task", "close"]);
   const closedSwitch = await mcp.send({
     jsonrpc: "2.0",
-    id: 12,
+    id: 14,
     method: "tools/call",
     params: {
       name: "task_switch",

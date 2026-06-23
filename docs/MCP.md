@@ -68,7 +68,7 @@ push, tag, publish, or create GitHub Releases.
 
 `task_list` lists all Task Passports with id, status, title, and branch, matching `agentpack task list`; the current task is marked with `*`. Pass `{ "json": true }` for structured output.
 
-`task_switch` makes another open task current by `id`, for example to resume a parked task. It mirrors `agentpack task switch` exactly: closed tasks cannot be switched to.
+`task_switch` makes another open task current by `id` and resumes a parked target as `active`. It mirrors `agentpack task switch` exactly: park or finalize a different active, blocked, or verifying current task before switching, and closed target tasks remain unswitchable.
 
 `task close` intentionally has no MCP equivalent. Closing a task without a verification verdict bypasses the lifecycle discipline that `task_park` and `task_finalize` enforce, so it stays a human CLI operation (`agentpack task close`). The full passport JSON view also stays CLI-only (`agentpack task passport`); `task_status` is the MCP summary equivalent.
 

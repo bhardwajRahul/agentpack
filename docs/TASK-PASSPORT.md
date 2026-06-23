@@ -204,6 +204,8 @@ review task only when the review is unrelated to the current task.
 
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
+`task switch <id>` resumes a parked passport as `active`. When a different current task is active, blocked, or verifying, park or finalize it before switching; Agentpack does not silently rewrite that task's lifecycle state. Closed target tasks remain unswitchable.
+
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 
 MCP exposes the same minimal start/status path for connected agents through `task_start` and `task_status`, plus `task_park` for intentionally deferring the current task before starting unrelated work. Broader lifecycle operations such as switching, blocking, and explicit close remain CLI-only until dogfooding shows they are needed through MCP.

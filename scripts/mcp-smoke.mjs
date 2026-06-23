@@ -114,12 +114,20 @@ try {
 
   const parkedTaskId = taskListText.match(/- (task_\S+) \[parked\]/)?.[1] || "";
   const activeTaskId = taskListText.match(/\* (task_\S+) \[active\]/)?.[1] || "";
+  await client.request("tools/call", {
+    name: "task_park",
+    arguments: {}
+  });
   const taskSwitch = await client.request("tools/call", {
     name: "task_switch",
     arguments: { id: parkedTaskId }
   });
-  assertMatch(taskSwitch.result?.content?.[0]?.text || "", /Switched to task task_.* \(parked\)\./, "task_switch resumes the parked task");
+  assertMatch(taskSwitch.result?.content?.[0]?.text || "", /Switched to task task_.* \(active\)\./, "task_switch resumes the parked task");
 
+  await client.request("tools/call", {
+    name: "task_park",
+    arguments: {}
+  });
   const switchBack = await client.request("tools/call", {
     name: "task_switch",
     arguments: { id: activeTaskId }

@@ -171,12 +171,35 @@ export function readPassport(root: string, taskId: string): TaskPassport {
 
 export function switchTask(root: string, taskId: string): TaskPassport {
   return withPackWriteLock(root, () => {
-    const passport = readPassport(root, taskId);
-    if (CLOSED_STATUSES.has(passport.status)) {
+    const existing = readPassport(root, taskId);
+    if (CLOSED_STATUSES.has(existing.status)) {
       throw new Error(`Cannot switch to closed task ${taskId}`);
+    }
+
+    const currentTaskId = readCurrentTaskId(root);
+    if (currentTaskId && currentTaskId !== taskId) {
+      const currentPassport = readPassport(root, currentTaskId);
+      if (!CLOSED_STATUSES.has(currentPassport.status) && currentPassport.status !== "parked") {
+        throw new Error(`Cannot switch tasks while current task ${currentTaskId} is ${currentPassport.status}; park or finalize it first.`);
+      }
+    }
+
+    const previousStatus = existing.status;
+    const passport: TaskPassport = previousStatus === "parked"
+      ? {
+          ...existing,
+          status: "active",
+          currentHead: getGitInfo(root).head,
+          updatedAt: new Date().toISOString()
+        }
+      : existing;
+
+    if (passport !== existing) {
+      writePassport(root, passport);
     }
     writeCurrentTaskId(root, passport.id);
     appendTaskEvent(root, passport.id, "task-switch", {
+      previousStatus,
       status: passport.status
     });
     return passport;
