@@ -208,7 +208,7 @@ review task only when the review is unrelated to the current task.
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 
-MCP exposes the same minimal start/status path for connected agents through `task_start` and `task_status`, plus `task_park` for intentionally deferring the current task before starting unrelated work. Broader lifecycle operations such as switching, blocking, and explicit close remain CLI-only until dogfooding shows they are needed through MCP.
+MCP exposes the same start/status/list/switch path for connected agents through `task_start`, `task_status`, `task_list`, `task_switch`, and `task_park`. Blocking, explicit close, and full passport JSON inspection remain CLI-only until dogfooding shows they are needed through MCP.
 
 **`task handoff`** prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
@@ -219,6 +219,143 @@ MCP exposes the same minimal start/status path for connected agents through `tas
 `task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
 
 `task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task finalize --status accepted` also refuses to close a task with remaining next actions unless `--force` is passed; use `task park` for deferred work. `task close` remains available for explicit manual closure.
+
+## Portable Bundle Contract
+
+Structured bundles are a planned explicit handoff surface, separate from the
+current markdown export. A bundle moves reviewed task continuity between local
+workspaces without committing live `.agentpack/` state or pretending to move
+the Git working tree.
+
+The first bundle format should be one inspectable UTF-8 JSON file, conventionally
+named `*.agentpack-bundle.json`. It is not a zip archive and cannot contain
+scripts, binaries, source files, or hidden client configuration.
+
+Target envelope:
+
+```json
+{
+  "kind": "agentpack.task-bundle",
+  "schemaVersion": 1,
+  "bundleId": "sha256:<canonical-payload-hash>",
+  "exportedAt": "2026-06-23T12:00:00.000Z",
+  "producer": {
+    "name": "agentpack-cli",
+    "version": "0.1.x"
+  },
+  "origin": {
+    "projectName": "example-app",
+    "repository": "https://example.invalid/org/example-app",
+    "branch": "feature/checkout",
+    "head": "abc1234"
+  },
+  "task": {
+    "id": "task_example",
+    "title": "Fix checkout totals",
+    "objective": "Make totals consistent",
+    "constraints": [],
+    "writeScope": ["src/checkout.ts"],
+    "risk": "medium",
+    "tags": [],
+    "nextActions": [],
+    "originalStatus": "active",
+    "originVerification": {
+      "status": "passed",
+      "summary": "Focused tests passed.",
+      "evidence": ["evt_example"]
+    }
+  },
+  "handoffMarkdown": "Task handoff...",
+  "sources": [],
+  "evidence": []
+}
+```
+
+`bundleId` is computed from a canonicalized payload that excludes `bundleId`
+and `exportedAt`. Stable key ordering and array ordering make inspection and
+duplicate detection deterministic even when two exports have different
+timestamps.
+
+The portable task payload includes the title, objective, constraints, write
+scope, risk, tags, next actions, original status, and original verification.
+Absolute worktree paths and the source pack's `tasks/current` pointer are never
+portable fields. Origin branch, head, task id, and verification remain
+provenance; importing them does not claim that the destination workspace has
+the same Git state or has locally re-verified the task.
+
+The optional repository locator is credential-free and redacted; export drops
+user info, query strings, fragments, or nonportable local remote paths. Source
+entries contain only repo-relative path, hash, size, recorded time, summary,
+and optional snippet. Evidence entries contain origin id, kind, redacted
+command/exit code, UTF-8 text or JSON content, and a content digest.
+
+Bundle contents are intentionally bounded:
+
+- include a redacted compact handoff for human inspection
+- include source conclusions selected explicitly with repeatable source paths;
+  write scope, including `.`, never implicitly exports recorded sources
+- include only text or JSON evidence referenced by the passport verification,
+  unless evidence is explicitly disabled
+- exclude repo config/state, current-task pointers, client config, caches,
+  checkpoints, Git patches, source file contents, unreferenced evidence, and
+  the broad repo event stream
+- exclude repo-level decisions and dead ends from structured import because the
+  current storage model cannot prove they belong to this task; users can still
+  carry broader read-only context through the existing markdown export
+
+Every string is redacted again at the export boundary. Export refuses absolute
+or parent-traversal paths. Import treats the bundle as untrusted input: validate
+kind/schema, digest, path safety, field types, count limits, and byte limits
+before planning any write.
+
+Import is dry-run by default and applies atomically under the pack write lock
+only with an explicit write flag. A successful import never replaces the
+current task. It creates or restores a non-current `parked` passport with local
+branch/head/worktree metadata; origin metadata stays attached to the import
+record. Origin verification is historical provenance, while local verification
+starts as `unknown` until the destination workspace verifies the handoff.
+
+Collision rules:
+
+- no local task id collision: preserve the origin task id and import it parked
+- the same bundle digest was already imported: report an idempotent no-op
+- the task id exists with different content: refuse by default; an explicit
+  `--as-new` remaps the task id and all imported references
+- evidence id and digest both match: reuse it; an id collision with different
+  content is remapped and origin-verification references are rewritten
+- an imported source path whose local file matches the imported hash may fill
+  an absent source record; an existing local conclusion wins
+- a missing or hash-mismatched local source is not written to Source Cache;
+  keep it in the stored bundle provenance and report a stale-source warning
+
+The applied bundle is retained under
+`.agentpack/tasks/<task-id>/imports/<bundle-id>.bundle.json`; a sibling
+`<bundle-id>.import.json` records created, reused, skipped, conflicted, and
+remapped records. Apply is atomic, but the first implementation does not
+promise a general rollback command. A future removal operation must use that
+import manifest and delete only records created by the import that remain
+unreferenced; reused local sources or evidence are never rollback candidates.
+
+The existing `agentpack export --to markdown`, `resume`, and `task handoff`
+contracts remain unchanged. Markdown import and automatic sync are out of scope
+for the first structured format.
+
+Required verification for the first implementation:
+
+- canonical export produces a stable payload digest and survives
+  export/inspect/import-plan round trips
+- redaction removes configured secrets, credential-bearing remote components,
+  and absolute workspace paths from every exported string
+- inspect and default import perform no pack writes; invalid schema, digest,
+  size, count, or path input fails before a plan can be applied
+- apply is atomic and leaves `tasks/current` unchanged on success or failure
+- imported tasks are parked with local verification unknown while origin status
+  and verification remain inspectable provenance
+- task/evidence idempotency, conflicting ids with `--as-new`, source hash
+  matches, and stale/missing source warnings have focused regression tests
+- CLI and MCP produce equivalent plans/results from the same core functions
+- a clean-repo dogfood smoke exports from one workspace, inspects without a
+  pack, imports into another workspace, and resumes the parked task explicitly
 
 ## Role Lanes
 

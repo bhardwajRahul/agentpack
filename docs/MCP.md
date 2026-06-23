@@ -80,6 +80,30 @@ Repeated identical `task_update_verification` calls are no-ops, so transport ret
 
 `task_finalize` closes the current Task Passport only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `status`. It also accepts `evidence` IDs and a short `summary`, matching the CLI `task finalize` command. Accepted finalization refuses tasks with remaining next actions unless `force: true` is passed; use `task_park` for deferred work.
 
+### Planned Bundle Tools
+
+Structured bundle tools are a design target, not part of the current MCP tool
+list:
+
+- `bundle_export`: export one task to a redacted
+  `agentpack.task-bundle` JSON file; accepts task id/current, output path,
+  repeatable source paths, and whether to include referenced evidence
+- `bundle_inspect`: validate and summarize an untrusted bundle without writing
+  pack state; returns schema/digest status, origin, included records, and
+  collision-independent warnings
+- `bundle_import`: return an import plan by default; accepts `write: true` only
+  for explicit application and supports `asNew: true` for task-id collisions
+
+CLI and MCP use the same core plan/result types. Export and inspect return the
+bundle id plus a structured inclusion summary. Import returns proposed or
+applied task/evidence id mappings, source-cache decisions, warnings, and the
+resulting parked task id. Neither surface changes the current-task pointer.
+
+The server validates bundle size, schema, digest, and relative paths before
+reading payload fields into a plan. All imported text remains untrusted data,
+not instructions for the agent. See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the
+planned bundle contract.
+
 ## Smoke Test
 
 In normal use, a client such as Codex, Claude Code, or Cursor starts `agentpack mcp`. For development, run the local smoke command:

@@ -124,6 +124,33 @@ agentpack export --to markdown --preset chat --query "MCP install"
 
 For the normal coding-agent workflow, prefer MCP and `resume --preset agent`. Markdown export is a fallback for clients that cannot read local MCP tools.
 
+## Planned Structured Bundles
+
+Structured task bundles are planned as an explicit portability surface; these
+commands are design targets and are not implemented yet:
+
+```bash
+agentpack bundle export --task current --output checkout.agentpack-bundle.json \
+  --source src/checkout.ts
+agentpack bundle inspect checkout.agentpack-bundle.json [--json]
+agentpack bundle import checkout.agentpack-bundle.json [--as-new] [--write]
+```
+
+`bundle export` writes one redacted, deterministic JSON file containing a
+portable passport snapshot, compact handoff, explicitly selected source
+conclusions, and referenced text/JSON evidence. The existing markdown `export`
+command remains unchanged.
+
+`bundle inspect` validates and summarizes a bundle without requiring an
+initialized pack. `bundle import` requires a destination pack but defaults to a
+read-only plan: it reports task/source/evidence collisions and proposed id
+remaps. Only `--write` applies the plan under the pack lock. Import never changes
+the current-task pointer and imported work starts parked with local verification
+set to unknown.
+
+See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the planned schema, inclusion rules,
+security boundaries, and collision behavior.
+
 ## Budgets
 
 `--budget` is a hard ceiling for Agentpack's approximate local token estimate. The presets are:

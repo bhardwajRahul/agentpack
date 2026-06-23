@@ -161,6 +161,9 @@ Demo story:
 - Stable CLI.
 - Stable MCP tools.
 - Task Passport schema and one-current-passport workflow.
+- Explicit, inspectable structured task bundles for moving sanitized passport
+  state between worktrees, machines, clients, and fresh clones without
+  committing live `.agentpack/` state.
 - Workstream separation for parked work, history, and worktree handoffs.
 - Lightweight role lanes for Scout, Builder, Reviewer, and Archivist.
 - Write-scope and stale-state warnings.
@@ -171,8 +174,8 @@ Demo story:
 
 ## Later
 
-- Backup/export/import bundles for moving local task state between workspaces or fresh clones without committing live `.agentpack/` state.
-- Shareable bundles.
+- Optional share links or hosted transport for explicit bundles after local
+  export/import is stable.
 - Optional imports from markdown handoffs.
 - Orchestrator adapters.
 - Optional hosted sync.
