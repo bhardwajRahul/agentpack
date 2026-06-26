@@ -90,3 +90,96 @@ export interface GitInfo {
   diffStat?: string;
   diff: string;
 }
+
+export interface TaskBundleProducer {
+  name: "agentpack-cli";
+  version: string;
+}
+
+export interface TaskBundleOrigin {
+  projectName: string;
+  repository?: string;
+  branch: string | null;
+  head: string | null;
+}
+
+export interface TaskBundleTask {
+  id: string;
+  title: string;
+  objective: string;
+  constraints: string[];
+  writeScope: string[];
+  risk: TaskRisk;
+  tags: string[];
+  nextActions: string[];
+  originalStatus: TaskStatus;
+  originVerification: TaskVerification;
+}
+
+export interface TaskBundleSource {
+  path: string;
+  hash: string;
+  size: number;
+  recordedAt: string;
+  summary: string;
+  snippet: string;
+}
+
+export interface TaskBundleEvidence {
+  originId: string;
+  kind: string;
+  command: string;
+  exitCode: number | null;
+  content: string;
+  contentDigest: string;
+}
+
+export interface TaskBundle {
+  kind: "agentpack.task-bundle";
+  schemaVersion: 1;
+  bundleId: string;
+  exportedAt: string;
+  producer: TaskBundleProducer;
+  origin: TaskBundleOrigin;
+  task: TaskBundleTask;
+  handoffMarkdown: string;
+  sources: TaskBundleSource[];
+  evidence: TaskBundleEvidence[];
+}
+
+export interface BundleExportOptions {
+  taskId?: string;
+  outputPath: string;
+  sourcePaths?: string[];
+  includeEvidence?: boolean;
+  producerVersion?: string;
+}
+
+export interface BundleExportResult {
+  bundleId: string;
+  outputPath: string;
+  taskId: string;
+  sources: number;
+  evidence: number;
+  bytes: number;
+}
+
+export interface BundleInspectResult {
+  valid: boolean;
+  bundleId: string;
+  digestStatus: "valid";
+  schemaVersion: number;
+  producer: TaskBundleProducer;
+  origin: TaskBundleOrigin;
+  task: {
+    id: string;
+    title: string;
+    originalStatus: TaskStatus;
+    verificationStatus: TaskVerification["status"];
+  };
+  counts: {
+    sources: number;
+    evidence: number;
+  };
+  warnings: string[];
+}

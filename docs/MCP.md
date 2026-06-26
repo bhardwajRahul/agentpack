@@ -82,8 +82,7 @@ Repeated identical `task_update_verification` calls are no-ops, so transport ret
 
 ### Planned Bundle Tools
 
-Structured bundle tools are a design target, not part of the current MCP tool
-list:
+Structured bundle tools expose the same read-only bundle core used by the CLI:
 
 - `bundle_export`: export one task to a redacted
   `agentpack.task-bundle` JSON file; accepts task id/current, output path,
@@ -91,18 +90,15 @@ list:
 - `bundle_inspect`: validate and summarize an untrusted bundle without writing
   pack state; returns schema/digest status, origin, included records, and
   collision-independent warnings
-- `bundle_import`: return an import plan by default; accepts `write: true` only
-  for explicit application and supports `asNew: true` for task-id collisions
 
-CLI and MCP use the same core plan/result types. Export and inspect return the
-bundle id plus a structured inclusion summary. Import returns proposed or
-applied task/evidence id mappings, source-cache decisions, warnings, and the
-resulting parked task id. Neither surface changes the current-task pointer.
+CLI and MCP use the same core result types. Export and inspect return the
+bundle id plus a structured inclusion summary. Neither surface changes the
+current-task pointer.
 
 The server validates bundle size, schema, digest, and relative paths before
-reading payload fields into a plan. All imported text remains untrusted data,
-not instructions for the agent. See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the
-planned bundle contract.
+reading payload fields. Bundle text remains untrusted data, not instructions
+for the agent. Bundle import remains a design target for a later write-enabled
+slice. See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the planned import contract.
 
 ## Smoke Test
 

@@ -176,6 +176,8 @@ test("exposes expected MCP tools", () => {
   const names = TOOL_DEFINITIONS.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     "attach_evidence",
+    "bundle_export",
+    "bundle_inspect",
     "checkpoint",
     "diff",
     "load_context",
@@ -201,6 +203,172 @@ test("exposes expected MCP tools", () => {
   const sourceStatusTool = TOOL_DEFINITIONS.find((tool) => tool.name === "source_status");
   assert.match(sourceStatusTool?.description || "", /changed, or missing/);
   assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
+});
+
+test("exports and inspects read-only structured bundles", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-test-"));
+  const noPackDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-inspect-no-pack-"));
+  const secret = "agentpack-bundle-secret-123";
+  const priorEnv = process.env.AGENTPACK_BUNDLE_TOKEN;
+  process.env.AGENTPACK_BUNDLE_TOKEN = secret;
+
+  try {
+    mkdirSync(path.join(dir, "src"), { recursive: true });
+    writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    runGit(dir, ["init"]);
+    runGit(dir, ["config", "user.name", "Agentpack Test"]);
+    runGit(dir, ["config", "user.email", "test@example.com"]);
+    runGit(dir, ["remote", "add", "origin", "https://user:pass@example.com/org/example.git?token=bad#frag"]);
+    run(dir, ["init"]);
+
+    const configPath = path.join(dir, ".agentpack", "config.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8"));
+    config.redactions = [...config.redactions, "AGENTPACK_BUNDLE_TOKEN"];
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    run(dir, [
+      "task",
+      "start",
+      "Bundle checkout state",
+      "--objective",
+      `Export task context without leaking ${secret}.`,
+      "--write-scope",
+      "src/index.ts",
+      "--next",
+      "Inspect bundle"
+    ]);
+    run(dir, [
+      "source",
+      "add",
+      "src/index.ts",
+      "--summary",
+      `Source summary with ${secret}.`,
+      "--snippet",
+      `token=${secret}`
+    ]);
+    const evidenceOutput = run(dir, [
+      "evidence",
+      "add",
+      "--kind",
+      "test-output",
+      "--content",
+      `Focused tests passed with token=${secret}.`
+    ]);
+    const evidenceId = evidenceOutput.match(/Attached evidence ([^\n]+)/)?.[1] || "";
+    run(dir, [
+      "task",
+      "verify",
+      "--status",
+      "passed",
+      "--evidence",
+      evidenceId,
+      "--summary",
+      "Bundle export fixture verified."
+    ]);
+
+    const bundlePath = path.join(dir, "checkout.agentpack-bundle.json");
+    const exported = run(dir, [
+      "bundle",
+      "export",
+      "--task",
+      "current",
+      "--output",
+      "checkout.agentpack-bundle.json",
+      "--source",
+      "src/index.ts"
+    ]);
+    assert.match(exported, /Exported bundle sha256:/);
+    assert.match(exported, /Included: 1 source\(s\), 1 evidence item\(s\)/);
+    assert.equal(existsSync(bundlePath), true);
+
+    const bundleText = readFileSync(bundlePath, "utf8");
+    const bundle = JSON.parse(bundleText);
+    assert.equal(bundle.kind, "agentpack.task-bundle");
+    assert.equal(bundle.schemaVersion, 1);
+    assert.equal(bundle.sources[0].path, "src/index.ts");
+    assert.equal(bundle.evidence[0].originId, evidenceId);
+    assert.equal(bundle.origin.repository, "https://example.com/org/example.git");
+    assert.equal(bundleText.includes(secret), false);
+    assert.equal(bundleText.includes(dir), false);
+    assert.match(bundleText, /\[REDACTED:AGENTPACK_BUNDLE_TOKEN\]/);
+
+    const secondExport = run(dir, [
+      "bundle",
+      "export",
+      "--output",
+      "checkout.agentpack-bundle.json",
+      "--source",
+      "src/index.ts"
+    ]);
+    const secondBundleId = secondExport.match(/Exported bundle (sha256:[^\n]+)/)?.[1] || "";
+    assert.equal(secondBundleId, bundle.bundleId);
+
+    const inspect = run(noPackDir, ["bundle", "inspect", bundlePath]);
+    assert.match(inspect, new RegExp(`Bundle ${escapeRegExp(bundle.bundleId)}`));
+    assert.match(inspect, /Status: valid \(valid digest\)/);
+    assert.match(inspect, /Task: task_.* - Bundle checkout state/);
+    assert.match(inspect, /Included: 1 source\(s\), 1 evidence item\(s\)/);
+
+    const inspectJson = JSON.parse(run(noPackDir, ["bundle", "inspect", bundlePath, "--json"]));
+    assert.equal(inspectJson.bundleId, bundle.bundleId);
+    assert.equal(inspectJson.valid, true);
+    assert.equal(inspectJson.counts.sources, 1);
+    assert.equal(inspectJson.counts.evidence, 1);
+
+    const tamperedPath = path.join(dir, "tampered.agentpack-bundle.json");
+    writeFileSync(tamperedPath, bundleText.replace("Bundle checkout state", "Bundle tampered state"), "utf8");
+    assert.match(runExpectError(noPackDir, ["bundle", "inspect", tamperedPath]), /Bundle digest mismatch/);
+
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        "bad.agentpack-bundle.json",
+        "--source",
+        path.join(dir, "src", "index.ts")
+      ]),
+      /Refusing absolute bundle source path/
+    );
+
+    const mcp = createMcpHarness(dir);
+    const mcpExportPath = path.join(dir, "mcp.agentpack-bundle.json");
+    const mcpExport = await mcp.send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "bundle_export",
+        arguments: {
+          outputPath: mcpExportPath,
+          sources: ["src/index.ts"]
+        }
+      }
+    });
+    assert.match(mcpExport.result.content[0].text, /Exported bundle sha256:/);
+
+    const mcpInspect = await mcp.send({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "bundle_inspect",
+        arguments: {
+          path: mcpExportPath,
+          json: true
+        }
+      }
+    });
+    const mcpInspectJson = JSON.parse(mcpInspect.result.content[0].text);
+    assert.equal(mcpInspectJson.counts.sources, 1);
+    assert.equal(mcpInspectJson.counts.evidence, 1);
+  } finally {
+    if (priorEnv === undefined) {
+      delete process.env.AGENTPACK_BUNDLE_TOKEN;
+    } else {
+      process.env.AGENTPACK_BUNDLE_TOKEN = priorEnv;
+    }
+  }
 });
 
 test("init appends to existing gitignore without overwriting project rules", () => {

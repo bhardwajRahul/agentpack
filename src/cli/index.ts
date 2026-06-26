@@ -3,6 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
+import {
+  exportTaskBundle,
+  formatBundleExportResult,
+  formatBundleInspectResult,
+  inspectTaskBundle
+} from "../core/bundles.js";
 import { buildResume } from "../core/resume.js";
 import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
 import { buildDoctorReport } from "../core/doctor.js";
@@ -101,6 +107,16 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     return;
   }
 
+  if (command === "bundle" && isHelpRequest(rest[0])) {
+    printBundleHelp();
+    return;
+  }
+
+  if (command === "bundle" && rest[0] === "inspect") {
+    bundleInspectCommand(rest.slice(1));
+    return;
+  }
+
   if (command === "task" && isHelpRequest(rest[0])) {
     printTaskHelp();
     return;
@@ -183,6 +199,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     return;
   }
 
+  if (command === "bundle") {
+    bundleCommand(root, rest);
+    return;
+  }
+
   if (command === "diff") {
     const parsed = parseArgs(rest);
     const diff = diffCheckpoints(root, parsed.positionals[0], parsed.positionals[1]);
@@ -250,6 +271,8 @@ Inspect and export:
   agentpack source status [--json] [--changed] [--missing]
   agentpack ledger status
   agentpack export --to markdown --preset chat [--query <text>]
+  agentpack bundle export --task current --output task.agentpack-bundle.json [--source <path>]
+  agentpack bundle inspect task.agentpack-bundle.json [--json]
   agentpack release preflight
 
 More:
@@ -358,6 +381,13 @@ Create a task-state checkpoint with an optional status and next actions.`;
     return `agentpack export [--to markdown|chatgpt|<name>] [--preset quick|chat|agent|deep] [--budget <tokens>] [--query <text>]
 
 Write a markdown handoff under .agentpack/exports/ for clients that cannot use MCP.`;
+  }
+
+  if (command === "bundle") {
+    return `agentpack bundle export --task current|<id> --output <file> [--source <path>] [--no-evidence]
+agentpack bundle inspect <file> [--json]
+
+Export or inspect a read-only structured task bundle. Import is not implemented yet.`;
   }
 
   if (command === "diff") {
@@ -620,6 +650,50 @@ function taskCommand(root: string, rest: string[]): void {
   }
 
   throw new Error("task command supports start, update, list, status, handoff, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
+}
+
+function printBundleHelp(): void {
+  process.stdout.write(`${commandHelpText("bundle")}\n`);
+}
+
+function bundleCommand(root: string, rest: string[]): void {
+  const subcommand = rest[0];
+  const args = rest.slice(1);
+
+  if (subcommand === "export") {
+    const parsed = parseArgs(args);
+    const outputPath = stringOption(parsed.options.output) || stringOption(parsed.options.o);
+    const result = exportTaskBundle(root, {
+      taskId: stringOption(parsed.options.task) || "current",
+      outputPath,
+      sourcePaths: toArray(parsed.options.source),
+      includeEvidence: parsed.options["no-evidence"] !== true,
+      producerVersion: readPackageVersion()
+    });
+    process.stdout.write(`${formatBundleExportResult(result)}\n`);
+    return;
+  }
+
+  if (subcommand === "inspect") {
+    bundleInspectCommand(args);
+    return;
+  }
+
+  throw new Error("bundle command supports export and inspect");
+}
+
+function bundleInspectCommand(args: string[]): void {
+  const parsed = parseArgs(args);
+  const filePath = parsed.positionals[0];
+  if (!filePath) {
+    throw new Error("bundle inspect requires a bundle file path");
+  }
+  const result = inspectTaskBundle(filePath);
+  if (parsed.options.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`${formatBundleInspectResult(result)}\n`);
 }
 
 function sourceCommand(root: string, rest: string[]): void {

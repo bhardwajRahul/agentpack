@@ -1,6 +1,12 @@
 import { appendEvent, requirePackRoot } from "../core/store.js";
 import { buildResume } from "../core/resume.js";
 import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
+import {
+  exportTaskBundle,
+  formatBundleExportResult,
+  formatBundleInspectResult,
+  inspectTaskBundle
+} from "../core/bundles.js";
 import { buildReleasePreflightReport } from "../core/release.js";
 import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents, type SourceStatusKind } from "../operations.js";
 import { readFileSync } from "node:fs";
@@ -122,6 +128,32 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {}
+    }
+  },
+  {
+    name: "bundle_export",
+    description: "Export a redacted read-only structured task bundle JSON file.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: { type: "string" },
+        outputPath: { type: "string" },
+        sources: { type: "array", items: { type: "string" } },
+        includeEvidence: { type: "boolean" }
+      },
+      required: ["outputPath"]
+    }
+  },
+  {
+    name: "bundle_inspect",
+    description: "Validate and summarize a structured task bundle without writing pack state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        json: { type: "boolean" }
+      },
+      required: ["path"]
     }
   },
   {
@@ -473,6 +505,25 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   if (name === "release_preflight") {
     const report = buildReleasePreflightReport(root);
     return toolText(redactForRoot(root, report.text));
+  }
+
+  if (name === "bundle_export") {
+    const result = exportTaskBundle(root, {
+      taskId: text(args.taskId) || "current",
+      outputPath: text(args.outputPath),
+      sourcePaths: stringArray(args.sources),
+      includeEvidence: booleanValue(args.includeEvidence, true),
+      producerVersion: readPackageVersion()
+    });
+    return toolText(redactForRoot(root, formatBundleExportResult(result)));
+  }
+
+  if (name === "bundle_inspect") {
+    const result = inspectTaskBundle(text(args.path));
+    if (booleanValue(args.json, false)) {
+      return toolText(JSON.stringify(result, null, 2));
+    }
+    return toolText(formatBundleInspectResult(result));
   }
 
   if (name === "task_handoff") {
