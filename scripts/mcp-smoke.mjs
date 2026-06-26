@@ -165,7 +165,7 @@ try {
   const bundleExport = await client.request("tools/call", {
     name: "bundle_export",
     arguments: {
-      outputPath: bundlePath,
+      outputPath: "mcp-smoke.agentpack-bundle.json",
       sources: ["index.js"]
     }
   });

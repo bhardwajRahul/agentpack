@@ -265,6 +265,7 @@ test("exports and inspects read-only structured bundles", async () => {
       "--summary",
       "Bundle export fixture verified."
     ]);
+    const exportedTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
 
     const bundlePath = path.join(dir, "checkout.agentpack-bundle.json");
     const exported = run(dir, [
@@ -303,6 +304,34 @@ test("exports and inspects read-only structured bundles", async () => {
     const secondBundleId = secondExport.match(/Exported bundle (sha256:[^\n]+)/)?.[1] || "";
     assert.equal(secondBundleId, bundle.bundleId);
 
+    run(dir, ["task", "finalize", "--status", "passed", "--summary", "Bundle fixture finalized."]);
+    run(dir, [
+      "task",
+      "start",
+      "Current unrelated task",
+      "--objective",
+      "Keep a different current task active while exporting a historical task.",
+      "--write-scope",
+      "src/index.ts",
+      "--next",
+      "Stay current"
+    ]);
+    run(dir, [
+      "bundle",
+      "export",
+      "--task",
+      exportedTaskId,
+      "--output",
+      "historical.agentpack-bundle.json",
+      "--source",
+      "src/index.ts"
+    ]);
+    const historicalBundle = JSON.parse(readFileSync(path.join(dir, "historical.agentpack-bundle.json"), "utf8"));
+    assert.equal(historicalBundle.task.id, exportedTaskId);
+    assert.equal(historicalBundle.task.title, "Bundle checkout state");
+    assert.match(historicalBundle.handoffMarkdown, /Bundle checkout state \[completed\]/);
+    assert.doesNotMatch(historicalBundle.handoffMarkdown, /Current unrelated task/);
+
     const inspect = run(noPackDir, ["bundle", "inspect", bundlePath]);
     assert.match(inspect, new RegExp(`Bundle ${escapeRegExp(bundle.bundleId)}`));
     assert.match(inspect, /Status: valid \(valid digest\)/);
@@ -330,9 +359,30 @@ test("exports and inspects read-only structured bundles", async () => {
       ]),
       /Refusing absolute bundle source path/
     );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        path.join(dir, "absolute.agentpack-bundle.json"),
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing absolute bundle output path/
+    );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        "../escape.agentpack-bundle.json",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing bundle output path outside project root/
+    );
 
     const mcp = createMcpHarness(dir);
-    const mcpExportPath = path.join(dir, "mcp.agentpack-bundle.json");
     const mcpExport = await mcp.send({
       jsonrpc: "2.0",
       id: 1,
@@ -340,7 +390,8 @@ test("exports and inspects read-only structured bundles", async () => {
       params: {
         name: "bundle_export",
         arguments: {
-          outputPath: mcpExportPath,
+          taskId: exportedTaskId,
+          outputPath: "mcp.agentpack-bundle.json",
           sources: ["src/index.ts"]
         }
       }
@@ -354,7 +405,7 @@ test("exports and inspects read-only structured bundles", async () => {
       params: {
         name: "bundle_inspect",
         arguments: {
-          path: mcpExportPath,
+          path: path.join(dir, "mcp.agentpack-bundle.json"),
           json: true
         }
       }

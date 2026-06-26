@@ -494,10 +494,12 @@ export function formatCurrentTaskHandoff(root: string, sourceStatuses: TaskAudit
     ].join("\n");
   }
 
+  return formatTaskPassportHandoff(root, passport, sourceStatuses);
+}
+
+export function formatTaskPassportHandoff(root: string, passport: TaskPassport, sourceStatuses: TaskAuditSourceStatus[] = []): string {
   const git = getGitInfo(root);
-  const report = auditCurrentTask(root, sourceStatuses);
-  const taskWarnings = report.issues.filter((issue) => issue.level === "warn" && issue.category !== "metadata");
-  const metadataWarnings = report.issues.filter((issue) => issue.level === "warn" && issue.category === "metadata");
+  const warnings = taskHandoffWarnings(root, passport, git, sourceStatuses);
   const verification = passport.verification;
 
   return [
@@ -517,9 +519,51 @@ export function formatCurrentTaskHandoff(root: string, sourceStatuses: TaskAudit
     "Next actions:",
     ...formatList(passport.nextActions),
     `Drift: ${formatTaskDrift(passport, git)}`,
-    `Audit: ${taskWarnings.length > 0 ? taskWarnings.map((issue) => issue.message).join(" | ") : "No action-required task warnings."}`,
-    `Metadata: ${metadataWarnings.length > 0 ? metadataWarnings.map((issue) => issue.message).join(" | ") : "No source-cache metadata warnings."}`
+    `Audit: ${warnings.task.length > 0 ? warnings.task.join(" | ") : "No action-required task warnings."}`,
+    `Metadata: ${warnings.metadata.length > 0 ? warnings.metadata.join(" | ") : "No source-cache metadata warnings."}`
   ].join("\n");
+}
+
+function taskHandoffWarnings(
+  root: string,
+  passport: TaskPassport,
+  git: ReturnType<typeof getGitInfo>,
+  sourceStatuses: TaskAuditSourceStatus[]
+): { task: string[]; metadata: string[] } {
+  const task: string[] = [];
+  const metadata: string[] = [];
+  const staleSources = sourceStatuses.filter((source) => source.status !== "unchanged");
+
+  if (CLOSED_STATUSES.has(passport.status)) {
+    task.push("Task is closed. Start or switch to an open task before continuing work.");
+  }
+  if (!passport.nextActions.length) {
+    task.push("Task has no next actions.");
+  }
+  if (passport.verification.status === "unknown" || passport.verification.status === "pending") {
+    task.push(`Verification is ${passport.verification.status}. Attach evidence or close the loop before handoff.`);
+  }
+  if (!passport.writeScope.length) {
+    task.push("Task has no write scope; future agents may not know the intended blast radius.");
+  }
+  if (git.available) {
+    if (passport.branch && git.branch && passport.branch !== git.branch) {
+      task.push(`Branch drift: passport branch is ${passport.branch}, current branch is ${git.branch}.`);
+    }
+    if (passport.currentHead && git.head && passport.currentHead !== git.head) {
+      task.push(`HEAD drift: passport head is ${passport.currentHead}, current head is ${git.head}.`);
+    }
+  } else {
+    task.push("Git repository not detected; branch/head drift cannot be checked.");
+  }
+  if (!samePath(root, passport.worktree)) {
+    task.push("Worktree path differs from the current pack root; verify this passport belongs to this workspace.");
+  }
+  if (staleSources.length > 0) {
+    metadata.push(`Source cache metadata has ${staleSources.length} changed or missing record(s): ${staleSources.map((source) => source.path).join(", ")}. Refresh only records whose durable conclusions changed.`);
+  }
+
+  return { task, metadata };
 }
 
 function formatList(items: string[]): string[] {

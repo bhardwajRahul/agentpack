@@ -5,7 +5,7 @@ import { getGitInfo } from "./git.js";
 import { normalizePath, sha256 } from "./hash.js";
 import { redactForRoot } from "./redaction.js";
 import { getPackPath, readEvents, readJson, readSources } from "./store.js";
-import { formatCurrentTaskHandoff, getCurrentPassport, readPassport } from "./tasks.js";
+import { formatTaskPassportHandoff, getCurrentPassport, readPassport } from "./tasks.js";
 import type {
   AgentpackConfig,
   AgentpackEvent,
@@ -38,14 +38,14 @@ export function exportTaskBundle(root: string, options: BundleExportOptions): Bu
     throw new Error("No current task. Run `agentpack task start <title>` first or pass --task <id>.");
   }
 
-  const outputPath = path.resolve(root, options.outputPath);
+  const outputPath = normalizeBundleOutputPath(root, options.outputPath);
   const sourcePaths = normalizeBundleSourcePaths(root, options.sourcePaths || []);
   const sources = selectedSources(root, sourcePaths);
   const evidence = options.includeEvidence === false ? [] : referencedEvidence(root, passport.verification.evidence);
   const git = getGitInfo(root);
   const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
   const origin = bundleOrigin(root, config.projectName || path.basename(root), git.branch, git.head);
-  const handoff = formatCurrentTaskHandoff(root);
+  const handoff = formatTaskPassportHandoff(root, passport);
 
   const bundleBase = deepRedact(root, {
     kind: BUNDLE_KIND,
@@ -159,6 +159,19 @@ export function formatBundleInspectResult(result: BundleInspectResult): string {
 function normalizeBundleSourcePaths(root: string, sourcePaths: string[]): string[] {
   const normalized = sourcePaths.map((sourcePath) => normalizeBundlePath(root, sourcePath));
   return [...new Set(normalized)].sort();
+}
+
+function normalizeBundleOutputPath(root: string, outputPath: string): string {
+  if (path.isAbsolute(outputPath)) {
+    throw new Error(`Refusing absolute bundle output path: ${outputPath}`);
+  }
+
+  const absolutePath = path.resolve(root, outputPath);
+  const relativePath = path.relative(root, absolutePath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    throw new Error(`Refusing bundle output path outside project root: ${outputPath}`);
+  }
+  return absolutePath;
 }
 
 function normalizeBundlePath(root: string, inputPath: string): string {
