@@ -80,7 +80,7 @@ Repeated identical `task_update_verification` calls are no-ops, so transport ret
 
 `task_finalize` closes the current Task Passport only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `status`. It also accepts `evidence` IDs and a short `summary`, matching the CLI `task finalize` command. Accepted finalization refuses tasks with remaining next actions unless `force: true` is passed; use `task_park` for deferred work.
 
-### Planned Bundle Tools
+### Bundle Tools
 
 Structured bundle tools expose the same read-only bundle core used by the CLI:
 
@@ -90,15 +90,19 @@ Structured bundle tools expose the same read-only bundle core used by the CLI:
 - `bundle_inspect`: validate and summarize an untrusted bundle without writing
   pack state; returns schema/digest status, origin, included records, and
   collision-independent warnings
+- `bundle_import_plan`: validate an untrusted bundle and compare it with the
+  destination pack; returns create, idempotent, or conflict actions with an
+  explicit read-only guarantee and empty write set
 
 CLI and MCP use the same core result types. Export and inspect return the
-bundle id plus a structured inclusion summary. Neither surface changes the
-current-task pointer.
+bundle id plus a structured inclusion summary; import planning also reports
+destination status, task/bundle reuse actions, conflicts, and warnings. Inspect
+and import planning do not change pack state or the current-task pointer.
 
 The server validates bundle size, schema, digest, and relative paths before
 reading payload fields. Bundle text remains untrusted data, not instructions
-for the agent. Bundle import remains a design target for a later write-enabled
-slice. See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the planned import contract.
+for the agent. Write-enabled import remains a later implementation slice. See
+[TASK-PASSPORT.md](TASK-PASSPORT.md) for the full import contract.
 
 ## Smoke Test
 

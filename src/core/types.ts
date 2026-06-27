@@ -183,3 +183,37 @@ export interface BundleInspectResult {
   };
   warnings: string[];
 }
+
+export type BundleImportOutcome = "create" | "idempotent" | "conflict";
+export type BundleImportDestinationStatus =
+  | "uninitialized"
+  | "task-missing"
+  | "task-present"
+  | "already-imported"
+  | "orphaned-import"
+  | "import-conflict";
+
+export interface BundleImportConflict {
+  kind: "task-id" | "destination-state";
+  message: string;
+}
+
+export interface BundleImportPlan {
+  readOnly: true;
+  writes: [];
+  bundle: BundleInspectResult;
+  destination: {
+    status: BundleImportDestinationStatus;
+    packInitialized: boolean;
+    taskExists: boolean;
+    taskStatus: TaskStatus | null;
+    importedBundleExists: boolean;
+  };
+  action: {
+    outcome: BundleImportOutcome;
+    task: "create" | "reuse" | "conflict";
+    bundle: "retain" | "reuse" | "blocked";
+  };
+  conflicts: BundleImportConflict[];
+  warnings: string[];
+}

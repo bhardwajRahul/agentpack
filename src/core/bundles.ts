@@ -11,6 +11,7 @@ import type {
   AgentpackEvent,
   BundleExportOptions,
   BundleExportResult,
+  BundleImportPlan,
   BundleInspectResult,
   SourceRecord,
   TaskBundle,
@@ -98,6 +99,110 @@ export function exportTaskBundle(root: string, options: BundleExportOptions): Bu
 }
 
 export function inspectTaskBundle(filePath: string): BundleInspectResult {
+  const { bundle, warnings } = readValidatedTaskBundle(filePath);
+  return bundleInspectResult(bundle, warnings);
+}
+
+export function planTaskBundleImport(root: string, filePath: string): BundleImportPlan {
+  const { bundle, warnings: bundleWarnings } = readValidatedTaskBundle(filePath);
+  const bundleSummary = bundleInspectResult(bundle, bundleWarnings);
+  const packInitialized = existsSync(getPackPath(root));
+  const passportFile = getPackPath(root, "tasks", bundle.task.id, "passport.json");
+  const retainedBundleFile = getPackPath(
+    root,
+    "tasks",
+    bundle.task.id,
+    "imports",
+    `${bundle.bundleId}.bundle.json`
+  );
+  const taskExists = existsSync(passportFile);
+  const importedBundleExists = existsSync(retainedBundleFile);
+  const taskStatus = taskExists ? readPassport(root, bundle.task.id).status : null;
+  const warnings = [...bundleWarnings];
+  const conflicts: BundleImportPlan["conflicts"] = [];
+
+  let retainedBundleMatches = false;
+  if (importedBundleExists) {
+    try {
+      const retained = readValidatedTaskBundle(retainedBundleFile).bundle;
+      retainedBundleMatches = retained.bundleId === bundle.bundleId && retained.task.id === bundle.task.id;
+      if (!retainedBundleMatches) {
+        conflicts.push({
+          kind: "destination-state",
+          message: `Retained import record for ${bundle.bundleId} does not match task ${bundle.task.id}.`
+        });
+      }
+    } catch (error) {
+      conflicts.push({
+        kind: "destination-state",
+        message: `Retained import record for ${bundle.bundleId} is invalid: ${errorMessage(error)}`
+      });
+    }
+  }
+
+  let destinationStatus: BundleImportPlan["destination"]["status"];
+  let action: BundleImportPlan["action"];
+  if (retainedBundleMatches && taskExists) {
+    destinationStatus = "already-imported";
+    action = {
+      outcome: "idempotent",
+      task: "reuse",
+      bundle: "reuse"
+    };
+  } else if (importedBundleExists) {
+    if (retainedBundleMatches && !taskExists) {
+      conflicts.push({
+        kind: "destination-state",
+        message: `Retained import record exists for ${bundle.bundleId}, but task ${bundle.task.id} is missing.`
+      });
+    }
+    destinationStatus = retainedBundleMatches ? "orphaned-import" : "import-conflict";
+    action = {
+      outcome: "conflict",
+      task: "conflict",
+      bundle: "blocked"
+    };
+  } else if (taskExists) {
+    conflicts.push({
+      kind: "task-id",
+      message: `Task ${bundle.task.id} already exists without matching imported bundle ${bundle.bundleId}.`
+    });
+    destinationStatus = "task-present";
+    action = {
+      outcome: "conflict",
+      task: "conflict",
+      bundle: "blocked"
+    };
+  } else {
+    destinationStatus = packInitialized ? "task-missing" : "uninitialized";
+    action = {
+      outcome: "create",
+      task: "create",
+      bundle: "retain"
+    };
+    if (!packInitialized) {
+      warnings.push("destination pack is not initialized; a future write import would require agentpack init");
+    }
+  }
+
+  return {
+    readOnly: true,
+    writes: [],
+    bundle: bundleSummary,
+    destination: {
+      status: destinationStatus,
+      packInitialized,
+      taskExists,
+      taskStatus,
+      importedBundleExists
+    },
+    action,
+    conflicts,
+    warnings
+  };
+}
+
+function readValidatedTaskBundle(filePath: string): { bundle: TaskBundle; warnings: string[] } {
   const absolutePath = path.resolve(filePath);
   const stat = statSync(absolutePath);
   if (stat.size > MAX_BUNDLE_BYTES) {
@@ -113,6 +218,10 @@ export function inspectTaskBundle(filePath: string): BundleInspectResult {
   }
 
   const warnings = validateBundleRecords(bundle);
+  return { bundle, warnings };
+}
+
+function bundleInspectResult(bundle: TaskBundle, warnings: string[]): BundleInspectResult {
   return {
     valid: true,
     bundleId: bundle.bundleId,
@@ -153,6 +262,21 @@ export function formatBundleInspectResult(result: BundleInspectResult): string {
     `Verification: ${result.task.verificationStatus}`,
     `Included: ${result.counts.sources} source(s), ${result.counts.evidence} evidence item(s)`,
     result.warnings.length > 0 ? `Warnings: ${result.warnings.join("; ")}` : "Warnings: none"
+  ].join("\n");
+}
+
+export function formatBundleImportPlan(plan: BundleImportPlan): string {
+  return [
+    `Bundle import plan ${plan.bundle.bundleId}`,
+    "Mode: read-only (no pack writes)",
+    `Task: ${plan.bundle.task.id} - ${plan.bundle.task.title}`,
+    `Destination: ${plan.destination.status}`,
+    `Outcome: ${plan.action.outcome}`,
+    `Planned: task ${plan.action.task}, bundle ${plan.action.bundle}`,
+    plan.conflicts.length > 0
+      ? `Conflicts: ${plan.conflicts.map((conflict) => conflict.message).join("; ")}`
+      : "Conflicts: none",
+    plan.warnings.length > 0 ? `Warnings: ${plan.warnings.join("; ")}` : "Warnings: none"
   ].join("\n");
 }
 
@@ -349,7 +473,7 @@ function assertBundleShape(value: unknown): TaskBundle {
   if (value.schemaVersion !== BUNDLE_SCHEMA_VERSION) {
     throw new Error(`Unsupported bundle schema version: ${String(value.schemaVersion)}`);
   }
-  if (typeof value.bundleId !== "string" || !value.bundleId.startsWith("sha256:")) {
+  if (typeof value.bundleId !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value.bundleId)) {
     throw new Error("Bundle is missing a sha256 bundleId.");
   }
   if (typeof value.exportedAt !== "string") {
@@ -426,6 +550,7 @@ function assertBundleShape(value: unknown): TaskBundle {
 
 function validateBundleRecords(bundle: TaskBundle): string[] {
   const warnings: string[] = [];
+  validateBundleTaskId(bundle.task.id);
   for (const source of bundle.sources) {
     validateRelativeBundlePath(source.path, "source");
   }
@@ -447,6 +572,12 @@ function validateBundleRecords(bundle: TaskBundle): string[] {
     warnings.push("verification references evidence not included in this bundle");
   }
   return warnings;
+}
+
+function validateBundleTaskId(taskId: string): void {
+  if (!/^task_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) {
+    throw new Error(`Invalid task id in bundle: ${taskId || "(empty)"}`);
+  }
 }
 
 function validateRelativeBundlePath(filePath: string, label: string, allowDot = false): void {
@@ -524,4 +655,8 @@ function verificationStatusValue(value: unknown): boolean {
     value === "passed" ||
     value === "failed" ||
     value === "accepted";
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

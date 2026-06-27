@@ -4,8 +4,10 @@ import { createCheckpoint, diffCheckpoints } from "../core/checkpoints.js";
 import {
   exportTaskBundle,
   formatBundleExportResult,
+  formatBundleImportPlan,
   formatBundleInspectResult,
-  inspectTaskBundle
+  inspectTaskBundle,
+  planTaskBundleImport
 } from "../core/bundles.js";
 import { buildReleasePreflightReport } from "../core/release.js";
 import { addEvidence, addSourceRecord, formatSourceStatuses, getSourceStatuses, replayEvents, type SourceStatusKind } from "../operations.js";
@@ -147,6 +149,18 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "bundle_inspect",
     description: "Validate and summarize a structured task bundle without writing pack state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        json: { type: "boolean" }
+      },
+      required: ["path"]
+    }
+  },
+  {
+    name: "bundle_import_plan",
+    description: "Plan a structured task bundle import without writing pack state.",
     inputSchema: {
       type: "object",
       properties: {
@@ -524,6 +538,14 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       return toolText(JSON.stringify(result, null, 2));
     }
     return toolText(formatBundleInspectResult(result));
+  }
+
+  if (name === "bundle_import_plan") {
+    const plan = planTaskBundleImport(root, text(args.path));
+    if (booleanValue(args.json, false)) {
+      return toolText(JSON.stringify(plan, null, 2));
+    }
+    return toolText(formatBundleImportPlan(plan));
   }
 
   if (name === "task_handoff") {

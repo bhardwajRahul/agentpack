@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["bundle_export", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
+  for (const expected of ["bundle_export", "bundle_import_plan", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
 
@@ -179,6 +179,15 @@ try {
   });
   assertMatch(bundleInspect.result?.content?.[0]?.text || "", /Status: valid \(valid digest\)/, "bundle_inspect validates the structured bundle");
 
+  const bundleImportPlan = await client.request("tools/call", {
+    name: "bundle_import_plan",
+    arguments: {
+      path: bundlePath
+    }
+  });
+  assertMatch(bundleImportPlan.result?.content?.[0]?.text || "", /Mode: read-only \(no pack writes\)/, "bundle_import_plan stays read-only");
+  assertMatch(bundleImportPlan.result?.content?.[0]?.text || "", /Outcome: conflict/, "bundle_import_plan detects the existing task id");
+
   const taskUpdate = await client.request("tools/call", {
     name: "task_update",
     arguments: {
@@ -207,7 +216,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

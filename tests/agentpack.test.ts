@@ -177,6 +177,7 @@ test("exposes expected MCP tools", () => {
   assert.deepEqual(names, [
     "attach_evidence",
     "bundle_export",
+    "bundle_import_plan",
     "bundle_inspect",
     "checkpoint",
     "diff",
@@ -205,9 +206,10 @@ test("exposes expected MCP tools", () => {
   assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
 });
 
-test("exports and inspects read-only structured bundles", async () => {
+test("exports, inspects, and plans read-only structured bundle imports", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-test-"));
   const noPackDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-inspect-no-pack-"));
+  const destinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-plan-"));
   const secret = "agentpack-bundle-secret-123";
   const priorEnv = process.env.AGENTPACK_BUNDLE_TOKEN;
   process.env.AGENTPACK_BUNDLE_TOKEN = secret;
@@ -293,6 +295,49 @@ test("exports and inspects read-only structured bundles", async () => {
     assert.equal(bundleText.includes(dir), false);
     assert.match(bundleText, /\[REDACTED:AGENTPACK_BUNDLE_TOKEN\]/);
 
+    const noPackPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", bundlePath, "--json"]));
+    assert.equal(noPackPlan.readOnly, true);
+    assert.deepEqual(noPackPlan.writes, []);
+    assert.equal(noPackPlan.destination.status, "uninitialized");
+    assert.equal(noPackPlan.destination.packInitialized, false);
+    assert.equal(noPackPlan.action.outcome, "create");
+    assert.equal(noPackPlan.action.task, "create");
+    assert.equal(existsSync(path.join(noPackDir, ".agentpack")), false);
+
+    run(destinationDir, ["init"]);
+    const emptyPackPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
+    assert.equal(emptyPackPlan.destination.status, "task-missing");
+    assert.equal(emptyPackPlan.destination.packInitialized, true);
+    assert.equal(emptyPackPlan.action.outcome, "create");
+    assert.equal(existsSync(path.join(destinationDir, ".agentpack", "tasks")), false);
+
+    const destinationTaskDir = path.join(destinationDir, ".agentpack", "tasks", exportedTaskId);
+    mkdirSync(destinationTaskDir, { recursive: true });
+    const sourcePassportPath = path.join(dir, ".agentpack", "tasks", exportedTaskId, "passport.json");
+    const destinationPassportPath = path.join(destinationTaskDir, "passport.json");
+    const destinationPassportValue = JSON.parse(readFileSync(sourcePassportPath, "utf8"));
+    destinationPassportValue.title = "Conflicting local task";
+    const destinationPassport = `${JSON.stringify(destinationPassportValue, null, 2)}\n`;
+    writeFileSync(destinationPassportPath, destinationPassport, "utf8");
+
+    const conflictPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
+    assert.equal(conflictPlan.destination.status, "task-present");
+    assert.equal(conflictPlan.action.outcome, "conflict");
+    assert.equal(conflictPlan.action.task, "conflict");
+    assert.equal(conflictPlan.conflicts[0].kind, "task-id");
+
+    const importsDir = path.join(destinationTaskDir, "imports");
+    mkdirSync(importsDir, { recursive: true });
+    writeFileSync(path.join(importsDir, `${bundle.bundleId}.bundle.json`), bundleText, "utf8");
+    const idempotentPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
+    assert.equal(idempotentPlan.destination.status, "already-imported");
+    assert.equal(idempotentPlan.action.outcome, "idempotent");
+    assert.equal(idempotentPlan.action.task, "reuse");
+    assert.equal(idempotentPlan.action.bundle, "reuse");
+    assert.deepEqual(idempotentPlan.conflicts, []);
+    assert.equal(readFileSync(destinationPassportPath, "utf8"), destinationPassport);
+    assert.deepEqual(readdirSync(importsDir), [`${bundle.bundleId}.bundle.json`]);
+
     const secondExport = run(dir, [
       "bundle",
       "export",
@@ -347,6 +392,7 @@ test("exports and inspects read-only structured bundles", async () => {
     const tamperedPath = path.join(dir, "tampered.agentpack-bundle.json");
     writeFileSync(tamperedPath, bundleText.replace("Bundle checkout state", "Bundle tampered state"), "utf8");
     assert.match(runExpectError(noPackDir, ["bundle", "inspect", tamperedPath]), /Bundle digest mismatch/);
+    assert.match(runExpectError(noPackDir, ["bundle", "import-plan", tamperedPath]), /Bundle digest mismatch/);
 
     assert.match(
       runExpectError(dir, [
@@ -413,6 +459,24 @@ test("exports and inspects read-only structured bundles", async () => {
     const mcpInspectJson = JSON.parse(mcpInspect.result.content[0].text);
     assert.equal(mcpInspectJson.counts.sources, 1);
     assert.equal(mcpInspectJson.counts.evidence, 1);
+
+    const cliImportPlan = JSON.parse(run(dir, ["bundle", "import-plan", bundlePath, "--json"]));
+    const mcpImportPlan = await mcp.send({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: {
+        name: "bundle_import_plan",
+        arguments: {
+          path: bundlePath,
+          json: true
+        }
+      }
+    });
+    const mcpImportPlanJson = JSON.parse(mcpImportPlan.result.content[0].text);
+    assert.deepEqual(mcpImportPlanJson, cliImportPlan);
+    assert.equal(mcpImportPlanJson.action.outcome, "conflict");
+    assert.equal(mcpImportPlanJson.readOnly, true);
   } finally {
     if (priorEnv === undefined) {
       delete process.env.AGENTPACK_BUNDLE_TOKEN;

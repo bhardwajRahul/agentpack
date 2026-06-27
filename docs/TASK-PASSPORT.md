@@ -222,12 +222,13 @@ MCP exposes the same start/status/list/switch path for connected agents through 
 
 ## Portable Bundle Contract
 
-Structured bundles are a planned explicit handoff surface, separate from the
-current markdown export. A bundle moves reviewed task continuity between local
+Structured bundles are an explicit handoff surface, separate from the current
+markdown export. A bundle moves reviewed task continuity between local
 workspaces without committing live `.agentpack/` state or pretending to move
-the Git working tree.
+the Git working tree. Export, inspect, and read-only import planning are
+implemented; applying a bundle is still future work.
 
-The first bundle format should be one inspectable UTF-8 JSON file, conventionally
+The first bundle format is one inspectable UTF-8 JSON file, conventionally
 named `*.agentpack-bundle.json`. It is not a zip archive and cannot contain
 scripts, binaries, source files, or hidden client configuration.
 
@@ -308,12 +309,18 @@ or parent-traversal paths. Import treats the bundle as untrusted input: validate
 kind/schema, digest, path safety, field types, count limits, and byte limits
 before planning any write.
 
-Import is dry-run by default and applies atomically under the pack write lock
-only with an explicit write flag. A successful import never replaces the
-current task. It creates or restores a non-current `parked` passport with local
-branch/head/worktree metadata; origin metadata stays attached to the import
-record. Origin verification is historical provenance, while local verification
-starts as `unknown` until the destination workspace verifies the handoff.
+`bundle import-plan` is read-only and reports an explicit empty write set. It
+validates the bundle before comparing the task id and retained bundle digest
+with destination state; an uninitialized destination is treated as a create
+candidate without creating `.agentpack/`.
+
+The future write-enabled import will apply atomically under the pack write lock
+only with an explicit write flag. A successful import must never replace the
+current task. It will create or restore a non-current `parked` passport with
+local branch/head/worktree metadata; origin metadata stays attached to the
+import record. Origin verification is historical provenance, while local
+verification starts as `unknown` until the destination workspace verifies the
+handoff.
 
 Collision rules:
 
@@ -340,7 +347,7 @@ The existing `agentpack export --to markdown`, `resume`, and `task handoff`
 contracts remain unchanged. Markdown import and automatic sync are out of scope
 for the first structured format.
 
-Required verification for the first implementation:
+Required verification for the complete write-enabled implementation:
 
 - canonical export produces a stable payload digest and survives
   export/inspect/import-plan round trips

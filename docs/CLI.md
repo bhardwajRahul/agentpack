@@ -133,6 +133,7 @@ handoff between workspaces:
 agentpack bundle export --task current --output checkout.agentpack-bundle.json \
   --source src/checkout.ts
 agentpack bundle inspect checkout.agentpack-bundle.json [--json]
+agentpack bundle import-plan checkout.agentpack-bundle.json [--json]
 ```
 
 `bundle export` writes one redacted, deterministic JSON file containing a
@@ -143,11 +144,14 @@ command remains unchanged.
 `bundle inspect` validates and summarizes a bundle without requiring an
 initialized pack.
 
-Bundle import is still out of scope for the first implementation. The planned
-import surface will default to a read-only collision report and require an
-explicit write flag before mutating a destination pack.
+`bundle import-plan` validates the same untrusted bundle, compares its task id
+and retained bundle digest with the destination workspace, and reports a
+create, idempotent, or conflict outcome. It is read-only, also works before
+`agentpack init`, and returns an explicit empty write set in JSON mode.
 
-See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the planned schema, inclusion rules,
+Write-enabled import and `--as-new` conflict remapping are not implemented yet.
+
+See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the bundle schema, inclusion rules,
 security boundaries, and collision behavior.
 
 ## Budgets
