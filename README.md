@@ -11,7 +11,7 @@ Repo-native task continuity for AI coding agents.
 
 Mirror: [Codeberg](https://codeberg.org/ihorponom/agentpack). Issues, releases, and npm provenance stay on GitHub.
 
-Agents lose continuity across chats, clients, worktrees, and compaction. Agentpack stores reviewed task state in repo-local `.agentpack/` so MCP-connected coding agents can continue without rediscovering context, re-reading unchanged sources, or repeating dead ends.
+Agents lose continuity across chats, clients, worktrees, and compaction. Agentpack stores reviewed task state in repo-local `.agentpack/` so MCP-connected coding agents can continue without rediscovering context or repeating dead ends, while avoiding unnecessary source re-reading when a current hash-validated conclusion is sufficient.
 
 ## Product Contract
 
