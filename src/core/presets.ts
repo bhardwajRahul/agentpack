@@ -1,11 +1,13 @@
+export const BUDGET_PRESET_NAMES = ["quick", "chat", "agent", "deep"] as const;
+
+export type BudgetPreset = typeof BUDGET_PRESET_NAMES[number];
+
 export const BUDGET_PRESETS = {
   quick: 1200,
   chat: 4000,
   agent: 8000,
   deep: 16000
-} as const;
-
-export type BudgetPreset = keyof typeof BUDGET_PRESETS;
+} as const satisfies Record<BudgetPreset, number>;
 
 export function resolveBudget(input: { budget?: number; preset?: string }, fallback = 0): number {
   if (input.budget && input.budget > 0) {
@@ -25,6 +27,6 @@ export function formatBudgetPresets(): string {
     .join(", ");
 }
 
-function isBudgetPreset(value: string): value is BudgetPreset {
-  return value === "quick" || value === "chat" || value === "agent" || value === "deep";
+export function isBudgetPreset(value: string): value is BudgetPreset {
+  return BUDGET_PRESET_NAMES.includes(value as BudgetPreset);
 }

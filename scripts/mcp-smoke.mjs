@@ -32,6 +32,25 @@ try {
   for (const expected of ["bundle_export", "bundle_import_plan", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
+  for (const name of ["load_context", "resume"]) {
+    const tool = toolsResponse.result?.tools?.find((candidate) => candidate.name === name);
+    const presets = tool?.inputSchema?.properties?.preset?.enum || [];
+    assertEqual(presets.length, 4, `${name} exposes four budget presets`);
+    for (const preset of ["quick", "chat", "agent", "deep"]) {
+      assertIncludes(presets, preset, `${name} exposes the ${preset} preset`);
+    }
+  }
+
+  let invalidPresetError = "";
+  try {
+    await client.request("tools/call", {
+      name: "load_context",
+      arguments: { preset: "small" }
+    });
+  } catch (error) {
+    invalidPresetError = String(error?.message || error);
+  }
+  assertMatch(invalidPresetError, /Unknown budget preset: small/, "load_context rejects unknown presets");
 
   await client.request("tools/call", {
     name: "record_decision",

@@ -4,10 +4,10 @@ Dogfooding means using Agentpack to develop Agentpack itself. The goal is to pro
 
 ## Start A Session
 
-Load a small context first:
+Load focused quick context first:
 
 ```text
-load_context(preset: "quick")
+load_context(preset: "quick", query: "<current task terms>")
 ```
 
 Use `agent` instead of `quick` when the task needs more history.

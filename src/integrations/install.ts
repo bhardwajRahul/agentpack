@@ -46,7 +46,7 @@ Focused skills/rules:
 ${collaborationModesSection()}
 
 At the start of a task:
-- call \`load_context\` with a small preset first
+- call \`load_context\` with \`preset: "quick"\` and a focused query for the current task first
 - call \`source_status\` only when you need a full stale-source check beyond the context you just loaded
 
 Task lifecycle gate:

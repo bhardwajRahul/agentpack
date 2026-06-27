@@ -2,7 +2,7 @@
 
 ## Positioning
 
-Agentpack helps coding agents continue repo work without rediscovering context, re-reading unchanged sources, or repeating dead ends.
+Agentpack helps coding agents continue repo work without rediscovering context or repeating dead ends, while avoiding unnecessary source re-reading when a current hash-validated conclusion is sufficient.
 
 The project is local-first and open-source by default. Optional hosted sync can come later, but the core value must work fully on a developer machine.
 

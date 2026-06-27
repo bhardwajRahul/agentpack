@@ -10,7 +10,7 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 
 Generated Codex, Claude Code, and Cursor instructions tell connected agents to use the MCP tools as a small hybrid continuity loop:
 
-1. Start by calling `load_context` with a focused query and compact preset.
+1. Start by calling `load_context` with `preset: "quick"` and a focused query for the current task.
 2. Call `source_status` only when you need a full stale-source check beyond the context you just loaded.
 3. Record durable decisions, dead ends, evidence, and reviewed source conclusions while working.
 4. Keep reviews that verify the current active/verifying task inside that task as evidence and checkpoint context; use a separate review task only for unrelated reviews.
@@ -47,7 +47,7 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `diff`
 - `replay`
 
-`load_context` and `resume` accept `query`, `budget`, and `preset`. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, and query-unrelated sources remain visible as compact path/status/topic/guidance stubs. Changed or missing query-unrelated sources are warning stubs, not trusted conclusions; call `source_status` for full stale details. If nothing matches, Agentpack keeps compact stubs for all recorded sources and tells the caller to rerun without `query` when the full Source Cache is needed. This saves tokens without hiding which recorded files exist.
+`load_context` and `resume` accept `query`, `budget`, and `preset`. Supported presets are `quick`, `chat`, `agent`, and `deep`; unknown MCP preset values are rejected instead of falling back silently. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, and query-unrelated sources remain visible as compact path/status/topic/guidance stubs. Changed or missing query-unrelated sources are warning stubs, not trusted conclusions; call `source_status` for full stale details. If nothing matches, Agentpack keeps compact stubs for all recorded sources and tells the caller to rerun without `query` when the full Source Cache is needed. This saves tokens without hiding which recorded files exist.
 
 `source_status` accepts `changed`, `missing`, and `json` booleans. Pass `{ "changed": true }`, `{ "missing": true }`, or both to focus MCP output on stale source-cache records instead of dumping every unchanged source conclusion. This is the MCP-side equivalent of following `agentpack doctor` source-cache warnings with `agentpack source status --changed --missing`.
 

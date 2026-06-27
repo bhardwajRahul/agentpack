@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { resolveBudget } from "../core/presets.js";
+import { BUDGET_PRESET_NAMES, isBudgetPreset, resolveBudget, type BudgetPreset } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
 import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, formatTaskList, listTasks, parkCurrentTask, startTask, switchTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
 
@@ -45,7 +45,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         query: { type: "string" },
         budget: { type: "number" },
-        preset: { type: "string" }
+        preset: { type: "string", enum: BUDGET_PRESET_NAMES }
       }
     }
   },
@@ -303,7 +303,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         budget: { type: "number" },
-        preset: { type: "string" },
+        preset: { type: "string", enum: BUDGET_PRESET_NAMES },
         query: { type: "string" }
       }
     }
@@ -455,9 +455,10 @@ function route(root: string, method: string | undefined, params: Record<string, 
 
 function callTool(root: string, name: string, args: Record<string, unknown>): unknown {
   if (name === "load_context" || name === "resume") {
+    const preset = mcpBudgetPreset(args.preset);
     const budget = resolveBudget({
       budget: numberValue(args.budget, 0),
-      preset: text(args.preset)
+      ...(preset ? { preset } : {})
     }, 4000);
     const resume = buildResume(root, { budget, query: text(args.query) });
     return toolText(resume.markdown);
@@ -702,6 +703,18 @@ function text(value: unknown): string {
 function numberValue(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function mcpBudgetPreset(value: unknown): BudgetPreset | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || !isBudgetPreset(value)) {
+    throw new Error(`Unknown budget preset: ${String(value)}. Expected one of: ${BUDGET_PRESET_NAMES.join(", ")}.`);
+  }
+
+  return value;
 }
 
 function stringArray(value: unknown): string[] {

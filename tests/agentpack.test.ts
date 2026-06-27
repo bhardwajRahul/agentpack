@@ -204,6 +204,58 @@ test("exposes expected MCP tools", () => {
   const sourceStatusTool = TOOL_DEFINITIONS.find((tool) => tool.name === "source_status");
   assert.match(sourceStatusTool?.description || "", /changed, or missing/);
   assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
+
+  for (const name of ["load_context", "resume"]) {
+    const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    const properties = tool?.inputSchema.properties as Record<string, { enum?: string[] }>;
+    assert.ok(properties.preset);
+    assert.deepEqual(properties.preset.enum, ["quick", "chat", "agent", "deep"]);
+  }
+});
+
+test("validates MCP budget presets", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-preset-test-"));
+  run(dir, ["init"]);
+  const mcp = createMcpHarness(dir);
+
+  const invalid = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "load_context",
+      arguments: { preset: "small" }
+    }
+  });
+  assert.equal(
+    invalid.error?.message,
+    "Unknown budget preset: small. Expected one of: quick, chat, agent, deep."
+  );
+
+  const invalidWithBudget = await mcp.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "resume",
+      arguments: { preset: "small", budget: 220 }
+    }
+  });
+  assert.equal(
+    invalidWithBudget.error?.message,
+    "Unknown budget preset: small. Expected one of: quick, chat, agent, deep."
+  );
+
+  const explicitBudget = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "resume",
+      arguments: { preset: "quick", budget: 220 }
+    }
+  });
+  assert.match(explicitBudget.result.content[0].text, /Budget: ~220 tokens/);
 });
 
 test("exports, inspects, and plans read-only structured bundle imports", async () => {
@@ -1617,6 +1669,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not finalize a task just to free the current slot/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /avoid branch names with AI or agent-style prefixes/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /load_context.*preset: "quick".*focused query/);
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
   assert.deepEqual(claudeMcp.mcpServers[serverName], {
     type: "stdio",
@@ -1681,6 +1734,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /separate review task only for unrelated reviews/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or explicitly accepted as complete/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /load_context.*preset: "quick".*focused query/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
   assert.equal(cursorMcp.mcpServers[serverName].type, "stdio");
@@ -1711,6 +1765,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Avoid turning Agentpack into an activity log/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record_source` only when you have a durable conclusion/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` only when you need a full stale-source check/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /load_context.*preset: "quick".*focused query/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /prefer one aggregated verification evidence and one checkpoint/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /sequence state-changing Agentpack calls/);
   assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` before re-reading/);
