@@ -305,7 +305,8 @@ Bundle contents are intentionally bounded:
   carry broader read-only context through the existing markdown export
 
 Every string is redacted again at the export boundary. Export refuses absolute
-or parent-traversal paths. Import treats the bundle as untrusted input: validate
+or parent-traversal paths, paths inside `.agentpack/` or `.git/`, symlink escapes,
+and existing output files. Import treats the bundle as untrusted input: validate
 kind/schema, digest, path safety, field types, count limits, and byte limits
 before planning any write.
 

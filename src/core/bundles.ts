@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
 import { normalizePath, sha256 } from "./hash.js";
@@ -86,7 +86,14 @@ export function exportTaskBundle(root: string, options: BundleExportOptions): Bu
   }
 
   mkdirSync(path.dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, content, "utf8");
+  try {
+    writeFileSync(outputPath, content, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if (isNodeError(error) && error.code === "EEXIST") {
+      throw new Error(`Refusing to overwrite existing bundle output: ${options.outputPath}`);
+    }
+    throw error;
+  }
 
   return {
     bundleId,
@@ -295,14 +302,56 @@ function normalizeBundleOutputPath(root: string, outputPath: string): string {
   if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
     throw new Error(`Refusing bundle output path outside project root: ${outputPath}`);
   }
+  const normalizedRelativePath = normalizePath(relativePath);
+  const topLevelPath = normalizedRelativePath.split("/")[0];
+  if (topLevelPath === ".agentpack" || topLevelPath === ".git") {
+    throw new Error(`Refusing bundle output path inside ${topLevelPath}: ${outputPath}`);
+  }
+  assertBundleOutputAncestor(root, path.dirname(absolutePath), outputPath);
+  if (pathEntryExists(absolutePath)) {
+    throw new Error(`Refusing to overwrite existing bundle output: ${outputPath}`);
+  }
   return absolutePath;
+}
+
+function assertBundleOutputAncestor(root: string, outputDirectory: string, outputPath: string): void {
+  let ancestor = outputDirectory;
+  while (!pathEntryExists(ancestor)) {
+    const parent = path.dirname(ancestor);
+    if (parent === ancestor) {
+      throw new Error(`Cannot resolve bundle output path: ${outputPath}`);
+    }
+    ancestor = parent;
+  }
+
+  let realRoot: string;
+  let realAncestor: string;
+  try {
+    realRoot = realpathSync(root);
+    realAncestor = realpathSync(ancestor);
+  } catch {
+    throw new Error(`Refusing bundle output path through an unresolved symlink: ${outputPath}`);
+  }
+  const relativeAncestor = path.relative(realRoot, realAncestor);
+  if (relativeAncestor.startsWith("..") || path.isAbsolute(relativeAncestor)) {
+    throw new Error(`Refusing bundle output path through a symlink outside project root: ${outputPath}`);
+  }
+}
+
+function pathEntryExists(filePath: string): boolean {
+  try {
+    lstatSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeBundlePath(root: string, inputPath: string): string {
   if (!inputPath.trim()) {
     throw new Error("bundle source paths must not be empty");
   }
-  if (path.isAbsolute(inputPath)) {
+  if (path.isAbsolute(inputPath) || /^[A-Za-z]:\//.test(inputPath)) {
     throw new Error(`Refusing absolute bundle source path: ${inputPath}`);
   }
 
@@ -437,7 +486,13 @@ function sanitizeRepositoryLocator(raw: string): string | undefined {
 
   const scpLike = value.match(/^[^@]+@([^:]+):(.+)$/);
   if (scpLike) {
-    return `ssh://${scpLike[1]}/${scpLike[2]}`;
+    const host = scpLike[1];
+    const rawRepositoryPath = scpLike[2];
+    if (!host || !rawRepositoryPath) {
+      return undefined;
+    }
+    const repositoryPath = rawRepositoryPath.split(/[?#]/, 1)[0]?.replace(/^\/+/, "");
+    return repositoryPath ? `ssh://${host}/${repositoryPath}` : undefined;
   }
 
   return undefined;
@@ -588,6 +643,7 @@ function validateRelativeBundlePath(filePath: string, label: string, allowDot = 
   if (
     !filePath ||
     filePath.includes("\\") ||
+    /^[A-Za-z]:\//.test(filePath) ||
     path.isAbsolute(filePath) ||
     normalized === "." ||
     normalized === ".." ||
@@ -659,4 +715,8 @@ function verificationStatusValue(value: unknown): boolean {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }

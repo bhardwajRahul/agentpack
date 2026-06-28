@@ -139,7 +139,9 @@ agentpack bundle import-plan checkout.agentpack-bundle.json [--json]
 `bundle export` writes one redacted, deterministic JSON file containing a
 portable passport snapshot, compact handoff, explicitly selected source
 conclusions, and referenced text/JSON evidence. The existing markdown `export`
-command remains unchanged.
+command remains unchanged. The output must be a new repo-relative file outside
+`.agentpack/` and `.git/`; export refuses existing files and paths that escape
+through parent traversal or symlinked directories.
 
 `bundle inspect` validates and summarizes a bundle without requiring an
 initialized pack.

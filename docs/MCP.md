@@ -86,7 +86,9 @@ Structured bundle tools expose the same read-only bundle core used by the CLI:
 
 - `bundle_export`: export one task to a redacted
   `agentpack.task-bundle` JSON file; accepts task id/current, output path,
-  repeatable source paths, and whether to include referenced evidence
+  repeatable source paths, and whether to include referenced evidence. The
+  output must be a new repo-relative file outside `.agentpack/` and `.git/`;
+  existing files and symlink escapes are rejected
 - `bundle_inspect`: validate and summarize an untrusted bundle without writing
   pack state; returns schema/digest status, origin, included records, and
   collision-independent warnings

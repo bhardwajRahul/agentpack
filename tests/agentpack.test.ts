@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync
 } from "node:fs";
@@ -394,7 +395,7 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       "bundle",
       "export",
       "--output",
-      "checkout.agentpack-bundle.json",
+      "checkout-repeat.agentpack-bundle.json",
       "--source",
       "src/index.ts"
     ]);
@@ -479,6 +480,78 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       ]),
       /Refusing bundle output path outside project root/
     );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        "src/index.ts",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing to overwrite existing bundle output/
+    );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        ".agentpack/exports/unsafe.agentpack-bundle.json",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing bundle output path inside \.agentpack/
+    );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        ".git/config",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing bundle output path inside \.git/
+    );
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        "portable.agentpack-bundle.json",
+        "--source",
+        "C:/absolute-on-windows.ts"
+      ]),
+      /Refusing absolute bundle source path/
+    );
+
+    const outsideDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-outside-"));
+    symlinkSync(outsideDir, path.join(dir, "bundle-output-link"), "dir");
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--output",
+        "bundle-output-link/escape.agentpack-bundle.json",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing bundle output path through a symlink outside project root/
+    );
+
+    runGit(dir, ["remote", "set-url", "origin", "git@example.com:org/example.git?token=bad#frag"]);
+    run(dir, [
+      "bundle",
+      "export",
+      "--output",
+      "scp-remote.agentpack-bundle.json",
+      "--source",
+      "src/index.ts"
+    ]);
+    const scpBundleText = readFileSync(path.join(dir, "scp-remote.agentpack-bundle.json"), "utf8");
+    const scpBundle = JSON.parse(scpBundleText);
+    assert.equal(scpBundle.origin.repository, "ssh://example.com/org/example.git");
+    assert.equal(scpBundleText.includes("token=bad"), false);
 
     const mcp = createMcpHarness(dir);
     const mcpExport = await mcp.send({
