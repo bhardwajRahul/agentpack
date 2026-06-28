@@ -1347,6 +1347,10 @@ test("manages a current task passport", () => {
 
   const resume = run(dir, ["resume", "--preset", "agent"]);
   assert.match(resume, /## Current Task Passport/);
+  const currentState = resume.split("## Git State")[0] || "";
+  assert.match(currentState, /Status: active \(current Task Passport\)/);
+  assert.match(currentState, /Task next actions:\n- Wire CLI/);
+  assert.doesNotMatch(currentState, /Status: Initialized Agentpack/);
   assert.match(resume, new RegExp(`ID: ${taskId}`));
   assert.match(resume, /Title: Add task passports/);
   assert.match(resume, /Objective: Model current task handoff state\./);
@@ -1445,6 +1449,9 @@ test("manages a current task passport", () => {
   assert.equal(closed.verification.status, "passed");
   assert.equal(typeof closed.closedAt, "string");
   const closedResume = run(dir, ["resume", "--preset", "agent"]);
+  const closedCurrentState = closedResume.split("## Git State")[0] || "";
+  assert.match(closedCurrentState, /Status: completed \(current Task Passport\)/);
+  assert.match(closedCurrentState, /Task next actions \(historical; task is closed\):\n- Wire CLI/);
   assert.match(closedResume, /Status: completed/);
   assert.match(closedResume, /Task next actions \(historical; task is closed\):\n  - Wire CLI/);
   assert.match(runExpectError(dir, ["task", "block", "--reason", "Too late"]), /Cannot update closed task/);

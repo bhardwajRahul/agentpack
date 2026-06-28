@@ -13,7 +13,7 @@ import {
 } from "./store.js";
 import { redact } from "./redaction.js";
 import { getCurrentPassport } from "./tasks.js";
-import type { AgentpackConfig, AgentpackEvent, GitInfo, SourceRecord, TaskPassport } from "./types.js";
+import type { AgentpackConfig, AgentpackEvent, AgentpackState, GitInfo, SourceRecord, TaskPassport } from "./types.js";
 
 const BUDGET_METADATA_RESERVE_TOKENS = 48;
 const MAX_COMPACT_RELEVANT_CONTEXT_BUDGET = 1200;
@@ -70,16 +70,7 @@ export function buildResume(root: string, options: ResumeOptions = {}) {
     {
       title: "Current State",
       required: true,
-      text: section("Current State", [
-        `Goal: ${state.goal || "Not set"}`,
-        `Status: ${state.currentStatus || "Not set"}`,
-        state.currentCheckpoint ? `Current checkpoint: ${state.currentCheckpoint}` : null,
-        "",
-        "Next actions:",
-        ...(state.nextActions && state.nextActions.length > 0
-          ? state.nextActions.map((item) => `- ${item}`)
-          : ["- Not set"])
-      ])
+      text: section("Current State", formatCurrentState(state, currentTask))
     },
     {
       title: "Git State",
@@ -180,6 +171,35 @@ function readCurrentTaskForResume(root: string): TaskPassport | null {
   } catch {
     return null;
   }
+}
+
+function formatCurrentState(state: AgentpackState, currentTask: TaskPassport | null): string[] {
+  if (!currentTask) {
+    return [
+      `Goal: ${state.goal || "Not set"}`,
+      `Status: ${state.currentStatus || "Not set"}`,
+      state.currentCheckpoint ? `Current checkpoint: ${state.currentCheckpoint}` : null,
+      "",
+      "Next actions:",
+      ...(state.nextActions.length > 0
+        ? state.nextActions.map((item) => `- ${item}`)
+        : ["- Not set"])
+    ].filter((line): line is string => line !== null);
+  }
+
+  const nextActionsLabel = isClosedTask(currentTask)
+    ? "Task next actions (historical; task is closed):"
+    : "Task next actions:";
+  return [
+    `Goal: ${state.goal || "Not set"}`,
+    `Status: ${currentTask.status} (current Task Passport)`,
+    state.currentCheckpoint ? `Latest repo checkpoint: ${state.currentCheckpoint}` : null,
+    "",
+    nextActionsLabel,
+    ...(currentTask.nextActions.length > 0
+      ? currentTask.nextActions.map((item) => `- ${item}`)
+      : ["- Not set"])
+  ].filter((line): line is string => line !== null);
 }
 
 function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string[] {

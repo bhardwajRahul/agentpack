@@ -98,7 +98,10 @@ and the task is genuinely accepted as-is.
 
 Repeated identical verification updates are treated as no-ops, so retrying the same `task verify` command does not add duplicate task events.
 
-When a current passport exists, `resume` and MCP `load_context` include it above the repo-level ledger so agents can see the active task before broader history.
+When a current passport exists, `resume` and MCP `load_context` treat its status
+and next actions as authoritative in Current State, then include the full
+passport before the broader repo-level ledger. Without a current passport,
+Current State preserves the legacy repo-level status and next-action fallback.
 
 ## Record Durable State
 
