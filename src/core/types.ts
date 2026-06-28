@@ -208,6 +208,7 @@ export interface BundleImportPlan {
     taskExists: boolean;
     taskStatus: TaskStatus | null;
     importedBundleExists: boolean;
+    taskId: string | null;
   };
   action: {
     outcome: BundleImportOutcome;
@@ -216,4 +217,51 @@ export interface BundleImportPlan {
   };
   conflicts: BundleImportConflict[];
   warnings: string[];
+}
+
+export interface BundleImportOptions {
+  asNew?: boolean;
+}
+
+export interface BundleImportEvidenceRecord {
+  originId: string;
+  destinationId: string;
+  contentDigest: string;
+  action: "created" | "reused" | "remapped";
+}
+
+export interface BundleImportSourceRecord {
+  path: string;
+  hash: string;
+  action: "created" | "reused" | "skipped";
+  reason: string;
+}
+
+export interface BundleImportManifest {
+  schemaVersion: 1;
+  bundleId: string;
+  importedAt: string;
+  sourceTaskId: string;
+  destinationTaskId: string;
+  asNew: boolean;
+  origin: TaskBundleOrigin;
+  originalStatus: TaskStatus;
+  originVerification: TaskVerification;
+  unresolvedOriginEvidence: string[];
+  task: {
+    action: "created" | "reused";
+    remappedFrom: string | null;
+  };
+  evidence: BundleImportEvidenceRecord[];
+  sources: BundleImportSourceRecord[];
+}
+
+export interface BundleImportResult {
+  applied: boolean;
+  idempotent: boolean;
+  bundleId: string;
+  taskId: string;
+  manifestPath: string;
+  plan: BundleImportPlan;
+  manifest: BundleImportManifest;
 }

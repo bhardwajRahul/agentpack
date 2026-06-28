@@ -5,7 +5,9 @@ import {
   exportTaskBundle,
   formatBundleExportResult,
   formatBundleImportPlan,
+  formatBundleImportResult,
   formatBundleInspectResult,
+  importTaskBundle,
   inspectTaskBundle,
   planTaskBundleImport
 } from "../core/bundles.js";
@@ -165,6 +167,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       type: "object",
       properties: {
         path: { type: "string" },
+        asNew: { type: "boolean" },
+        json: { type: "boolean" }
+      },
+      required: ["path"]
+    }
+  },
+  {
+    name: "bundle_import",
+    description: "Plan a structured task bundle import by default, or apply it only when write is true.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string" },
+        write: { type: "boolean" },
+        asNew: { type: "boolean" },
         json: { type: "boolean" }
       },
       required: ["path"]
@@ -542,11 +559,27 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "bundle_import_plan") {
-    const plan = planTaskBundleImport(root, text(args.path));
+    const plan = planTaskBundleImport(root, text(args.path), { asNew: booleanValue(args.asNew, false) });
     if (booleanValue(args.json, false)) {
       return toolText(JSON.stringify(plan, null, 2));
     }
     return toolText(formatBundleImportPlan(plan));
+  }
+
+  if (name === "bundle_import") {
+    const options = { asNew: booleanValue(args.asNew, false) };
+    if (!booleanValue(args.write, false)) {
+      const plan = planTaskBundleImport(root, text(args.path), options);
+      if (booleanValue(args.json, false)) {
+        return toolText(JSON.stringify(plan, null, 2));
+      }
+      return toolText(formatBundleImportPlan(plan));
+    }
+    const result = importTaskBundle(root, text(args.path), options);
+    if (booleanValue(args.json, false)) {
+      return toolText(JSON.stringify(result, null, 2));
+    }
+    return toolText(formatBundleImportResult(result));
   }
 
   if (name === "task_handoff") {

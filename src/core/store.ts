@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createId } from "./ids.js";
 import type { AgentpackEvent, AgentpackState, SourcesFile } from "./types.js";
@@ -214,6 +214,143 @@ export function withPackWriteLock<T>(root: string, fn: () => T): T {
     heldLocks.delete(lockPath);
     releaseLock(lockPath);
   }
+}
+
+export interface PackTransactionFile {
+  relativePath: string;
+  content: string;
+  mode: "create" | "replace";
+}
+
+export function writePackTransaction(root: string, files: PackTransactionFile[]): void {
+  withPackWriteLock(root, () => {
+    const packRoot = getPackPath(root);
+    const transactionRoot = getPackPath(root, "cache", `.transaction-${createId("import")}`);
+    const stagedFiles: Array<PackTransactionFile & { stagedPath: string; targetPath: string }> = [];
+    const seenPaths = new Set<string>();
+    let preserveTransaction = false;
+
+    try {
+      assertPackTransactionDirectoryChain(packRoot, path.join(transactionRoot, "staged"));
+      for (const file of files) {
+        const relativePath = normalizePackTransactionPath(file.relativePath);
+        if (seenPaths.has(relativePath)) {
+          throw new Error(`Duplicate pack transaction path: ${relativePath}`);
+        }
+        seenPaths.add(relativePath);
+        const stagedPath = path.join(transactionRoot, "staged", String(stagedFiles.length));
+        const targetPath = getPackPath(root, relativePath);
+        assertPackTransactionDirectoryChain(packRoot, path.dirname(targetPath));
+        mkdirSync(path.dirname(stagedPath), { recursive: true });
+        writeFileSync(stagedPath, file.content, "utf8");
+        stagedFiles.push({ ...file, relativePath, stagedPath, targetPath });
+      }
+
+      const backups: Array<{ targetPath: string; backupPath: string }> = [];
+      const installed: string[] = [];
+      const createdDirectories: string[] = [];
+      try {
+        for (const [index, file] of stagedFiles.entries()) {
+          if (!existsSync(file.targetPath)) {
+            continue;
+          }
+          if (file.mode === "create") {
+            throw new Error(`Pack transaction refuses to overwrite existing file: ${file.relativePath}`);
+          }
+          const backupPath = path.join(transactionRoot, "backup", String(index));
+          mkdirSync(path.dirname(backupPath), { recursive: true });
+          renameSync(file.targetPath, backupPath);
+          backups.push({ targetPath: file.targetPath, backupPath });
+        }
+
+        for (const file of stagedFiles) {
+          ensureTransactionDirectory(path.dirname(file.targetPath), packRoot, createdDirectories);
+          renameSync(file.stagedPath, file.targetPath);
+          installed.push(file.targetPath);
+        }
+      } catch (error) {
+        let rollbackFailed = false;
+        for (const installedPath of [...installed].reverse()) {
+          try {
+            unlinkSync(installedPath);
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        for (const backup of [...backups].reverse()) {
+          try {
+            renameSync(backup.backupPath, backup.targetPath);
+          } catch {
+            rollbackFailed = true;
+          }
+        }
+        for (const directory of [...createdDirectories].reverse()) {
+          try {
+            rmdirSync(directory);
+          } catch {
+            // Directory may contain restored/pre-existing state; leave it intact.
+          }
+        }
+        if (rollbackFailed) {
+          preserveTransaction = true;
+          throw new Error(`Pack transaction failed and rollback was incomplete; recovery files remain at ${transactionRoot}. Original error: ${String(error)}`);
+        }
+        throw error;
+      }
+    } finally {
+      if (!preserveTransaction) {
+        rmSync(transactionRoot, { recursive: true, force: true });
+      }
+    }
+  });
+}
+
+function assertPackTransactionDirectoryChain(packRoot: string, directory: string): void {
+  const relative = path.relative(packRoot, directory);
+  if (relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Pack transaction directory escapes .agentpack: ${directory}`);
+  }
+  const directories = [packRoot];
+  let current = packRoot;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    directories.push(current);
+  }
+  for (const candidate of directories) {
+    if (!existsSync(candidate)) {
+      break;
+    }
+    const stat = lstatSync(candidate);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Pack transaction refuses a symbolic-link directory: ${candidate}`);
+    }
+    if (!stat.isDirectory()) {
+      throw new Error(`Pack transaction requires a directory: ${candidate}`);
+    }
+  }
+}
+
+function normalizePackTransactionPath(relativePath: string): string {
+  if (!relativePath || path.isAbsolute(relativePath) || /^[A-Za-z]:[\\/]/.test(relativePath)) {
+    throw new Error(`Invalid pack transaction path: ${relativePath || "(empty)"}`);
+  }
+  const normalized = path.normalize(relativePath);
+  if (normalized === "." || normalized === ".." || normalized.startsWith(`..${path.sep}`)) {
+    throw new Error(`Invalid pack transaction path: ${relativePath}`);
+  }
+  return normalized;
+}
+
+function ensureTransactionDirectory(directory: string, packRoot: string, createdDirectories: string[]): void {
+  if (existsSync(directory)) {
+    return;
+  }
+  const parent = path.dirname(directory);
+  if (parent !== directory && parent !== path.dirname(packRoot)) {
+    ensureTransactionDirectory(parent, packRoot, createdDirectories);
+  }
+  mkdirSync(directory);
+  createdDirectories.push(directory);
 }
 
 function writeTextFileAtomic(filePath: string, content: string): void {

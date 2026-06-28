@@ -7,7 +7,9 @@ import {
   exportTaskBundle,
   formatBundleExportResult,
   formatBundleImportPlan,
+  formatBundleImportResult,
   formatBundleInspectResult,
+  importTaskBundle,
   inspectTaskBundle,
   planTaskBundleImport
 } from "../core/bundles.js";
@@ -122,6 +124,11 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "bundle" && rest[0] === "import-plan") {
     bundleImportPlanCommand(findPackRoot(cwd) || path.resolve(cwd), rest.slice(1));
+    return;
+  }
+
+  if (command === "bundle" && rest[0] === "import") {
+    bundleImportCommand(findPackRoot(cwd) || path.resolve(cwd), rest.slice(1));
     return;
   }
 
@@ -281,7 +288,8 @@ Inspect and export:
   agentpack export --to markdown --preset chat [--query <text>]
   agentpack bundle export --task current --output task.agentpack-bundle.json [--source <path>]
   agentpack bundle inspect task.agentpack-bundle.json [--json]
-  agentpack bundle import-plan task.agentpack-bundle.json [--json]
+  agentpack bundle import-plan task.agentpack-bundle.json [--as-new] [--json]
+  agentpack bundle import task.agentpack-bundle.json [--write] [--as-new] [--json]
   agentpack release preflight
 
 More:
@@ -395,9 +403,10 @@ Write a markdown handoff under .agentpack/exports/ for clients that cannot use M
   if (command === "bundle") {
     return `agentpack bundle export --task current|<id> --output <file> [--source <path>] [--no-evidence]
 agentpack bundle inspect <file> [--json]
-agentpack bundle import-plan <file> [--json]
+agentpack bundle import-plan <file> [--as-new] [--json]
+agentpack bundle import <file> [--write] [--as-new] [--json]
 
-Export, inspect, or plan a read-only structured task bundle import. Write import is not implemented yet.`;
+Export, inspect, plan, or explicitly apply a structured task bundle import. Import defaults to a read-only plan; --write is required to change destination pack state.`;
   }
 
   if (command === "diff") {
@@ -694,7 +703,12 @@ function bundleCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("bundle command supports export, inspect, and import-plan");
+  if (subcommand === "import") {
+    bundleImportCommand(root, args);
+    return;
+  }
+
+  throw new Error("bundle command supports export, inspect, import-plan, and import");
 }
 
 function bundleInspectCommand(args: string[]): void {
@@ -717,12 +731,36 @@ function bundleImportPlanCommand(root: string, args: string[]): void {
   if (!filePath) {
     throw new Error("bundle import-plan requires a bundle file path");
   }
-  const plan = planTaskBundleImport(root, filePath);
+  const plan = planTaskBundleImport(root, filePath, { asNew: parsed.options["as-new"] === true });
   if (parsed.options.json) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
     return;
   }
   process.stdout.write(`${formatBundleImportPlan(plan)}\n`);
+}
+
+function bundleImportCommand(root: string, args: string[]): void {
+  const parsed = parseArgs(args);
+  const filePath = parsed.positionals[0];
+  if (!filePath) {
+    throw new Error("bundle import requires a bundle file path");
+  }
+  const options = { asNew: parsed.options["as-new"] === true };
+  if (parsed.options.write !== true) {
+    const plan = planTaskBundleImport(root, filePath, options);
+    if (parsed.options.json) {
+      process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
+      return;
+    }
+    process.stdout.write(`${formatBundleImportPlan(plan)}\n`);
+    return;
+  }
+  const result = importTaskBundle(root, filePath, options);
+  if (parsed.options.json) {
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`${formatBundleImportResult(result)}\n`);
 }
 
 function sourceCommand(root: string, rest: string[]): void {

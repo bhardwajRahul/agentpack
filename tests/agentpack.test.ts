@@ -20,6 +20,7 @@ import { resolveMcpStartDir } from "../src/cli/index.js";
 import { buildDoctorReport } from "../src/core/doctor.js";
 import { getGitInfo } from "../src/core/git.js";
 import { buildResume } from "../src/core/resume.js";
+import { writePackTransaction } from "../src/core/store.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -178,6 +179,7 @@ test("exposes expected MCP tools", () => {
   assert.deepEqual(names, [
     "attach_evidence",
     "bundle_export",
+    "bundle_import",
     "bundle_import_plan",
     "bundle_inspect",
     "checkpoint",
@@ -263,9 +265,20 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-test-"));
   const noPackDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-inspect-no-pack-"));
   const destinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-plan-"));
+  const writeDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-write-"));
+  const asNewDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-as-new-"));
+  const failureDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-failure-"));
+  const mcpWriteDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-mcp-write-"));
+  const concurrentDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-concurrent-"));
+  const redactionDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-redaction-"));
+  const symlinkDestinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-symlink-"));
+  const symlinkOutsideDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-import-symlink-outside-"));
   const secret = "agentpack-bundle-secret-123";
+  const destinationSecret = "destination-only-bundle-secret-456";
   const priorEnv = process.env.AGENTPACK_BUNDLE_TOKEN;
+  const priorDestinationEnv = process.env.AGENTPACK_DESTINATION_BUNDLE_TOKEN;
   process.env.AGENTPACK_BUNDLE_TOKEN = secret;
+  process.env.AGENTPACK_DESTINATION_BUNDLE_TOKEN = destinationSecret;
 
   try {
     mkdirSync(path.join(dir, "src"), { recursive: true });
@@ -286,7 +299,7 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       "start",
       "Bundle checkout state",
       "--objective",
-      `Export task context without leaking ${secret}.`,
+      `Export task context without leaking ${secret}; retain ${destinationSecret} for a destination-policy test.`,
       "--write-scope",
       "src/index.ts",
       "--next",
@@ -345,6 +358,7 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(bundle.evidence[0].originId, evidenceId);
     assert.equal(bundle.origin.repository, "https://example.com/org/example.git");
     assert.equal(bundleText.includes(secret), false);
+    assert.equal(bundleText.includes(destinationSecret), true);
     assert.equal(bundleText.includes(dir), false);
     assert.match(bundleText, /\[REDACTED:AGENTPACK_BUNDLE_TOKEN\]/);
 
@@ -356,6 +370,97 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(noPackPlan.action.outcome, "create");
     assert.equal(noPackPlan.action.task, "create");
     assert.equal(existsSync(path.join(noPackDir, ".agentpack")), false);
+
+    const defaultImportPlan = JSON.parse(run(noPackDir, ["bundle", "import", bundlePath, "--json"]));
+    assert.equal(defaultImportPlan.action.outcome, "create");
+    assert.equal(defaultImportPlan.readOnly, true);
+    assert.equal(existsSync(path.join(noPackDir, ".agentpack")), false);
+    assert.match(
+      runExpectError(noPackDir, ["bundle", "import", bundlePath, "--write"]),
+      /requires an initialized destination pack/
+    );
+
+    mkdirSync(path.join(writeDestinationDir, "src"), { recursive: true });
+    writeFileSync(path.join(writeDestinationDir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    run(writeDestinationDir, ["init"]);
+    run(writeDestinationDir, [
+      "task",
+      "start",
+      "Destination current task",
+      "--objective",
+      "Remain current while another task is imported.",
+      "--write-scope",
+      "src/index.ts",
+      "--next",
+      "Stay current"
+    ]);
+    const destinationCurrentBefore = readFileSync(
+      path.join(writeDestinationDir, ".agentpack", "tasks", "current"),
+      "utf8"
+    );
+    const writeResult = JSON.parse(run(writeDestinationDir, [
+      "bundle",
+      "import",
+      bundlePath,
+      "--write",
+      "--json"
+    ]));
+    assert.equal(writeResult.applied, true);
+    assert.equal(writeResult.idempotent, false);
+    assert.equal(writeResult.taskId, exportedTaskId);
+    assert.equal(
+      readFileSync(path.join(writeDestinationDir, ".agentpack", "tasks", "current"), "utf8"),
+      destinationCurrentBefore
+    );
+    const importedPassport = JSON.parse(readFileSync(
+      path.join(writeDestinationDir, ".agentpack", "tasks", exportedTaskId, "passport.json"),
+      "utf8"
+    ));
+    assert.equal(importedPassport.status, "parked");
+    assert.equal(importedPassport.verification.status, "unknown");
+    assert.deepEqual(importedPassport.verification.evidence, []);
+    assert.equal(importedPassport.worktree, realpathSync(writeDestinationDir));
+    const portableBundleStorageId = bundle.bundleId.replace(":", "-");
+    const importedBundleDir = path.join(writeDestinationDir, ".agentpack", "tasks", exportedTaskId, "imports");
+    assert.deepEqual(readdirSync(importedBundleDir).sort(), [
+      `${portableBundleStorageId}.bundle.json`,
+      `${portableBundleStorageId}.import.json`
+    ]);
+    const writeManifest = JSON.parse(readFileSync(
+      path.join(importedBundleDir, `${portableBundleStorageId}.import.json`),
+      "utf8"
+    ));
+    assert.equal(writeManifest.destinationTaskId, exportedTaskId);
+    assert.equal(writeManifest.originalStatus, "verifying");
+    assert.equal(writeManifest.task.action, "created");
+    assert.equal(writeManifest.sources[0].action, "created");
+    assert.equal(writeManifest.evidence[0].action, "created");
+    assert.equal(writeManifest.originVerification.evidence[0], evidenceId);
+    const importedSources = JSON.parse(readFileSync(path.join(writeDestinationDir, ".agentpack", "sources.json"), "utf8"));
+    assert.equal(importedSources.sources[0].path, "src/index.ts");
+    assert.match(importedSources.sources[0].summary, /REDACTED:AGENTPACK_BUNDLE_TOKEN/);
+    const importedEvidenceEvent = readFileSync(path.join(writeDestinationDir, ".agentpack", "events.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .find((event) => event.id === evidenceId);
+    assert.equal(importedEvidenceEvent.type, "evidence");
+    assert.equal(existsSync(path.join(writeDestinationDir, ".agentpack", importedEvidenceEvent.path)), true);
+
+    const idempotentWrite = JSON.parse(run(writeDestinationDir, [
+      "bundle",
+      "import",
+      bundlePath,
+      "--write",
+      "--json"
+    ]));
+    assert.equal(idempotentWrite.applied, false);
+    assert.equal(idempotentWrite.idempotent, true);
+    assert.equal(idempotentWrite.taskId, exportedTaskId);
+    assert.equal(
+      readFileSync(path.join(writeDestinationDir, ".agentpack", "tasks", "current"), "utf8"),
+      destinationCurrentBefore
+    );
 
     run(destinationDir, ["init"]);
     const emptyPackPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
@@ -383,13 +488,153 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     mkdirSync(importsDir, { recursive: true });
     writeFileSync(path.join(importsDir, `${bundle.bundleId}.bundle.json`), bundleText, "utf8");
     const idempotentPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
-    assert.equal(idempotentPlan.destination.status, "already-imported");
-    assert.equal(idempotentPlan.action.outcome, "idempotent");
-    assert.equal(idempotentPlan.action.task, "reuse");
-    assert.equal(idempotentPlan.action.bundle, "reuse");
-    assert.deepEqual(idempotentPlan.conflicts, []);
+    assert.equal(idempotentPlan.destination.status, "import-conflict");
+    assert.equal(idempotentPlan.action.outcome, "conflict");
+    assert.equal(idempotentPlan.action.task, "conflict");
+    assert.equal(idempotentPlan.action.bundle, "blocked");
+    assert.match(idempotentPlan.conflicts[0].message, /Import manifest is missing or invalid/);
     assert.equal(readFileSync(destinationPassportPath, "utf8"), destinationPassport);
     assert.deepEqual(readdirSync(importsDir), [`${bundle.bundleId}.bundle.json`]);
+
+    mkdirSync(path.join(asNewDestinationDir, "src"), { recursive: true });
+    writeFileSync(path.join(asNewDestinationDir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    run(asNewDestinationDir, ["init"]);
+    const asNewTaskDir = path.join(asNewDestinationDir, ".agentpack", "tasks", exportedTaskId);
+    mkdirSync(asNewTaskDir, { recursive: true });
+    writeFileSync(path.join(asNewTaskDir, "passport.json"), destinationPassport, "utf8");
+    run(asNewDestinationDir, [
+      "source",
+      "add",
+      "src/index.ts",
+      "--summary",
+      "Existing destination conclusion wins."
+    ]);
+    const conflictingEvidencePath = path.join("evidence", "local-conflict.txt");
+    writeFileSync(
+      path.join(asNewDestinationDir, ".agentpack", conflictingEvidencePath),
+      "different local evidence",
+      "utf8"
+    );
+    writeFileSync(
+      path.join(asNewDestinationDir, ".agentpack", "events.jsonl"),
+      `${JSON.stringify({
+        id: evidenceId,
+        ts: new Date().toISOString(),
+        type: "evidence",
+        kind: "note",
+        path: conflictingEvidencePath,
+        command: "",
+        exitCode: null
+      })}\n`,
+      { encoding: "utf8", flag: "a" }
+    );
+    const asNewResult = JSON.parse(run(asNewDestinationDir, [
+      "bundle",
+      "import",
+      bundlePath,
+      "--write",
+      "--as-new",
+      "--json"
+    ]));
+    assert.equal(asNewResult.applied, true);
+    assert.notEqual(asNewResult.taskId, exportedTaskId);
+    assert.match(asNewResult.taskId, new RegExp(`^${escapeRegExp(exportedTaskId)}_import_[0-9a-f]{12}$`));
+    assert.equal(asNewResult.manifest.asNew, true);
+    assert.equal(asNewResult.manifest.task.remappedFrom, exportedTaskId);
+    assert.equal(asNewResult.manifest.evidence[0].action, "remapped");
+    assert.notEqual(asNewResult.manifest.evidence[0].destinationId, evidenceId);
+    assert.equal(
+      asNewResult.manifest.originVerification.evidence[0],
+      asNewResult.manifest.evidence[0].destinationId
+    );
+    assert.equal(asNewResult.manifest.sources[0].action, "reused");
+    const asNewSources = JSON.parse(readFileSync(path.join(asNewDestinationDir, ".agentpack", "sources.json"), "utf8"));
+    assert.equal(asNewSources.sources[0].summary, "Existing destination conclusion wins.");
+    assert.equal(existsSync(path.join(asNewDestinationDir, ".agentpack", "tasks", "current")), false);
+    const asNewRetry = JSON.parse(run(asNewDestinationDir, [
+      "bundle",
+      "import",
+      bundlePath,
+      "--write",
+      "--as-new",
+      "--json"
+    ]));
+    assert.equal(asNewRetry.idempotent, true);
+    assert.equal(asNewRetry.taskId, asNewResult.taskId);
+
+    mkdirSync(path.join(failureDestinationDir, "src"), { recursive: true });
+    writeFileSync(path.join(failureDestinationDir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    run(failureDestinationDir, ["init"]);
+    const failureTaskDir = path.join(failureDestinationDir, ".agentpack", "tasks", exportedTaskId);
+    mkdirSync(failureTaskDir, { recursive: true });
+    writeFileSync(path.join(failureTaskDir, "imports"), "block imports directory", "utf8");
+    const failureSourcesBefore = readFileSync(path.join(failureDestinationDir, ".agentpack", "sources.json"), "utf8");
+    const failureEventsBefore = readFileSync(path.join(failureDestinationDir, ".agentpack", "events.jsonl"), "utf8");
+    const failureEvidenceBefore = readdirSync(path.join(failureDestinationDir, ".agentpack", "evidence"));
+    assert.match(
+      runExpectError(failureDestinationDir, ["bundle", "import", bundlePath, "--write"]),
+      /requires a directory/
+    );
+    assert.equal(existsSync(path.join(failureTaskDir, "passport.json")), false);
+    assert.equal(existsSync(path.join(failureTaskDir, "events.jsonl")), false);
+    assert.equal(readFileSync(path.join(failureTaskDir, "imports"), "utf8"), "block imports directory");
+    assert.equal(
+      readFileSync(path.join(failureDestinationDir, ".agentpack", "sources.json"), "utf8"),
+      failureSourcesBefore
+    );
+    assert.equal(
+      readFileSync(path.join(failureDestinationDir, ".agentpack", "events.jsonl"), "utf8"),
+      failureEventsBefore
+    );
+    assert.deepEqual(
+      readdirSync(path.join(failureDestinationDir, ".agentpack", "evidence")),
+      failureEvidenceBefore
+    );
+    assert.equal(existsSync(path.join(failureDestinationDir, ".agentpack", "tasks", "current")), false);
+
+    mkdirSync(path.join(concurrentDestinationDir, "src"), { recursive: true });
+    writeFileSync(path.join(concurrentDestinationDir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    run(concurrentDestinationDir, ["init"]);
+    const concurrentResults = await Promise.all([
+      runAsync(concurrentDestinationDir, ["bundle", "import", bundlePath, "--write"]),
+      runAsync(concurrentDestinationDir, ["bundle", "import", bundlePath, "--write"])
+    ]);
+    assert.equal(concurrentResults.filter((output) => output.startsWith("Imported bundle")).length, 1);
+    assert.equal(concurrentResults.filter((output) => output.startsWith("Reused bundle")).length, 1);
+    const concurrentSources = JSON.parse(readFileSync(
+      path.join(concurrentDestinationDir, ".agentpack", "sources.json"),
+      "utf8"
+    ));
+    assert.equal(concurrentSources.sources.filter((source: { path: string }) => source.path === "src/index.ts").length, 1);
+    const concurrentEvents = readFileSync(path.join(concurrentDestinationDir, ".agentpack", "events.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    assert.equal(concurrentEvents.filter((event) => event.type === "bundle-import").length, 1);
+
+    run(redactionDestinationDir, ["init"]);
+    const destinationConfigPath = path.join(redactionDestinationDir, ".agentpack", "config.json");
+    const destinationConfig = JSON.parse(readFileSync(destinationConfigPath, "utf8"));
+    destinationConfig.redactions.push("AGENTPACK_DESTINATION_BUNDLE_TOKEN");
+    writeFileSync(destinationConfigPath, `${JSON.stringify(destinationConfig, null, 2)}\n`, "utf8");
+    assert.match(
+      runExpectError(redactionDestinationDir, ["bundle", "import", bundlePath, "--write"]),
+      /values that require destination redaction/
+    );
+    assert.equal(
+      existsSync(path.join(redactionDestinationDir, ".agentpack", "tasks", exportedTaskId)),
+      false
+    );
+
+    run(symlinkDestinationDir, ["init"]);
+    const symlinkTasksDir = path.join(symlinkDestinationDir, ".agentpack", "tasks");
+    mkdirSync(symlinkTasksDir, { recursive: true });
+    symlinkSync(symlinkOutsideDir, path.join(symlinkTasksDir, exportedTaskId), "dir");
+    assert.match(
+      runExpectError(symlinkDestinationDir, ["bundle", "import", bundlePath, "--write"]),
+      /refuses a symbolic-link directory/
+    );
+    assert.deepEqual(readdirSync(symlinkOutsideDir), []);
 
     const secondExport = run(dir, [
       "bundle",
@@ -602,13 +847,94 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.deepEqual(mcpImportPlanJson, cliImportPlan);
     assert.equal(mcpImportPlanJson.action.outcome, "conflict");
     assert.equal(mcpImportPlanJson.readOnly, true);
+
+    run(mcpWriteDestinationDir, ["init"]);
+    const mcpWrite = createMcpHarness(mcpWriteDestinationDir);
+    const mcpDefaultImport = await mcpWrite.send({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "bundle_import",
+        arguments: {
+          path: bundlePath,
+          json: true
+        }
+      }
+    });
+    const mcpDefaultImportJson = JSON.parse(mcpDefaultImport.result.content[0].text);
+    assert.equal(mcpDefaultImportJson.readOnly, true);
+    assert.equal(mcpDefaultImportJson.action.outcome, "create");
+    assert.match(mcpDefaultImportJson.warnings.join("\n"), /source src\/index\.ts is missing locally/);
+    assert.equal(existsSync(path.join(mcpWriteDestinationDir, ".agentpack", "tasks", exportedTaskId)), false);
+
+    const mcpAppliedImport = await mcpWrite.send({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "bundle_import",
+        arguments: {
+          path: bundlePath,
+          write: true,
+          json: true
+        }
+      }
+    });
+    const mcpAppliedImportJson = JSON.parse(mcpAppliedImport.result.content[0].text);
+    assert.equal(mcpAppliedImportJson.applied, true);
+    assert.equal(mcpAppliedImportJson.taskId, exportedTaskId);
+    assert.equal(mcpAppliedImportJson.manifest.sources[0].action, "skipped");
+    assert.equal(mcpAppliedImportJson.manifest.sources[0].reason, "local source file is missing");
+    assert.equal(
+      existsSync(path.join(mcpWriteDestinationDir, ".agentpack", "tasks", exportedTaskId, "passport.json")),
+      true
+    );
+    assert.equal(existsSync(path.join(mcpWriteDestinationDir, ".agentpack", "tasks", "current")), false);
   } finally {
     if (priorEnv === undefined) {
       delete process.env.AGENTPACK_BUNDLE_TOKEN;
     } else {
       process.env.AGENTPACK_BUNDLE_TOKEN = priorEnv;
     }
+    if (priorDestinationEnv === undefined) {
+      delete process.env.AGENTPACK_DESTINATION_BUNDLE_TOKEN;
+    } else {
+      process.env.AGENTPACK_DESTINATION_BUNDLE_TOKEN = priorDestinationEnv;
+    }
   }
+});
+
+test("rolls back a pack transaction after a mid-install failure", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-transaction-rollback-"));
+  run(dir, ["init"]);
+  const statePath = path.join(dir, ".agentpack", "state.json");
+  const stateBefore = readFileSync(statePath, "utf8");
+
+  assert.throws(() => writePackTransaction(dir, [
+    {
+      relativePath: path.join("transaction-test", "first"),
+      content: "first installed file",
+      mode: "create"
+    },
+    {
+      relativePath: path.join("transaction-test", "first", "second"),
+      content: "must fail because its parent was installed as a file",
+      mode: "create"
+    },
+    {
+      relativePath: "state.json",
+      content: `${JSON.stringify({ replaced: true })}\n`,
+      mode: "replace"
+    }
+  ]), /ENOTDIR|not a directory/);
+
+  assert.equal(readFileSync(statePath, "utf8"), stateBefore);
+  assert.equal(existsSync(path.join(dir, ".agentpack", "transaction-test")), false);
+  assert.equal(
+    readdirSync(path.join(dir, ".agentpack", "cache")).some((name) => name.startsWith(".transaction-")),
+    false
+  );
 });
 
 test("init appends to existing gitignore without overwriting project rules", () => {

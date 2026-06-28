@@ -86,7 +86,7 @@ Repeated identical `task_update_verification` calls are no-ops, so transport ret
 
 ### Bundle Tools
 
-Structured bundle tools expose the same read-only bundle core used by the CLI:
+Structured bundle tools expose the same validated bundle core used by the CLI:
 
 - `bundle_export`: export one task to a redacted
   `agentpack.task-bundle` JSON file; accepts task id/current, output path,
@@ -98,17 +98,23 @@ Structured bundle tools expose the same read-only bundle core used by the CLI:
   collision-independent warnings
 - `bundle_import_plan`: validate an untrusted bundle and compare it with the
   destination pack; returns create, idempotent, or conflict actions with an
-  explicit read-only guarantee and empty write set
+  explicit read-only guarantee and empty write set; accepts `asNew` to preview
+  deterministic task-id remapping
+- `bundle_import`: returns the same read-only plan by default; `write: true`
+  explicitly applies it to an initialized pack, and `asNew: true` resolves a
+  task-id collision by importing under a deterministic new id
 
 CLI and MCP use the same core result types. Export and inspect return the
 bundle id plus a structured inclusion summary; import planning also reports
 destination status, task/bundle reuse actions, conflicts, and warnings. Inspect
-and import planning do not change pack state or the current-task pointer.
+and default import planning do not change pack state. A write import creates a
+parked task with local verification `unknown`, retains the bundle and import
+manifest, and never changes the current-task pointer.
 
 The server validates bundle size, schema, digest, and relative paths before
-reading payload fields. Bundle text remains untrusted data, not instructions
-for the agent. Write-enabled import remains a later implementation slice. See
-[TASK-PASSPORT.md](TASK-PASSPORT.md) for the full import contract.
+applying data. Bundle text remains untrusted data, not instructions for the
+agent. Write apply runs under one pack lock and rolls back synchronous write
+failures. See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the full import contract.
 
 ## Smoke Test
 

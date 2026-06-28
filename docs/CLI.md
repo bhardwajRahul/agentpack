@@ -129,14 +129,15 @@ For the normal coding-agent workflow, prefer MCP and `resume --preset agent`. Ma
 
 ## Structured Bundles
 
-Structured task bundles are an explicit portability surface for read-only task
-handoff between workspaces:
+Structured task bundles are an explicit portability surface for moving one task
+between workspaces:
 
 ```bash
 agentpack bundle export --task current --output checkout.agentpack-bundle.json \
   --source src/checkout.ts
 agentpack bundle inspect checkout.agentpack-bundle.json [--json]
-agentpack bundle import-plan checkout.agentpack-bundle.json [--json]
+agentpack bundle import-plan checkout.agentpack-bundle.json [--as-new] [--json]
+agentpack bundle import checkout.agentpack-bundle.json [--write] [--as-new] [--json]
 ```
 
 `bundle export` writes one redacted, deterministic JSON file containing a
@@ -154,7 +155,18 @@ and retained bundle digest with the destination workspace, and reports a
 create, idempotent, or conflict outcome. It is read-only, also works before
 `agentpack init`, and returns an explicit empty write set in JSON mode.
 
-Write-enabled import and `--as-new` conflict remapping are not implemented yet.
+`bundle import` has the same read-only behavior by default. An explicit
+`--write` applies the validated plan to an initialized destination pack. The
+imported task is parked, local verification starts as `unknown`, and the
+current-task pointer is left unchanged. Task-id conflicts fail closed unless
+`--as-new` is passed; repeated imports of the same bundle are idempotent.
+
+Apply runs under one pack lock with rollback on write failure. Imported
+evidence is reused by id and digest or remapped on collision. Source
+conclusions are added only when the destination file hash matches; existing
+local conclusions win, while missing or changed files are reported and
+skipped. The retained bundle and sibling import manifest record every created,
+reused, remapped, or skipped record.
 
 See [TASK-PASSPORT.md](TASK-PASSPORT.md) for the bundle schema, inclusion rules,
 security boundaries, and collision behavior.

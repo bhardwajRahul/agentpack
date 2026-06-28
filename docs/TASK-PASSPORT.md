@@ -320,9 +320,9 @@ validates the bundle before comparing the task id and retained bundle digest
 with destination state; an uninitialized destination is treated as a create
 candidate without creating `.agentpack/`.
 
-The future write-enabled import will apply atomically under the pack write lock
-only with an explicit write flag. A successful import must never replace the
-current task. It will create or restore a non-current `parked` passport with
+Write-enabled import applies as a rollback-protected transaction under the pack
+write lock only with an explicit write flag. A successful import never replaces
+the current task. It creates a non-current `parked` passport with
 local branch/head/worktree metadata; origin metadata stays attached to the
 import record. Origin verification is historical provenance, while local
 verification starts as `unknown` until the destination workspace verifies the
@@ -342,9 +342,9 @@ Collision rules:
   keep it in the stored bundle provenance and report a stale-source warning
 
 The applied bundle is retained under
-`.agentpack/tasks/<task-id>/imports/<bundle-id>.bundle.json`; a sibling
-`<bundle-id>.import.json` records created, reused, skipped, conflicted, and
-remapped records. Apply is atomic, but the first implementation does not
+`.agentpack/tasks/<task-id>/imports/<portable-bundle-id>.bundle.json`; a sibling
+`<portable-bundle-id>.import.json` records created, reused, skipped, and
+remapped records. Apply rolls back synchronous write failures, but does not
 promise a general rollback command. A future removal operation must use that
 import manifest and delete only records created by the import that remain
 unreferenced; reused local sources or evidence are never rollback candidates.

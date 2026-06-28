@@ -1,23 +1,28 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
-import { normalizePath, sha256 } from "./hash.js";
+import { getFileRecord, normalizePath, sha256, sha256File } from "./hash.js";
+import { createId } from "./ids.js";
 import { redactForRoot } from "./redaction.js";
-import { getPackPath, readEvents, readJson, readSources } from "./store.js";
+import { getPackPath, readEvents, readJson, readSources, SCHEMA_VERSION, withPackWriteLock, writePackTransaction } from "./store.js";
 import { formatTaskPassportHandoff, getCurrentPassport, readPassport } from "./tasks.js";
 import type {
   AgentpackConfig,
   AgentpackEvent,
   BundleExportOptions,
   BundleExportResult,
+  BundleImportManifest,
+  BundleImportOptions,
   BundleImportPlan,
+  BundleImportResult,
   BundleInspectResult,
   SourceRecord,
   TaskBundle,
   TaskBundleEvidence,
   TaskBundleOrigin,
-  TaskBundleSource
+  TaskBundleSource,
+  TaskPassport
 } from "./types.js";
 
 const BUNDLE_KIND = "agentpack.task-bundle";
@@ -110,66 +115,75 @@ export function inspectTaskBundle(filePath: string): BundleInspectResult {
   return bundleInspectResult(bundle, warnings);
 }
 
-export function planTaskBundleImport(root: string, filePath: string): BundleImportPlan {
-  const { bundle, warnings: bundleWarnings } = readValidatedTaskBundle(filePath);
+export function planTaskBundleImport(root: string, filePath: string, options: BundleImportOptions = {}): BundleImportPlan {
+  const { bundle, warnings } = readValidatedTaskBundle(filePath);
+  return planValidatedTaskBundleImport(root, bundle, warnings, options);
+}
+
+function planValidatedTaskBundleImport(
+  root: string,
+  bundle: TaskBundle,
+  bundleWarnings: string[],
+  options: BundleImportOptions
+): BundleImportPlan {
   const bundleSummary = bundleInspectResult(bundle, bundleWarnings);
   const packInitialized = existsSync(getPackPath(root));
-  const passportFile = getPackPath(root, "tasks", bundle.task.id, "passport.json");
-  const retainedBundleFile = getPackPath(
-    root,
-    "tasks",
-    bundle.task.id,
-    "imports",
-    `${bundle.bundleId}.bundle.json`
-  );
-  const taskExists = existsSync(passportFile);
-  const importedBundleExists = existsSync(retainedBundleFile);
-  const taskStatus = taskExists ? readPassport(root, bundle.task.id).status : null;
   const warnings = [...bundleWarnings];
   const conflicts: BundleImportPlan["conflicts"] = [];
-
-  let retainedBundleMatches = false;
-  if (importedBundleExists) {
-    try {
-      const retained = readValidatedTaskBundle(retainedBundleFile).bundle;
-      retainedBundleMatches = retained.bundleId === bundle.bundleId && retained.task.id === bundle.task.id;
-      if (!retainedBundleMatches) {
-        conflicts.push({
-          kind: "destination-state",
-          message: `Retained import record for ${bundle.bundleId} does not match task ${bundle.task.id}.`
-        });
-      }
-    } catch (error) {
-      conflicts.push({
-        kind: "destination-state",
-        message: `Retained import record for ${bundle.bundleId} is invalid: ${errorMessage(error)}`
-      });
-    }
+  const retainedImports = packInitialized ? findRetainedImports(root, bundle) : [];
+  const validRetainedImports = retainedImports.filter((entry) => entry.valid);
+  const invalidRetainedImports = retainedImports.filter((entry) => !entry.valid);
+  for (const retained of invalidRetainedImports) {
+    conflicts.push({ kind: "destination-state", message: retained.error });
   }
+  if (validRetainedImports.length > 1) {
+    conflicts.push({
+      kind: "destination-state",
+      message: `Bundle ${bundle.bundleId} is retained under multiple destination tasks: ${validRetainedImports.map((entry) => entry.taskId).join(", ")}.`
+    });
+  }
+
+  const retainedImport = validRetainedImports.length === 1 && conflicts.length === 0
+    ? validRetainedImports[0]
+    : undefined;
+  let destinationTaskId = retainedImport?.taskId || bundle.task.id;
+  const originTaskExists = packInitialized && existsSync(getPackPath(root, "tasks", bundle.task.id, "passport.json"));
+  if (!retainedImport && originTaskExists && options.asNew && conflicts.length === 0) {
+    destinationTaskId = nextRemappedTaskId(root, bundle.task.id, bundle.bundleId);
+  }
+  const passportFile = getPackPath(root, "tasks", destinationTaskId, "passport.json");
+  const taskExists = packInitialized && existsSync(passportFile);
+  const importedBundleExists = retainedImports.length > 0;
+  const taskStatus = taskExists ? readPassport(root, destinationTaskId).status : null;
 
   let destinationStatus: BundleImportPlan["destination"]["status"];
   let action: BundleImportPlan["action"];
-  if (retainedBundleMatches && taskExists) {
+  if (conflicts.length > 0) {
+    destinationStatus = "import-conflict";
+    action = {
+      outcome: "conflict",
+      task: "conflict",
+      bundle: "blocked"
+    };
+  } else if (retainedImport && taskExists) {
     destinationStatus = "already-imported";
     action = {
       outcome: "idempotent",
       task: "reuse",
       bundle: "reuse"
     };
-  } else if (importedBundleExists) {
-    if (retainedBundleMatches && !taskExists) {
-      conflicts.push({
-        kind: "destination-state",
-        message: `Retained import record exists for ${bundle.bundleId}, but task ${bundle.task.id} is missing.`
-      });
-    }
-    destinationStatus = retainedBundleMatches ? "orphaned-import" : "import-conflict";
+  } else if (retainedImport) {
+    conflicts.push({
+      kind: "destination-state",
+      message: `Retained import record exists for ${bundle.bundleId}, but task ${destinationTaskId} is missing.`
+    });
+    destinationStatus = "orphaned-import";
     action = {
       outcome: "conflict",
       task: "conflict",
       bundle: "blocked"
     };
-  } else if (taskExists) {
+  } else if (originTaskExists && !options.asNew) {
     conflicts.push({
       kind: "task-id",
       message: `Task ${bundle.task.id} already exists without matching imported bundle ${bundle.bundleId}.`
@@ -191,6 +205,9 @@ export function planTaskBundleImport(root: string, filePath: string): BundleImpo
       warnings.push("destination pack is not initialized; a future write import would require agentpack init");
     }
   }
+  if (packInitialized && action.outcome === "create") {
+    warnings.push(...destinationSourceWarnings(root, bundle));
+  }
 
   return {
     readOnly: true,
@@ -201,12 +218,466 @@ export function planTaskBundleImport(root: string, filePath: string): BundleImpo
       packInitialized,
       taskExists,
       taskStatus,
-      importedBundleExists
+      importedBundleExists,
+      taskId: destinationTaskId
     },
     action,
     conflicts,
     warnings
   };
+}
+
+interface RetainedImportRecord {
+  taskId: string;
+  bundlePath: string;
+  manifestPath: string;
+  valid: boolean;
+  error: string;
+}
+
+function findRetainedImports(root: string, bundle: TaskBundle): RetainedImportRecord[] {
+  const tasksPath = getPackPath(root, "tasks");
+  if (!existsSync(tasksPath)) {
+    return [];
+  }
+
+  return readdirSync(tasksPath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((entry) => bundleStorageIds(bundle.bundleId).flatMap((storageId): RetainedImportRecord[] => {
+      const bundlePath = getPackPath(root, "tasks", entry.name, "imports", `${storageId}.bundle.json`);
+      if (!existsSync(bundlePath)) {
+        return [];
+      }
+      const manifestPath = getPackPath(root, "tasks", entry.name, "imports", `${storageId}.import.json`);
+      try {
+        const retained = readValidatedTaskBundle(bundlePath).bundle;
+        if (retained.bundleId !== bundle.bundleId || retained.task.id !== bundle.task.id) {
+          return [{
+            taskId: entry.name,
+            bundlePath,
+            manifestPath,
+            valid: false,
+            error: `Retained import record for ${bundle.bundleId} under task ${entry.name} does not match source task ${bundle.task.id}.`
+          }];
+        }
+        const manifest = readJson<unknown>(manifestPath, null);
+        assertRetainedImportManifest(manifest, bundle, entry.name);
+        return [{ taskId: entry.name, bundlePath, manifestPath, valid: true, error: "" }];
+      } catch (error) {
+        return [{
+          taskId: entry.name,
+          bundlePath,
+          manifestPath,
+          valid: false,
+          error: `Retained import record for ${bundle.bundleId} under task ${entry.name} is invalid: ${errorMessage(error)}`
+        }];
+      }
+    }));
+}
+
+function bundleStorageIds(bundleId: string): string[] {
+  const portable = bundleId.replace(":", "-");
+  return portable === bundleId ? [bundleId] : [portable, bundleId];
+}
+
+function bundleStorageId(bundleId: string): string {
+  return bundleStorageIds(bundleId)[0] || bundleId;
+}
+
+function nextRemappedTaskId(root: string, sourceTaskId: string, bundleId: string): string {
+  const base = `${sourceTaskId}_import_${bundleId.slice("sha256:".length, "sha256:".length + 12)}`;
+  let candidate = base;
+  let suffix = 2;
+  while (existsSync(getPackPath(root, "tasks", candidate))) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+export function importTaskBundle(root: string, filePath: string, options: BundleImportOptions = {}): BundleImportResult {
+  if (!existsSync(getPackPath(root))) {
+    throw new Error("bundle import --write requires an initialized destination pack; run `agentpack init` first");
+  }
+
+  return withPackWriteLock(root, () => {
+    const { bundle, warnings } = readValidatedTaskBundle(filePath);
+    assertBundleSafeForDestination(root, bundle);
+    const plan = planValidatedTaskBundleImport(root, bundle, warnings, options);
+    if (plan.action.outcome === "conflict") {
+      throw new Error(`Bundle import conflict: ${plan.conflicts.map((conflict) => conflict.message).join("; ")}`);
+    }
+
+    const taskId = plan.destination.taskId;
+    if (!taskId) {
+      throw new Error("Bundle import plan did not select a destination task id.");
+    }
+    if (plan.action.outcome === "idempotent") {
+      return existingBundleImportResult(root, bundle, taskId, plan);
+    }
+
+    const importedAt = new Date().toISOString();
+    const existingEvents = readEvents(root);
+    const usedEventIds = new Set(existingEvents.map((event) => event.id));
+    const evidenceImport = prepareEvidenceImport(root, bundle, importedAt, existingEvents, usedEventIds);
+    const sourceImport = prepareSourceImport(root, bundle, importedAt, usedEventIds);
+    const mappedOriginEvidence = bundle.task.originVerification.evidence
+      .map((id) => evidenceImport.idMap.get(id))
+      .filter((id): id is string => Boolean(id));
+    const unresolvedOriginEvidence = bundle.task.originVerification.evidence
+      .filter((id) => !evidenceImport.idMap.has(id));
+    const git = getGitInfo(root);
+    const passport: TaskPassport = {
+      schemaVersion: SCHEMA_VERSION,
+      id: taskId,
+      title: bundle.task.title,
+      status: "parked",
+      createdAt: importedAt,
+      updatedAt: importedAt,
+      closedAt: null,
+      objective: bundle.task.objective,
+      constraints: [...bundle.task.constraints],
+      branch: git.branch,
+      baseHead: git.head,
+      currentHead: git.head,
+      worktree: realpathSync(root),
+      writeScope: [...bundle.task.writeScope],
+      risk: bundle.task.risk,
+      roles: {},
+      verification: {
+        status: "unknown",
+        evidence: [],
+        summary: ""
+      },
+      nextActions: [...bundle.task.nextActions],
+      tags: [...bundle.task.tags]
+    };
+    const taskImportEvent: AgentpackEvent = {
+      id: nextUniqueId("evt", usedEventIds),
+      ts: importedAt,
+      type: "task-import",
+      status: "parked",
+      bundleId: bundle.bundleId,
+      sourceTaskId: bundle.task.id,
+      destinationTaskId: taskId
+    };
+    const rootImportEvent: AgentpackEvent = {
+      id: nextUniqueId("evt", usedEventIds),
+      ts: importedAt,
+      type: "bundle-import",
+      bundleId: bundle.bundleId,
+      sourceTaskId: bundle.task.id,
+      destinationTaskId: taskId,
+      asNew: Boolean(options.asNew && taskId !== bundle.task.id)
+    };
+    const manifest: BundleImportManifest = {
+      schemaVersion: 1,
+      bundleId: bundle.bundleId,
+      importedAt,
+      sourceTaskId: bundle.task.id,
+      destinationTaskId: taskId,
+      asNew: Boolean(options.asNew && taskId !== bundle.task.id),
+      origin: bundle.origin,
+      originalStatus: bundle.task.originalStatus,
+      originVerification: {
+        ...bundle.task.originVerification,
+        evidence: mappedOriginEvidence
+      },
+      unresolvedOriginEvidence,
+      task: {
+        action: "created",
+        remappedFrom: taskId === bundle.task.id ? null : bundle.task.id
+      },
+      evidence: evidenceImport.records,
+      sources: sourceImport.records
+    };
+    const storageId = bundleStorageId(bundle.bundleId);
+    const taskBase = path.join("tasks", taskId);
+    const importBase = path.join(taskBase, "imports");
+    const manifestRelativePath = path.join(importBase, `${storageId}.import.json`);
+    const rootEvents = [
+      ...evidenceImport.events,
+      ...sourceImport.events,
+      rootImportEvent
+    ];
+    const transactionFiles = [
+      { relativePath: path.join(taskBase, "passport.json"), content: jsonText(passport), mode: "create" as const },
+      { relativePath: path.join(taskBase, "events.jsonl"), content: `${JSON.stringify(taskImportEvent)}\n`, mode: "create" as const },
+      { relativePath: path.join(importBase, `${storageId}.bundle.json`), content: `${stableStringify(bundle)}\n`, mode: "create" as const },
+      { relativePath: manifestRelativePath, content: jsonText(manifest), mode: "create" as const },
+      ...evidenceImport.files,
+      ...(sourceImport.changed
+        ? [{ relativePath: "sources.json", content: jsonText(sourceImport.sources), mode: "replace" as const }]
+        : []),
+      {
+        relativePath: "events.jsonl",
+        content: appendEventLines(readFileSync(getPackPath(root, "events.jsonl"), "utf8"), rootEvents),
+        mode: "replace" as const
+      }
+    ];
+
+    writePackTransaction(root, transactionFiles);
+
+    return {
+      applied: true,
+      idempotent: false,
+      bundleId: bundle.bundleId,
+      taskId,
+      manifestPath: normalizePath(path.join(".agentpack", manifestRelativePath)),
+      plan,
+      manifest
+    };
+  });
+}
+
+function existingBundleImportResult(
+  root: string,
+  bundle: TaskBundle,
+  taskId: string,
+  plan: BundleImportPlan
+): BundleImportResult {
+  const retained = findRetainedImports(root, bundle)
+    .find((entry) => entry.valid && entry.taskId === taskId);
+  if (!retained || !existsSync(retained.manifestPath)) {
+    throw new Error(`Bundle ${bundle.bundleId} is retained for task ${taskId}, but its import manifest is missing.`);
+  }
+  const manifest = readJson<BundleImportManifest | null>(retained.manifestPath, null);
+  if (!manifest || manifest.bundleId !== bundle.bundleId || manifest.destinationTaskId !== taskId) {
+    throw new Error(`Import manifest for bundle ${bundle.bundleId} and task ${taskId} is invalid.`);
+  }
+  return {
+    applied: false,
+    idempotent: true,
+    bundleId: bundle.bundleId,
+    taskId,
+    manifestPath: normalizePath(path.relative(root, retained.manifestPath)),
+    plan,
+    manifest: {
+      ...manifest,
+      task: { ...manifest.task, action: "reused" }
+    }
+  };
+}
+
+function assertRetainedImportManifest(value: unknown, bundle: TaskBundle, taskId: string): asserts value is BundleImportManifest {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    value.bundleId !== bundle.bundleId ||
+    value.sourceTaskId !== bundle.task.id ||
+    value.destinationTaskId !== taskId ||
+    typeof value.importedAt !== "string" ||
+    typeof value.asNew !== "boolean" ||
+    !isRecord(value.origin) ||
+    !taskStatusValue(value.originalStatus) ||
+    !isRecord(value.originVerification) ||
+    !verificationStatusValue(value.originVerification.status) ||
+    !stringArrayValue(value.originVerification.evidence) ||
+    typeof value.originVerification.summary !== "string" ||
+    !stringArrayValue(value.unresolvedOriginEvidence) ||
+    !isRecord(value.task) ||
+    !Array.isArray(value.evidence) ||
+    !Array.isArray(value.sources)
+  ) {
+    throw new Error(`Import manifest is missing or invalid for bundle ${bundle.bundleId} and task ${taskId}.`);
+  }
+}
+
+interface PreparedEvidenceImport {
+  records: BundleImportManifest["evidence"];
+  files: Array<{ relativePath: string; content: string; mode: "create" }>;
+  events: AgentpackEvent[];
+  idMap: Map<string, string>;
+}
+
+function prepareEvidenceImport(
+  root: string,
+  bundle: TaskBundle,
+  importedAt: string,
+  existingEvents: AgentpackEvent[],
+  usedEventIds: Set<string>
+): PreparedEvidenceImport {
+  const existingById = new Map(existingEvents.map((event) => [event.id, event]));
+  const records: BundleImportManifest["evidence"] = [];
+  const files: PreparedEvidenceImport["files"] = [];
+  const events: AgentpackEvent[] = [];
+  const idMap = new Map<string, string>();
+  const reservedEvidencePaths = new Set<string>();
+
+  for (const evidence of bundle.evidence) {
+    const existing = existingById.get(evidence.originId);
+    if (existing && existingEvidenceMatches(root, existing, evidence.contentDigest)) {
+      records.push({
+        originId: evidence.originId,
+        destinationId: evidence.originId,
+        contentDigest: evidence.contentDigest,
+        action: "reused"
+      });
+      idMap.set(evidence.originId, evidence.originId);
+      continue;
+    }
+
+    const destinationId = existing ? nextUniqueId("evt", usedEventIds) : reserveEventId(evidence.originId, usedEventIds);
+    const evidenceFileId = nextAvailableEvidenceFileId(root, reservedEvidencePaths);
+    const extension = evidence.kind === "json" ? "json" : "txt";
+    const evidencePath = path.join("evidence", `${evidenceFileId}.${extension}`);
+    const event: AgentpackEvent = {
+      id: destinationId,
+      ts: importedAt,
+      type: "evidence",
+      kind: evidence.kind,
+      path: evidencePath,
+      command: evidence.command,
+      exitCode: evidence.exitCode,
+      importedFrom: evidence.originId,
+      bundleId: bundle.bundleId
+    };
+    files.push({ relativePath: evidencePath, content: evidence.content, mode: "create" });
+    events.push(event);
+    records.push({
+      originId: evidence.originId,
+      destinationId,
+      contentDigest: evidence.contentDigest,
+      action: existing ? "remapped" : "created"
+    });
+    idMap.set(evidence.originId, destinationId);
+  }
+
+  return { records, files, events, idMap };
+}
+
+function existingEvidenceMatches(root: string, event: AgentpackEvent, contentDigest: string): boolean {
+  if (event.type !== "evidence" || typeof event.path !== "string") {
+    return false;
+  }
+  try {
+    const evidencePath = getPackPath(root, normalizeEvidencePath(event.path));
+    return existsSync(evidencePath) && `sha256:${sha256(readFileSync(evidencePath))}` === contentDigest;
+  } catch {
+    return false;
+  }
+}
+
+function reserveEventId(preferredId: string, usedEventIds: Set<string>): string {
+  if (usedEventIds.has(preferredId)) {
+    return nextUniqueId("evt", usedEventIds);
+  }
+  usedEventIds.add(preferredId);
+  return preferredId;
+}
+
+function nextUniqueId(prefix: string, usedIds: Set<string>): string {
+  let id = createId(prefix);
+  while (usedIds.has(id)) {
+    id = createId(prefix);
+  }
+  usedIds.add(id);
+  return id;
+}
+
+function nextAvailableEvidenceFileId(root: string, reservedPaths: Set<string>): string {
+  let id = createId("ev");
+  while (
+    reservedPaths.has(id) ||
+    existsSync(getPackPath(root, "evidence", `${id}.txt`)) ||
+    existsSync(getPackPath(root, "evidence", `${id}.json`))
+  ) {
+    id = createId("ev");
+  }
+  reservedPaths.add(id);
+  return id;
+}
+
+function destinationSourceWarnings(root: string, bundle: TaskBundle): string[] {
+  const localSources = new Map(readSources(root).sources.map((source) => [source.path, source]));
+  const warnings: string[] = [];
+  for (const source of bundle.sources) {
+    const localSource = localSources.get(source.path);
+    if (localSource) {
+      if (localSource.hash !== source.hash) {
+        warnings.push(`source ${source.path} has a different local conclusion; the local record will win`);
+      }
+      continue;
+    }
+    const absolutePath = path.join(root, source.path);
+    if (!existsSync(absolutePath)) {
+      warnings.push(`source ${source.path} is missing locally and will not be added to Source Cache`);
+    } else if (sha256File(absolutePath) !== source.hash) {
+      warnings.push(`source ${source.path} has a different local hash and will not be added to Source Cache`);
+    }
+  }
+  return warnings;
+}
+
+interface PreparedSourceImport {
+  records: BundleImportManifest["sources"];
+  sources: { schemaVersion: number; sources: SourceRecord[] };
+  events: AgentpackEvent[];
+  changed: boolean;
+}
+
+function prepareSourceImport(
+  root: string,
+  bundle: TaskBundle,
+  importedAt: string,
+  usedEventIds: Set<string>
+): PreparedSourceImport {
+  const sourceState = readSources(root);
+  const existingPaths = new Set(sourceState.sources.map((source) => source.path));
+  const records: BundleImportManifest["sources"] = [];
+  const events: AgentpackEvent[] = [];
+  let changed = false;
+
+  for (const source of bundle.sources) {
+    if (existingPaths.has(source.path)) {
+      records.push({ path: source.path, hash: source.hash, action: "reused", reason: "existing local conclusion wins" });
+      continue;
+    }
+    const absolutePath = path.join(root, source.path);
+    if (!existsSync(absolutePath)) {
+      records.push({ path: source.path, hash: source.hash, action: "skipped", reason: "local source file is missing" });
+      continue;
+    }
+    if (sha256File(absolutePath) !== source.hash) {
+      records.push({ path: source.path, hash: source.hash, action: "skipped", reason: "local source hash does not match imported hash" });
+      continue;
+    }
+    const localRecord = getFileRecord(root, source.path, { summary: source.summary, snippet: source.snippet });
+    sourceState.sources.push(localRecord);
+    existingPaths.add(source.path);
+    changed = true;
+    records.push({ path: source.path, hash: source.hash, action: "created", reason: "local source hash matches imported hash" });
+    events.push({
+      id: nextUniqueId("evt", usedEventIds),
+      ts: importedAt,
+      type: "source-import",
+      path: source.path,
+      hash: source.hash,
+      summary: source.summary,
+      bundleId: bundle.bundleId
+    });
+  }
+
+  return { records, sources: sourceState, events, changed };
+}
+
+function assertBundleSafeForDestination(root: string, bundle: TaskBundle): void {
+  const redacted = deepRedact(root, bundle);
+  if (stableStringify(redacted) !== stableStringify(bundle)) {
+    throw new Error("Bundle contains values that require destination redaction; refusing write import.");
+  }
+}
+
+function appendEventLines(existing: string, events: AgentpackEvent[]): string {
+  if (events.length === 0) {
+    return existing;
+  }
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+  return `${existing}${prefix}${events.map((event) => JSON.stringify(event)).join("\n")}\n`;
+}
+
+function jsonText(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
 }
 
 function readValidatedTaskBundle(filePath: string): { bundle: TaskBundle; warnings: string[] } {
@@ -285,6 +756,34 @@ export function formatBundleImportPlan(plan: BundleImportPlan): string {
       : "Conflicts: none",
     plan.warnings.length > 0 ? `Warnings: ${plan.warnings.join("; ")}` : "Warnings: none"
   ].join("\n");
+}
+
+export function formatBundleImportResult(result: BundleImportResult): string {
+  const evidenceCounts = countManifestActions(result.manifest.evidence);
+  const sourceCounts = countManifestActions(result.manifest.sources);
+  const taskStatus = result.idempotent ? result.plan.destination.taskStatus || "parked" : "parked";
+  return [
+    `${result.idempotent ? "Reused" : "Imported"} bundle ${result.bundleId}`,
+    `Task: ${result.taskId} [${taskStatus}]`,
+    `Applied: ${result.applied ? "yes" : "no (idempotent)"}`,
+    `Manifest: ${result.manifestPath}`,
+    `Evidence: ${evidenceCounts}`,
+    `Sources: ${sourceCounts}`,
+    result.manifest.unresolvedOriginEvidence.length > 0
+      ? `Unresolved origin evidence: ${result.manifest.unresolvedOriginEvidence.join(", ")}`
+      : "Unresolved origin evidence: none",
+    "Current task pointer: unchanged"
+  ].join("\n");
+}
+
+function countManifestActions(records: Array<{ action: string }>): string {
+  const counts = new Map<string, number>();
+  for (const record of records) {
+    counts.set(record.action, (counts.get(record.action) || 0) + 1);
+  }
+  return counts.size > 0
+    ? [...counts.entries()].map(([action, count]) => `${action} ${count}`).join(", ")
+    : "none";
 }
 
 function normalizeBundleSourcePaths(root: string, sourcePaths: string[]): string[] {
@@ -606,13 +1105,29 @@ function assertBundleShape(value: unknown): TaskBundle {
 function validateBundleRecords(bundle: TaskBundle): string[] {
   const warnings: string[] = [];
   validateBundleTaskId(bundle.task.id);
+  const sourcePaths = new Set<string>();
   for (const source of bundle.sources) {
     validateRelativeBundlePath(source.path, "source");
+    if (sourcePaths.has(source.path)) {
+      throw new Error(`Duplicate source path in bundle: ${source.path}`);
+    }
+    sourcePaths.add(source.path);
+    if (!/^[0-9a-f]{64}$/.test(source.hash) || !Number.isSafeInteger(source.size) || source.size < 0) {
+      throw new Error(`Invalid source metadata in bundle: ${source.path}`);
+    }
   }
   for (const writePath of bundle.task.writeScope) {
     validateRelativeBundlePath(writePath, "write scope", true);
   }
+  const evidenceIds = new Set<string>();
   for (const evidence of bundle.evidence) {
+    if (!/^evt_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(evidence.originId)) {
+      throw new Error(`Invalid evidence id in bundle: ${evidence.originId || "(empty)"}`);
+    }
+    if (evidenceIds.has(evidence.originId)) {
+      throw new Error(`Duplicate evidence id in bundle: ${evidence.originId}`);
+    }
+    evidenceIds.add(evidence.originId);
     if (evidence.contentDigest !== `sha256:${sha256(evidence.content)}`) {
       throw new Error(`Evidence digest mismatch for ${evidence.originId}.`);
     }
