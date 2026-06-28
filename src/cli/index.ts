@@ -693,21 +693,8 @@ function bundleCommand(root: string, rest: string[]): void {
     return;
   }
 
-  if (subcommand === "inspect") {
-    bundleInspectCommand(args);
-    return;
-  }
-
-  if (subcommand === "import-plan") {
-    bundleImportPlanCommand(root, args);
-    return;
-  }
-
-  if (subcommand === "import") {
-    bundleImportCommand(root, args);
-    return;
-  }
-
+  // inspect, import-plan, and import are dispatched earlier in runCli so they
+  // work before `agentpack init`; only export reaches here.
   throw new Error("bundle command supports export, inspect, import-plan, and import");
 }
 
