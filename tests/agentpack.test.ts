@@ -398,6 +398,44 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(bundleText.includes(dir), false);
     assert.match(bundleText, /\[REDACTED:AGENTPACK_BUNDLE_TOKEN\]/);
 
+    const sourceEvidenceEvent = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .find((event) => event.id === evidenceId);
+    const sourceEvidencePath = path.join(dir, ".agentpack", sourceEvidenceEvent.path);
+    const sourceEvidenceContent = readFileSync(sourceEvidencePath, "utf8");
+    const externalEvidenceDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-external-evidence-"));
+    const externalEvidencePath = path.join(externalEvidenceDir, "outside.txt");
+    writeFileSync(externalEvidencePath, "outside evidence must never be exported", "utf8");
+    unlinkSync(sourceEvidencePath);
+    symlinkSync(externalEvidencePath, sourceEvidencePath, "file");
+    assert.match(
+      runExpectError(dir, [
+        "bundle",
+        "export",
+        "--task",
+        "current",
+        "--output",
+        "symlink-evidence.agentpack-bundle.json",
+        "--source",
+        "src/index.ts"
+      ]),
+      /Refusing symbolic-link evidence path/
+    );
+    assert.equal(existsSync(path.join(dir, "symlink-evidence.agentpack-bundle.json")), false);
+    unlinkSync(sourceEvidencePath);
+    writeFileSync(sourceEvidencePath, sourceEvidenceContent, "utf8");
+
+    for (const [name, summary] of [["empty", ""], ["whitespace", "   "]] as const) {
+      const invalidRoleBundle = JSON.parse(bundleText);
+      invalidRoleBundle.task.roles.scout.summary = summary;
+      const invalidRoleBundlePath = path.join(dir, `${name}-role-summary.agentpack-bundle.json`);
+      writeFileSync(invalidRoleBundlePath, `${JSON.stringify(invalidRoleBundle, null, 2)}\n`, "utf8");
+      assert.match(runExpectError(noPackDir, ["bundle", "inspect", invalidRoleBundlePath]), /Bundle task is invalid/);
+      assert.match(runExpectError(noPackDir, ["bundle", "import-plan", invalidRoleBundlePath]), /Bundle task is invalid/);
+    }
+
     const noRolesInspect = JSON.parse(run(noPackDir, ["bundle", "inspect", noRolesBundlePath, "--json"]));
     assert.equal(noRolesInspect.valid, true);
     const noRolesPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", noRolesBundlePath, "--json"]));
@@ -470,10 +508,8 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       `${portableBundleStorageId}.bundle.json`,
       `${portableBundleStorageId}.import.json`
     ]);
-    const writeManifest = JSON.parse(readFileSync(
-      path.join(importedBundleDir, `${portableBundleStorageId}.import.json`),
-      "utf8"
-    ));
+    const writeManifestPath = path.join(importedBundleDir, `${portableBundleStorageId}.import.json`);
+    const writeManifest = JSON.parse(readFileSync(writeManifestPath, "utf8"));
     assert.equal(writeManifest.destinationTaskId, exportedTaskId);
     assert.equal(writeManifest.originalStatus, "verifying");
     assert.equal(writeManifest.task.action, "created");
@@ -511,6 +547,29 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.match(idempotentText, /Original import sources: created 1/);
     assert.doesNotMatch(idempotentText, /^Evidence: created 1$/m);
     assert.doesNotMatch(idempotentText, /^Sources: created 1$/m);
+
+    const manifestCorruptions: Array<[string, (manifest: any) => void]> = [
+      ["task action", (manifest) => { manifest.task.action = "deleted"; }],
+      ["evidence field", (manifest) => { delete manifest.evidence[0].destinationId; }],
+      ["evidence action", (manifest) => { manifest.evidence[0].action = "deleted"; }],
+      ["source field", (manifest) => { manifest.sources[0].hash = "invalid"; }],
+      ["source action", (manifest) => { manifest.sources[0].action = "deleted"; }],
+      ["source reason", (manifest) => { manifest.sources[0].reason = 42; }]
+    ];
+    for (const [label, corrupt] of manifestCorruptions) {
+      const malformedManifest = JSON.parse(JSON.stringify(writeManifest));
+      corrupt(malformedManifest);
+      writeFileSync(writeManifestPath, `${JSON.stringify(malformedManifest, null, 2)}\n`, "utf8");
+      const malformedPlan = JSON.parse(run(writeDestinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
+      assert.equal(malformedPlan.destination.status, "import-conflict", label);
+      assert.equal(malformedPlan.action.outcome, "conflict", label);
+      assert.match(malformedPlan.conflicts[0].message, /Import manifest is missing or invalid/, label);
+    }
+    assert.match(
+      runExpectError(writeDestinationDir, ["bundle", "import", bundlePath, "--write"]),
+      /Bundle import conflict:.*Import manifest is missing or invalid/
+    );
+    writeFileSync(writeManifestPath, `${JSON.stringify(writeManifest, null, 2)}\n`, "utf8");
 
     run(destinationDir, ["init"]);
     const emptyPackPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));

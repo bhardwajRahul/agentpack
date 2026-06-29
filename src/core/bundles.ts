@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, type Stats, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
 import { getFileRecord, normalizePath, sha256, sha256File } from "./hash.js";
@@ -448,10 +448,8 @@ function existingBundleImportResult(
   if (!retained || !existsSync(retained.manifestPath)) {
     throw new Error(`Bundle ${bundle.bundleId} is retained for task ${taskId}, but its import manifest is missing.`);
   }
-  const manifest = readJson<BundleImportManifest | null>(retained.manifestPath, null);
-  if (!manifest || manifest.bundleId !== bundle.bundleId || manifest.destinationTaskId !== taskId) {
-    throw new Error(`Import manifest for bundle ${bundle.bundleId} and task ${taskId} is invalid.`);
-  }
+  const manifest = readJson<unknown>(retained.manifestPath, null);
+  assertRetainedImportManifest(manifest, bundle, taskId);
   return {
     applied: false,
     idempotent: true,
@@ -475,19 +473,71 @@ function assertRetainedImportManifest(value: unknown, bundle: TaskBundle, taskId
     value.destinationTaskId !== taskId ||
     typeof value.importedAt !== "string" ||
     typeof value.asNew !== "boolean" ||
-    !isRecord(value.origin) ||
+    !bundleOriginValue(value.origin) ||
     !taskStatusValue(value.originalStatus) ||
     !isRecord(value.originVerification) ||
     !verificationStatusValue(value.originVerification.status) ||
     !stringArrayValue(value.originVerification.evidence) ||
     typeof value.originVerification.summary !== "string" ||
     !stringArrayValue(value.unresolvedOriginEvidence) ||
-    !isRecord(value.task) ||
+    !importManifestTaskValue(value.task) ||
     !Array.isArray(value.evidence) ||
-    !Array.isArray(value.sources)
+    !value.evidence.every(importManifestEvidenceValue) ||
+    !Array.isArray(value.sources) ||
+    !value.sources.every(importManifestSourceValue)
   ) {
     throw new Error(`Import manifest is missing or invalid for bundle ${bundle.bundleId} and task ${taskId}.`);
   }
+
+  const sourcePaths = new Set<string>();
+  for (const source of value.sources) {
+    validateRelativeBundlePath(source.path, "import manifest source");
+    if (sourcePaths.has(source.path)) {
+      throw new Error(`Import manifest contains duplicate source path: ${source.path}`);
+    }
+    sourcePaths.add(source.path);
+  }
+  const evidenceIds = new Set<string>();
+  const destinationEvidenceIds = new Set<string>();
+  for (const evidence of value.evidence) {
+    if (evidenceIds.has(evidence.originId)) {
+      throw new Error(`Import manifest contains duplicate evidence id: ${evidence.originId}`);
+    }
+    evidenceIds.add(evidence.originId);
+    if (destinationEvidenceIds.has(evidence.destinationId)) {
+      throw new Error(`Import manifest contains duplicate destination evidence id: ${evidence.destinationId}`);
+    }
+    destinationEvidenceIds.add(evidence.destinationId);
+  }
+}
+
+function importManifestTaskValue(value: unknown): boolean {
+  return isRecord(value) &&
+    (value.action === "created" || value.action === "reused") &&
+    (value.remappedFrom === null || (
+      typeof value.remappedFrom === "string" &&
+      /^task_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.remappedFrom)
+    ));
+}
+
+function importManifestEvidenceValue(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.originId === "string" &&
+    /^evt_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.originId) &&
+    typeof value.destinationId === "string" &&
+    /^evt_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value.destinationId) &&
+    typeof value.contentDigest === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(value.contentDigest) &&
+    (value.action === "created" || value.action === "reused" || value.action === "remapped");
+}
+
+function importManifestSourceValue(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.hash === "string" &&
+    /^[0-9a-f]{64}$/.test(value.hash) &&
+    typeof value.reason === "string" &&
+    (value.action === "created" || value.action === "reused" || value.action === "skipped");
 }
 
 interface PreparedEvidenceImport {
@@ -559,7 +609,11 @@ function existingEvidenceMatches(root: string, event: AgentpackEvent, contentDig
   }
   try {
     const evidencePath = getPackPath(root, normalizeEvidencePath(event.path));
-    return existsSync(evidencePath) && `sha256:${sha256(readFileSync(evidencePath))}` === contentDigest;
+    if (!existsSync(evidencePath)) {
+      return false;
+    }
+    assertSafeEvidenceFile(root, evidencePath, event.path);
+    return `sha256:${sha256(readFileSync(evidencePath))}` === contentDigest;
   } catch {
     return false;
   }
@@ -921,7 +975,7 @@ function bundleEvidence(root: string, event: AgentpackEvent): TaskBundleEvidence
     throw new Error(`Referenced evidence file not found: ${evidencePath}`);
   }
 
-  const stat = statSync(absolutePath);
+  const stat = assertSafeEvidenceFile(root, absolutePath, evidencePath);
   if (stat.size > MAX_EVIDENCE_CONTENT_BYTES) {
     throw new Error(`Evidence ${event.id} exceeds ${MAX_EVIDENCE_CONTENT_BYTES} byte limit.`);
   }
@@ -940,6 +994,44 @@ function bundleEvidence(root: string, event: AgentpackEvent): TaskBundleEvidence
     content,
     contentDigest: `sha256:${sha256(content)}`
   };
+}
+
+function assertSafeEvidenceFile(root: string, absolutePath: string, displayPath: string): Stats {
+  const evidenceRoot = getPackPath(root, "evidence");
+  const evidenceRootStat = lstatSync(evidenceRoot);
+  if (evidenceRootStat.isSymbolicLink() || !evidenceRootStat.isDirectory()) {
+    throw new Error(`Refusing unsafe evidence directory: ${evidenceRoot}`);
+  }
+  const relativePath = path.relative(evidenceRoot, absolutePath);
+  if (!relativePath || relativePath.startsWith(`..${path.sep}`) || path.isAbsolute(relativePath)) {
+    throw new Error(`Refusing evidence path outside evidence directory: ${displayPath}`);
+  }
+
+  const segments = relativePath.split(path.sep).filter(Boolean);
+  let current = evidenceRoot;
+  let finalStat: Stats | null = null;
+  for (const [index, segment] of segments.entries()) {
+    current = path.join(current, segment);
+    const stat = lstatSync(current);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Refusing symbolic-link evidence path: ${displayPath}`);
+    }
+    if (index < segments.length - 1 && !stat.isDirectory()) {
+      throw new Error(`Refusing evidence path through a non-directory: ${displayPath}`);
+    }
+    finalStat = stat;
+  }
+  if (!finalStat?.isFile()) {
+    throw new Error(`Referenced evidence path is not a regular file: ${displayPath}`);
+  }
+
+  const realEvidenceRoot = realpathSync(evidenceRoot);
+  const realEvidencePath = realpathSync(absolutePath);
+  const realRelativePath = path.relative(realEvidenceRoot, realEvidencePath);
+  if (!realRelativePath || realRelativePath.startsWith(`..${path.sep}`) || path.isAbsolute(realRelativePath)) {
+    throw new Error(`Refusing evidence path outside evidence directory: ${displayPath}`);
+  }
+  return finalStat;
 }
 
 function normalizeEvidencePath(evidencePath: string): string {
@@ -1238,8 +1330,17 @@ function taskRolesValue(value: unknown): boolean {
     (TASK_ROLE_NAMES as readonly string[]).includes(role) &&
     isRecord(state) &&
     (TASK_ROLE_STATUSES as readonly string[]).includes(String(state.status)) &&
-    typeof state.summary === "string"
+    typeof state.summary === "string" &&
+    state.summary.trim().length > 0
   );
+}
+
+function bundleOriginValue(value: unknown): boolean {
+  return isRecord(value) &&
+    typeof value.projectName === "string" &&
+    optionalString(value.repository) &&
+    nullableString(value.branch) &&
+    nullableString(value.head);
 }
 
 function verificationStatusValue(value: unknown): boolean {
