@@ -762,13 +762,15 @@ export function formatBundleImportResult(result: BundleImportResult): string {
   const evidenceCounts = countManifestActions(result.manifest.evidence);
   const sourceCounts = countManifestActions(result.manifest.sources);
   const taskStatus = result.idempotent ? result.plan.destination.taskStatus || "parked" : "parked";
+  const evidenceLabel = result.idempotent ? "Original import evidence" : "Evidence";
+  const sourceLabel = result.idempotent ? "Original import sources" : "Sources";
   return [
     `${result.idempotent ? "Reused" : "Imported"} bundle ${result.bundleId}`,
     `Task: ${result.taskId} [${taskStatus}]`,
     `Applied: ${result.applied ? "yes" : "no (idempotent)"}`,
     `Manifest: ${result.manifestPath}`,
-    `Evidence: ${evidenceCounts}`,
-    `Sources: ${sourceCounts}`,
+    `${evidenceLabel}: ${evidenceCounts}`,
+    `${sourceLabel}: ${sourceCounts}`,
     result.manifest.unresolvedOriginEvidence.length > 0
       ? `Unresolved origin evidence: ${result.manifest.unresolvedOriginEvidence.join(", ")}`
       : "Unresolved origin evidence: none",

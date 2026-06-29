@@ -461,6 +461,12 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       readFileSync(path.join(writeDestinationDir, ".agentpack", "tasks", "current"), "utf8"),
       destinationCurrentBefore
     );
+    const idempotentText = run(writeDestinationDir, ["bundle", "import", bundlePath, "--write"]);
+    assert.match(idempotentText, /Applied: no \(idempotent\)/);
+    assert.match(idempotentText, /Original import evidence: created 1/);
+    assert.match(idempotentText, /Original import sources: created 1/);
+    assert.doesNotMatch(idempotentText, /^Evidence: created 1$/m);
+    assert.doesNotMatch(idempotentText, /^Sources: created 1$/m);
 
     run(destinationDir, ["init"]);
     const emptyPackPlan = JSON.parse(run(destinationDir, ["bundle", "import-plan", bundlePath, "--json"]));
