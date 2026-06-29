@@ -189,6 +189,7 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 - `task_handoff`
 - `task_list`
 - `task_park`
+- `task_role`
 - `task_start`
 - `task_status`
 - `task_switch`

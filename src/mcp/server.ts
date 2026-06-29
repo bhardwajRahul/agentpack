@@ -19,7 +19,27 @@ import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { BUDGET_PRESET_NAMES, isBudgetPreset, resolveBudget, type BudgetPreset } from "../core/presets.js";
 import { redactForRoot } from "../core/redaction.js";
-import { auditCurrentTask, finalizeCurrentTask, formatCurrentTaskHandoff, formatCurrentTaskStatus, formatTaskAuditReport, formatTaskList, listTasks, parkCurrentTask, startTask, switchTask, type TaskStartOptions, type TaskUpdateOptions, updateCurrentTaskPassport, updateCurrentTaskVerification } from "../core/tasks.js";
+import {
+  auditCurrentTask,
+  finalizeCurrentTask,
+  formatCurrentTaskHandoff,
+  formatCurrentTaskStatus,
+  formatTaskAuditReport,
+  formatTaskList,
+  formatTaskRoleResult,
+  getCurrentTaskRole,
+  listTasks,
+  parkCurrentTask,
+  startTask,
+  switchTask,
+  TASK_ROLE_NAMES,
+  TASK_ROLE_STATUSES,
+  type TaskStartOptions,
+  type TaskUpdateOptions,
+  updateCurrentTaskPassport,
+  updateCurrentTaskRole,
+  updateCurrentTaskVerification
+} from "../core/tasks.js";
 
 interface JsonRpcRequest {
   id?: string | number | null;
@@ -221,6 +241,20 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {}
+    }
+  },
+  {
+    name: "task_role",
+    description: "Read focused guidance and current state for a Task Passport role lane, or explicitly update it with both status and summary. Does not start agents or change task lifecycle.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        role: { type: "string", enum: TASK_ROLE_NAMES },
+        status: { type: "string", enum: TASK_ROLE_STATUSES },
+        summary: { type: "string" },
+        json: { type: "boolean" }
+      },
+      required: ["role"]
     }
   },
   {
@@ -608,6 +642,22 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "task_status") {
     return toolText(redactForRoot(root, formatCurrentTaskStatus(root)));
+  }
+
+  if (name === "task_role") {
+    const role = text(args.role);
+    const status = text(args.status);
+    const summary = text(args.summary);
+    if (Boolean(status) !== Boolean(summary)) {
+      throw new Error("task_role updates require both status and summary");
+    }
+    const result = status && summary
+      ? updateCurrentTaskRole(root, role, status, redactForRoot(root, summary))
+      : getCurrentTaskRole(root, role);
+    if (booleanValue(args.json, false)) {
+      return toolText(redactForRoot(root, JSON.stringify(result, null, 2)));
+    }
+    return toolText(redactForRoot(root, formatTaskRoleResult(result)));
   }
 
   if (name === "task_list") {

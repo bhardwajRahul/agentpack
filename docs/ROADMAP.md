@@ -47,6 +47,7 @@ agentpack task start "Claude Desktop MCP install" --write-scope src/integrations
 agentpack task list
 agentpack task switch claude-desktop-mcp-install
 agentpack task passport
+agentpack task role scout --status done --summary "Mapped relevant sources and risks."
 agentpack resume --preset agent
 agentpack checkpoint -m "Desktop config tested"
 agentpack task verify --status passed --summary "Desktop config tested"
@@ -76,7 +77,7 @@ Target consistency checks:
 - current passport branch/head/worktree are visible in context
 - source conclusions are validated by file hash
 - write-scope overlap is detected before new work starts
-- role lanes are advisory and scoped; Scout/Reviewer are read-oriented, Builder claims writes, Archivist records durable handoff state
+- role lanes are advisory and scoped; Scout/Reviewer are read-oriented, Builder follows declared write scope, Archivist records durable handoff state, and no lane starts or schedules agents
 - checkpoints remain append-only snapshots for recovery and handoff
 
 ## Dogfood Success Metrics

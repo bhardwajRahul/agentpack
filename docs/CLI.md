@@ -61,6 +61,9 @@ agentpack task update \
   --next "Run focused regression tests" \
   --write-scope tests/checkout.test.ts \
   --risk medium
+agentpack task role scout
+agentpack task role scout --status done \
+  --summary "Mapped checkout flow, risks, and relevant source conclusions."
 agentpack task list
 agentpack task status
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
@@ -75,9 +78,10 @@ The common workflow is:
 1. `task start` declares the work.
 2. `task status` gives a quick current-task view.
 3. `task update` keeps objective, scope, risk, or next actions current.
-4. `task verify` records the verification result and linked evidence.
-5. `task handoff` prints the compact summary for another chat, client, worktree, or agent.
-6. `task finalize` closes the task after verification is final.
+4. Optional `task role` calls query or update focused coordination lanes inside the same passport.
+5. `task verify` records the verification result and linked evidence.
+6. `task handoff` prints the compact summary for another chat, client, worktree, or agent.
+7. `task finalize` closes the task after verification is final.
 
 When work is deferred so another task can become current, use `task park`
 instead of `task finalize`. Finalization is the end-of-task ritual; parking is
@@ -97,6 +101,15 @@ actions, because that usually means the task should be parked instead. Pass
 and the task is genuinely accepted as-is.
 
 Repeated identical verification updates are treated as no-ops, so retrying the same `task verify` command does not add duplicate task events.
+
+`task role <scout|builder|reviewer|archivist>` is read-only without update
+flags: it shows current lane state plus focused guidance. A role update requires
+both an explicit `--status pending|active|done|blocked` and a durable
+`--summary`; identical retries are no-ops. Configured lanes appear in
+`task status`, `task handoff`, and `resume` in a fixed order. Roles are advisory
+metadata: they do not start agents, assign owners, authorize writes, schedule
+work, or change task/verification status. `task audit` warns when a lane is
+blocked and when a non-pending Builder has no declared write scope.
 
 When a current passport exists, `resume` and MCP `load_context` treat its status
 and next actions as authoritative in Current State, then include the full

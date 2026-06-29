@@ -10,7 +10,26 @@ import {
   withPackWriteLock,
   writeJson
 } from "./store.js";
-import type { AgentpackEvent, TaskPassport, TaskRisk, TaskStatus, TaskVerification } from "./types.js";
+import type {
+  AgentpackEvent,
+  TaskPassport,
+  TaskRisk,
+  TaskRoleName,
+  TaskRoleState,
+  TaskRoleStatus,
+  TaskStatus,
+  TaskVerification
+} from "./types.js";
+
+export const TASK_ROLE_NAMES = ["scout", "builder", "reviewer", "archivist"] as const;
+export const TASK_ROLE_STATUSES = ["pending", "active", "done", "blocked"] as const;
+
+const TASK_ROLE_GUIDANCE: Record<TaskRoleName, string> = {
+  scout: "Inspect relevant sources and record durable conclusions, risks, and known unknowns. Do not modify project files in this lane.",
+  builder: "Implement only inside the Task Passport write scope, follow local patterns, and update the task before expanding scope.",
+  reviewer: "Review the diff, regressions, tests, security, and verification surface. Report findings without implementing fixes in this lane.",
+  archivist: "Record durable decisions, evidence, checkpoints, and handoff state without turning the ledger into an activity log."
+};
 
 export interface TaskStartOptions {
   title: string;
@@ -44,6 +63,15 @@ export interface TaskFinalizeOptions extends TaskVerificationUpdateOptions {
 
 export interface TaskVerificationUpdateResult {
   passport: TaskPassport;
+  changed: boolean;
+}
+
+export interface TaskRoleResult {
+  taskId: string;
+  role: TaskRoleName;
+  state: TaskRoleState | null;
+  guidance: string;
+  mode: "read" | "update";
   changed: boolean;
 }
 
@@ -166,7 +194,107 @@ export function readPassport(root: string, taskId: string): TaskPassport {
   if (!passport) {
     throw new Error(`Task passport not found: ${taskId}`);
   }
-  return passport;
+  return {
+    ...passport,
+    roles: passport.roles || {}
+  };
+}
+
+export function getCurrentTaskRole(root: string, roleValue: string): TaskRoleResult {
+  const role = parseTaskRoleName(roleValue);
+  const passport = getCurrentPassport(root);
+  if (!passport) {
+    throw new Error("No current task. Run `agentpack task start <title>` first.");
+  }
+  return {
+    taskId: passport.id,
+    role,
+    state: passport.roles?.[role] || null,
+    guidance: TASK_ROLE_GUIDANCE[role],
+    mode: "read",
+    changed: false
+  };
+}
+
+export function updateCurrentTaskRole(
+  root: string,
+  roleValue: string,
+  statusValue: string,
+  summaryValue: string
+): TaskRoleResult {
+  const role = parseTaskRoleName(roleValue);
+  const status = parseTaskRoleStatus(statusValue);
+  const summary = summaryValue.trim();
+  if (!summary) {
+    throw new Error("task role update requires a non-empty summary");
+  }
+
+  return withPackWriteLock(root, () => {
+    const current = readCurrentTaskId(root);
+    if (!current) {
+      throw new Error("No current task. Run `agentpack task start <title>` first.");
+    }
+    const existing = readPassport(root, current);
+    if (CLOSED_STATUSES.has(existing.status)) {
+      throw new Error(`Cannot update closed task ${current}`);
+    }
+    const state: TaskRoleState = { status, summary };
+    const existingState = existing.roles?.[role];
+    if (existingState?.status === state.status && existingState.summary === state.summary) {
+      return {
+        taskId: existing.id,
+        role,
+        state: existingState,
+        guidance: TASK_ROLE_GUIDANCE[role],
+        mode: "update",
+        changed: false
+      };
+    }
+
+    const now = new Date().toISOString();
+    const passport: TaskPassport = {
+      ...existing,
+      currentHead: getGitInfo(root).head,
+      updatedAt: now,
+      roles: {
+        ...(existing.roles || {}),
+        [role]: state
+      }
+    };
+    writePassport(root, passport);
+    appendTaskEvent(root, passport.id, "task-role-update", {
+      role,
+      status,
+      summary
+    });
+    return {
+      taskId: passport.id,
+      role,
+      state,
+      guidance: TASK_ROLE_GUIDANCE[role],
+      mode: "update",
+      changed: true
+    };
+  });
+}
+
+export function configuredTaskRoles(passport: TaskPassport): Array<[TaskRoleName, TaskRoleState]> {
+  return TASK_ROLE_NAMES.flatMap((role): Array<[TaskRoleName, TaskRoleState]> => {
+    const state = passport.roles?.[role];
+    return state ? [[role, state]] : [];
+  });
+}
+
+export function formatTaskRoleResult(result: TaskRoleResult): string {
+  const roleLabel = `${result.role[0]?.toUpperCase() || ""}${result.role.slice(1)}`;
+  return [
+    `Task role ${roleLabel} [${result.state?.status || "not set"}]`,
+    `Summary: ${result.state?.summary || "(none)"}`,
+    `Guidance: ${result.guidance}`,
+    result.mode === "read"
+      ? "Mode: read-only"
+      : `Update: ${result.changed ? "applied" : "unchanged (idempotent)"}`
+  ].join("\n");
 }
 
 export function switchTask(root: string, taskId: string): TaskPassport {
@@ -389,6 +517,10 @@ export function auditCurrentTask(root: string, sourceStatuses: TaskAuditSourceSt
     issues.push({ level: "warn", message: "Task has no write scope; future agents may not know the intended blast radius." });
   }
 
+  for (const warning of taskRoleWarnings(passport)) {
+    issues.push({ level: "warn", message: warning });
+  }
+
   if (git.available) {
     if (passport.branch && git.branch && passport.branch !== git.branch) {
       issues.push({ level: "warn", message: `Branch drift: passport branch is ${passport.branch}, current branch is ${git.branch}.` });
@@ -461,6 +593,7 @@ export function formatCurrentTaskStatus(root: string): string {
   const nextAction = passport.nextActions[0] || "(none)";
   const writeScope = passport.writeScope.length > 0 ? passport.writeScope.join(", ") : "(none)";
   const verification = passport.verification?.status || "unknown";
+  const roles = configuredTaskRoles(passport);
 
   return [
     "Task status",
@@ -468,11 +601,12 @@ export function formatCurrentTaskStatus(root: string): string {
     `ID: ${passport.id}`,
     `Branch: ${passport.branch || "(unknown)"}`,
     `Risk: ${passport.risk || "unknown"}`,
+    roles.length > 0 ? `Roles: ${roles.map(([role, state]) => `${role} ${state.status}`).join(", ")}` : null,
     `Verification: ${verification}`,
     `Next: ${nextAction}`,
     `Write scope: ${writeScope}`,
     `Drift: ${drift}`
-  ].join("\n");
+  ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
 export function formatCurrentTaskHandoff(root: string, sourceStatuses: TaskAuditSourceStatus[] = []): string {
@@ -501,6 +635,7 @@ export function formatTaskPassportHandoff(root: string, passport: TaskPassport, 
   const git = getGitInfo(root);
   const warnings = taskHandoffWarnings(root, passport, git, sourceStatuses);
   const verification = passport.verification;
+  const roles = configuredTaskRoles(passport);
 
   return [
     "Task handoff",
@@ -516,6 +651,12 @@ export function formatTaskPassportHandoff(root: string, passport: TaskPassport, 
     ...formatList(passport.constraints),
     "Write scope:",
     ...formatList(passport.writeScope),
+    ...(roles.length > 0
+      ? [
+          "Role lanes:",
+          ...roles.map(([role, state]) => `- ${role} [${state.status}]: ${state.summary}`)
+        ]
+      : []),
     "Next actions:",
     ...formatList(passport.nextActions),
     `Drift: ${formatTaskDrift(passport, git)}`,
@@ -546,6 +687,7 @@ function taskHandoffWarnings(
   if (!passport.writeScope.length) {
     task.push("Task has no write scope; future agents may not know the intended blast radius.");
   }
+  task.push(...taskRoleWarnings(passport));
   if (git.available) {
     if (passport.branch && git.branch && passport.branch !== git.branch) {
       task.push(`Branch drift: passport branch is ${passport.branch}, current branch is ${git.branch}.`);
@@ -568,6 +710,17 @@ function taskHandoffWarnings(
 
 function formatList(items: string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ["- (none)"];
+}
+
+function taskRoleWarnings(passport: TaskPassport): string[] {
+  const warnings = configuredTaskRoles(passport)
+    .filter(([, state]) => state.status === "blocked")
+    .map(([role, state]) => `Role ${role} is blocked: ${state.summary}`);
+  const builder = passport.roles?.builder;
+  if (builder && builder.status !== "pending" && passport.writeScope.length === 0) {
+    warnings.push(`Builder role is ${builder.status}, but the task has no write scope.`);
+  }
+  return warnings;
 }
 
 function formatTaskDrift(passport: TaskPassport, git: ReturnType<typeof getGitInfo>): string {
@@ -677,6 +830,22 @@ function parseVerificationStatus(value: TaskVerificationUpdateOptions["status"])
     return status as TaskVerification["status"];
   }
   throw new Error(`Unknown verification status: ${status}`);
+}
+
+function parseTaskRoleName(value: string): TaskRoleName {
+  const role = value.trim().toLowerCase();
+  if ((TASK_ROLE_NAMES as readonly string[]).includes(role)) {
+    return role as TaskRoleName;
+  }
+  throw new Error(`Unknown task role: ${value || "(empty)"}`);
+}
+
+function parseTaskRoleStatus(value: string): TaskRoleStatus {
+  const status = value.trim().toLowerCase();
+  if ((TASK_ROLE_STATUSES as readonly string[]).includes(status)) {
+    return status as TaskRoleStatus;
+  }
+  throw new Error(`Unknown task role status: ${value || "(empty)"}`);
 }
 
 function createTaskId(title: string): string {

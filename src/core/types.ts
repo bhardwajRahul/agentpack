@@ -112,6 +112,7 @@ export interface TaskBundleTask {
   risk: TaskRisk;
   tags: string[];
   nextActions: string[];
+  roles?: Partial<Record<TaskRoleName, TaskRoleState>>;
   originalStatus: TaskStatus;
   originVerification: TaskVerification;
 }

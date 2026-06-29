@@ -197,6 +197,7 @@ test("exposes expected MCP tools", () => {
     "task_handoff",
     "task_list",
     "task_park",
+    "task_role",
     "task_start",
     "task_status",
     "task_switch",
@@ -335,6 +336,39 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     ]);
     const exportedTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
 
+    const noRolesBundlePath = path.join(dir, "checkout-no-roles.agentpack-bundle.json");
+    run(dir, [
+      "bundle",
+      "export",
+      "--task",
+      "current",
+      "--output",
+      "checkout-no-roles.agentpack-bundle.json",
+      "--source",
+      "src/index.ts"
+    ]);
+    const noRolesBundle = JSON.parse(readFileSync(noRolesBundlePath, "utf8"));
+    assert.equal(noRolesBundle.task.roles, undefined);
+
+    run(dir, [
+      "task",
+      "role",
+      "scout",
+      "--status",
+      "done",
+      "--summary",
+      "Inspected the bundle source and portability risks."
+    ]);
+    run(dir, [
+      "task",
+      "role",
+      "builder",
+      "--status",
+      "done",
+      "--summary",
+      "Prepared the task-scoped bundle payload."
+    ]);
+
     const bundlePath = path.join(dir, "checkout.agentpack-bundle.json");
     const exported = run(dir, [
       "bundle",
@@ -356,11 +390,19 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(bundle.schemaVersion, 1);
     assert.equal(bundle.sources[0].path, "src/index.ts");
     assert.equal(bundle.evidence[0].originId, evidenceId);
+    assert.equal(bundle.task.roles.scout.status, "done");
+    assert.equal(bundle.task.roles.builder.summary, "Prepared the task-scoped bundle payload.");
     assert.equal(bundle.origin.repository, "https://example.com/org/example.git");
     assert.equal(bundleText.includes(secret), false);
     assert.equal(bundleText.includes(destinationSecret), true);
     assert.equal(bundleText.includes(dir), false);
     assert.match(bundleText, /\[REDACTED:AGENTPACK_BUNDLE_TOKEN\]/);
+
+    const noRolesInspect = JSON.parse(run(noPackDir, ["bundle", "inspect", noRolesBundlePath, "--json"]));
+    assert.equal(noRolesInspect.valid, true);
+    const noRolesPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", noRolesBundlePath, "--json"]));
+    assert.equal(noRolesPlan.action.outcome, "create");
+    assert.equal(existsSync(path.join(noPackDir, ".agentpack")), false);
 
     const noPackPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", bundlePath, "--json"]));
     assert.equal(noPackPlan.readOnly, true);
@@ -419,6 +461,8 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(importedPassport.status, "parked");
     assert.equal(importedPassport.verification.status, "unknown");
     assert.deepEqual(importedPassport.verification.evidence, []);
+    assert.equal(importedPassport.roles.scout.status, "done");
+    assert.equal(importedPassport.roles.builder.status, "done");
     assert.equal(importedPassport.worktree, realpathSync(writeDestinationDir));
     const portableBundleStorageId = bundle.bundleId.replace(":", "-");
     const importedBundleDir = path.join(writeDestinationDir, ".agentpack", "tasks", exportedTaskId, "imports");
@@ -1586,6 +1630,154 @@ test("filters MCP source_status to changed and missing records", async () => {
   assert.equal(parsed.length, 1);
   assert.equal(parsed[0]?.path, "missing.js");
   assert.equal(parsed[0]?.status, "missing");
+});
+
+test("manages Task Passport role lanes through CLI and MCP", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-roles-test-"));
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  run(dir, [
+    "task",
+    "start",
+    "Coordinate role lanes",
+    "--objective",
+    "Keep role coordination inside one passport.",
+    "--next",
+    "Assign focused lanes"
+  ]);
+  const taskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
+  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).roles, {});
+  const passportPath = path.join(dir, ".agentpack", "tasks", taskId, "passport.json");
+  const legacyPassport = JSON.parse(readFileSync(passportPath, "utf8"));
+  delete legacyPassport.roles;
+  writeFileSync(passportPath, `${JSON.stringify(legacyPassport, null, 2)}\n`, "utf8");
+  run(dir, ["task", "role", "scout", "--json"]);
+  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).roles, {});
+
+  const eventCountBeforeRead = taskEventCount(dir, taskId);
+  const scoutRead = run(dir, ["task", "role", "scout"]);
+  assert.match(scoutRead, /Task role Scout \[not set\]/);
+  assert.match(scoutRead, /Mode: read-only/);
+  assert.match(scoutRead, /Do not modify project files in this lane/);
+  assert.equal(taskEventCount(dir, taskId), eventCountBeforeRead);
+  assert.match(runExpectError(dir, ["task", "role", "operator"]), /Unknown task role: operator/);
+  assert.match(
+    runExpectError(dir, ["task", "role", "scout", "--status", "active"]),
+    /updates require both --status and --summary/
+  );
+  assert.match(
+    runExpectError(dir, ["task", "role", "scout", "--status", "waiting", "--summary", "Wait"]),
+    /Unknown task role status: waiting/
+  );
+
+  const builderUpdate = run(dir, [
+    "task",
+    "role",
+    "builder",
+    "--status",
+    "active",
+    "--summary",
+    "Implement only inside the declared write scope."
+  ]);
+  assert.match(builderUpdate, /Task role Builder \[active\]/);
+  assert.match(builderUpdate, /Update: applied/);
+  run(dir, [
+    "task",
+    "role",
+    "scout",
+    "--status",
+    "done",
+    "--summary",
+    "Mapped the relevant source and risks."
+  ]);
+  run(dir, [
+    "task",
+    "role",
+    "reviewer",
+    "--status",
+    "blocked",
+    "--summary",
+    "Waiting for focused test output."
+  ]);
+  const eventCountBeforeNoop = taskEventCount(dir, taskId);
+  assert.match(run(dir, [
+    "task",
+    "role",
+    "scout",
+    "--status",
+    "done",
+    "--summary",
+    "Mapped the relevant source and risks."
+  ]), /Update: unchanged \(idempotent\)/);
+  assert.equal(taskEventCount(dir, taskId), eventCountBeforeNoop);
+
+  const status = run(dir, ["task", "status"]);
+  assert.match(status, /Roles: scout done, builder active, reviewer blocked/);
+  const audit = run(dir, ["task", "audit"]);
+  assert.match(audit, /Role reviewer is blocked: Waiting for focused test output\./);
+  assert.match(audit, /Builder role is active, but the task has no write scope\./);
+  const handoff = run(dir, ["task", "handoff"]);
+  assert.match(handoff, /Role lanes:\n- scout \[done\]: Mapped the relevant source and risks\./);
+  assert.ok(handoff.indexOf("- scout [done]") < handoff.indexOf("- builder [active]"));
+  assert.ok(handoff.indexOf("- builder [active]") < handoff.indexOf("- reviewer [blocked]"));
+  const resume = run(dir, ["resume", "--preset", "agent"]);
+  assert.match(resume, /Role lanes:\n  - scout \[done\]: Mapped the relevant source and risks\./);
+  assert.ok(resume.indexOf("Task next actions:") < resume.indexOf("Role lanes:"));
+
+  const mcp = createMcpHarness(dir);
+  const tools = await mcp.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+  const roleTool = tools.result.tools.find((tool: { name: string }) => tool.name === "task_role");
+  assert.deepEqual(roleTool.inputSchema.properties.role.enum, ["scout", "builder", "reviewer", "archivist"]);
+  assert.deepEqual(roleTool.inputSchema.properties.status.enum, ["pending", "active", "done", "blocked"]);
+
+  const archivistRead = await mcp.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: {
+      name: "task_role",
+      arguments: { role: "archivist", json: true }
+    }
+  });
+  const archivistReadJson = JSON.parse(archivistRead.result.content[0].text);
+  assert.equal(archivistReadJson.taskId, taskId);
+  assert.equal(archivistReadJson.passport, undefined);
+  assert.equal(archivistReadJson.mode, "read");
+  assert.equal(archivistReadJson.state, null);
+  assert.match(archivistReadJson.guidance, /without turning the ledger into an activity log/);
+
+  const incompleteUpdate = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: {
+      name: "task_role",
+      arguments: { role: "archivist", status: "done" }
+    }
+  });
+  assert.equal(incompleteUpdate.error?.message, "task_role updates require both status and summary");
+
+  const archivistUpdate = await mcp.send({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "task_role",
+      arguments: {
+        role: "archivist",
+        status: "done",
+        summary: "Recorded token=role-secret-value in evidence and the handoff checkpoint.",
+        json: true
+      }
+    }
+  });
+  const archivistUpdateJson = JSON.parse(archivistUpdate.result.content[0].text);
+  assert.equal(archivistUpdateJson.mode, "update");
+  assert.equal(archivistUpdateJson.changed, true);
+  assert.equal(archivistUpdateJson.state.status, "done");
+  assert.equal(archivistUpdate.result.content[0].text.includes("role-secret-value"), false);
+  assert.match(archivistUpdateJson.state.summary, /token=\[REDACTED\]/);
+  assert.equal(JSON.parse(run(dir, ["task", "passport"])).roles.archivist.status, "done");
 });
 
 test("manages a current task passport", () => {
