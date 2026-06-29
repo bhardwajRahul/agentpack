@@ -25,6 +25,10 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 
 ## Tools
 
+- `bundle_export`
+- `bundle_import`
+- `bundle_import_plan`
+- `bundle_inspect`
 - `load_context`
 - `record_decision`
 - `record_dead_end`

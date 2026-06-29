@@ -178,6 +178,10 @@ See [docs/CLI.md](docs/CLI.md) for manual budget and export commands.
 
 `agentpack mcp` is the primary runtime surface for connected coding agents. It starts a local stdio MCP server with tools for reading and writing task state:
 
+- `bundle_export`
+- `bundle_import`
+- `bundle_import_plan`
+- `bundle_inspect`
 - `load_context`
 - `record_decision`
 - `record_dead_end`
