@@ -158,6 +158,8 @@ Demo story:
 
 ## v1.0: Reliable Local Tool
 
+Status: implementation scope complete; `v1.0.0` is the current release target.
+
 - Stable `.agentpack/` schema.
 - Stable CLI.
 - Stable MCP tools.
@@ -171,10 +173,11 @@ Demo story:
 - Security model documented.
 - npm publish as `agentpack-cli`.
 - Good demo and examples.
-- Public MCP-directory listing after the next polished release, for example FindMCP, mcp-list.com, MCPKit, MCP Server Directory, or similar current directories.
 
-## Later
+## After v1.0
 
+- List Agentpack in current public MCP directories after the polished
+  `v1.0.0` release.
 - Optional share links or hosted transport for explicit bundles after local
   export/import is stable.
 - Optional imports from markdown handoffs.
