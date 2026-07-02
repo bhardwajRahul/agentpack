@@ -93,6 +93,8 @@ Use `agentpack task --help` for the task-focused command list.
 
 `task audit` checks the current passport for branch/head drift, missing next actions, open verification, closed-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so they do not look like action-required task failures.
 
+`task gate [--file <path> ...] [--staged] [--json]` is the fast pre-edit/pre-commit check: it reads only the current passport and light git state, then reports lifecycle violations (no active task; task parked, blocked, verifying, or closed), files outside the declared write scope, and branch drift. It never reads the event log. Behavior follows `gateMode` in `.agentpack/config.json`: `warn` (default) prints findings and exits 0, `block` exits 2 on violations (branch drift stays advisory), `off` disables the gate. Without `.agentpack/`, `task gate` exits 0 silently so hooks are safe to install in any repo. `--staged` checks the files staged in git; `--client claude` reads a Claude Code PreToolUse hook payload from stdin and answers in hook JSON (deny in block mode, an additional-context warning in warn mode). Head drift is intentionally left to `task audit` because every commit moves HEAD during normal work.
+
 `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
 
 `task finalize --status accepted` refuses to close a task that still has next

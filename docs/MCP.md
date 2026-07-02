@@ -73,6 +73,8 @@ push, tag, publish, or create GitHub Releases.
 
 `task_status` prints the same quick current-task view as `agentpack task status`. It does not scan the source cache and should not be used as a substitute for `task_audit`.
 
+`load_context`, `resume`, and `task_status` append a `Gate Warnings` section when the current passport has gate findings (no active task; task parked, blocked, verifying, or closed; branch drift). This is the client-neutral warn layer of the task gate: any MCP client sees lifecycle warnings without needing hook support. Enforcement modes and the full check live in `agentpack task gate` (see docs/CLI.md).
+
 `task_role` reads or updates one optional role lane inside the current Task
 Passport. `role` is one of `scout`, `builder`, `reviewer`, or `archivist`.
 Without `status` and `summary`, the call is read-only and returns focused lane

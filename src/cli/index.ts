@@ -64,6 +64,7 @@ import {
 } from "../operations.js";
 import type { SourceStatusKind } from "../operations.js";
 import { installIntegration } from "../integrations/install.js";
+import { evaluateGate, formatGateReport, type GateOptions } from "../core/gate.js";
 import { startMcpServer } from "../mcp/server.js";
 
 export type ArgValue = string | boolean | string[];
@@ -137,6 +138,13 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
 
   if (command === "task" && isHelpRequest(rest[0])) {
     printTaskHelp();
+    return;
+  }
+
+  if (command === "task" && rest[0] === "gate") {
+    // The gate must stay silent and permissive where Agentpack is not set up, so hooks are safe to
+    // install globally without breaking repos that do not use it.
+    gateCommand(findPackRoot(cwd), rest.slice(1));
     return;
   }
 
@@ -272,7 +280,7 @@ Default workflow:
 
 Setup:
   agentpack init
-  agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
+  agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write]
   agentpack doctor
   agentpack mcp [--root <path>]
 
@@ -336,9 +344,10 @@ Initialize .agentpack/ in the current repository and add local Agentpack files t
   }
 
   if (command === "install") {
-    return `agentpack install codex|claude|claude-desktop|cursor [--dry-run|--write]
+    return `agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write]
 
 Generate MCP client configuration and project instructions for one client surface.
+git-hooks installs a pre-commit hook that runs \`agentpack task gate --staged\`.
 Defaults to dry-run; pass --write to apply generated files.`;
   }
 
@@ -478,6 +487,7 @@ Inspection and coordination:
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
+  agentpack task gate [--file <path> ...] [--staged] [--json]
   agentpack task park
   agentpack task block --reason <text>
   agentpack task close
@@ -491,6 +501,9 @@ Notes:
   task handoff is the compact summary for another chat, client, worktree, or agent.
   task finalize refuses unknown or pending verification by default.
   task finalize --status accepted refuses tasks with remaining next actions unless --force is passed.
+  task gate checks the current passport lifecycle, write scope, and branch before edits or commits.
+  task gate warns by default; set "gateMode": "block" in .agentpack/config.json to enforce (exit code 2).
+  task gate exits 0 quietly when no .agentpack exists, so hooks are safe in non-Agentpack repos.
 `);
 }
 
@@ -528,6 +541,87 @@ function noteCommand(root: string, rest: string[]): void {
 
   const event = appendEvent(root, "note", { text: redactForRoot(root, text) });
   process.stdout.write(`Recorded note ${event.id}\n`);
+}
+
+function gateCommand(root: string | null, args: string[]): void {
+  const parsed = parseArgs(args);
+  const client = stringOption(parsed.options.client);
+  if (client && client !== "claude") {
+    throw new Error(`Unknown gate client: ${client}`);
+  }
+
+  if (!root) {
+    if (parsed.options.json) {
+      process.stdout.write(`${JSON.stringify({ mode: "off", decision: "allow", taskId: null, taskStatus: null, findings: [] }, null, 2)}\n`);
+    }
+    return;
+  }
+
+  const gateOptions: GateOptions = {
+    files: toArray(parsed.options.file),
+    staged: Boolean(parsed.options.staged)
+  };
+
+  if (client === "claude") {
+    const hookFile = readClaudeHookFilePath();
+    if (hookFile) {
+      gateOptions.files = [...(gateOptions.files || []), hookFile];
+    }
+    const report = evaluateGate(root, gateOptions);
+    writeClaudeHookOutput(report);
+    return;
+  }
+
+  const report = evaluateGate(root, gateOptions);
+
+  if (parsed.options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else if (report.decision === "block") {
+    process.stderr.write(`${formatGateReport(report)}\n`);
+  } else if (report.findings.length > 0) {
+    process.stdout.write(`${formatGateReport(report)}\n`);
+  }
+
+  if (report.decision === "block") {
+    process.exitCode = 2;
+  }
+}
+
+function readClaudeHookFilePath(): string | null {
+  let payload = "";
+  try {
+    payload = readFileSync(0, "utf8");
+  } catch {
+    return null;
+  }
+  if (!payload.trim()) {
+    return null;
+  }
+  try {
+    const hook = JSON.parse(payload) as { tool_input?: { file_path?: unknown; notebook_path?: unknown } };
+    const filePath = hook.tool_input?.file_path ?? hook.tool_input?.notebook_path;
+    return typeof filePath === "string" && filePath ? filePath : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeClaudeHookOutput(report: ReturnType<typeof evaluateGate>): void {
+  if (report.findings.length === 0) {
+    return;
+  }
+  const summary = report.findings.map((finding) => finding.message).join(" ");
+  const hookSpecificOutput = report.decision === "block"
+    ? {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: `Agentpack gate: ${summary}`
+    }
+    : {
+      hookEventName: "PreToolUse",
+      additionalContext: `Agentpack gate warning: ${summary}`
+    };
+  process.stdout.write(`${JSON.stringify({ hookSpecificOutput })}\n`);
 }
 
 function taskCommand(root: string, rest: string[]): void {

@@ -2487,6 +2487,140 @@ test("rolls back client install writes when a later file write fails", { skip: p
   assert.match(readFileSync(claudeMdPath, "utf8"), /agentpack:start/);
 });
 
+test("task gate checks lifecycle, write scope, and gate modes", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-gate-test-"));
+
+  assert.equal(run(dir, ["task", "gate", "--file", "src/a.ts"]).trim(), "");
+
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+
+  const noTask = run(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.match(noTask, /No current task passport/);
+
+  run(dir, ["task", "start", "Gate coverage task", "--write-scope", "src"]);
+  assert.equal(run(dir, ["task", "gate", "--file", "src/nested/a.ts"]).trim(), "");
+
+  const outOfScope = run(dir, ["task", "gate", "--file", "other/b.ts"]);
+  assert.match(outOfScope, /Gate: warn \(mode: warn\)/);
+  assert.match(outOfScope, /Outside the task write scope: other\/b\.ts/);
+
+  const gateJson = JSON.parse(run(dir, ["task", "gate", "--file", "other/b.ts", "--json"])) as {
+    decision: string;
+    findings: Array<{ code: string; level: string }>;
+  };
+  assert.equal(gateJson.decision, "warn");
+  assert.deepEqual(gateJson.findings.map((finding) => finding.code), ["out-of-scope"]);
+
+  writeFileSync(path.join(dir, "outside.txt"), "outside\n", "utf8");
+  runGit(dir, ["add", "outside.txt"]);
+  assert.match(run(dir, ["task", "gate", "--staged"]), /Outside the task write scope: outside\.txt/);
+
+  const configPath = path.join(dir, ".agentpack", "config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }, null, 2), "utf8");
+
+  const blocked = runWithStatus(dir, ["task", "gate", "--file", "other/b.ts"]);
+  assert.equal(blocked.status, 2);
+  assert.match(blocked.stderr, /Gate: block \(mode: block\)/);
+  assert.equal(runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]).status, 0);
+
+  const deny = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
+    tool_name: "Edit",
+    tool_input: { file_path: "other/b.ts" }
+  }));
+  const denyOutput = JSON.parse(deny) as { hookSpecificOutput: Record<string, string> };
+  assert.equal(denyOutput.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(denyOutput.hookSpecificOutput.permissionDecisionReason || "", /Outside the task write scope/);
+
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "warn" }, null, 2), "utf8");
+  const warn = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
+    tool_name: "Edit",
+    tool_input: { file_path: "other/b.ts" }
+  }));
+  const warnOutput = JSON.parse(warn) as { hookSpecificOutput: Record<string, string> };
+  assert.equal(warnOutput.hookSpecificOutput.permissionDecision, undefined);
+  assert.match(warnOutput.hookSpecificOutput.additionalContext || "", /Agentpack gate warning/);
+
+  const allow = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
+    tool_name: "Edit",
+    tool_input: { file_path: "src/a.ts" }
+  }));
+  assert.equal(allow.trim(), "");
+
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "off" }, null, 2), "utf8");
+  assert.equal(run(dir, ["task", "gate", "--file", "other/b.ts"]).trim(), "");
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "warn" }, null, 2), "utf8");
+
+  run(dir, ["task", "park"]);
+  assert.match(run(dir, ["task", "gate", "--file", "src/a.ts"]), /Current task is parked/);
+
+  const mcp = createMcpHarness(dir);
+  const status = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "task_status", arguments: {} }
+  });
+  assert.match(status.result.content[0].text, /## Gate Warnings/);
+  assert.match(status.result.content[0].text, /Current task is parked/);
+});
+
+test("installs the git-hooks gate and preserves foreign pre-commit hooks", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-githooks-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+
+  const preview = run(dir, ["install", "git-hooks"]);
+  assert.match(preview, /git-hooks install plan \(dry run\)/);
+  const preCommitPath = path.join(dir, ".git", "hooks", "pre-commit");
+  assert.equal(existsSync(preCommitPath), false);
+
+  const install = run(dir, ["install", "git-hooks", "--write"]);
+  assert.match(install, /Installed Agentpack git-hooks integration/);
+  const hook = readFileSync(preCommitPath, "utf8");
+  assert.match(hook, /# agentpack:gate/);
+  assert.match(hook, /agentpack task gate --staged/);
+  assert.ok(statSync(preCommitPath).mode & 0o100, "pre-commit hook must be executable");
+  assert.match(readFileSync(path.join(dir, ".agentpack", "instructions", "pre-commit-gate.example.sh"), "utf8"), /task gate --staged/);
+
+  const rerun = run(dir, ["install", "git-hooks", "--write"]);
+  assert.match(rerun, /UNCHANGED \.git\/hooks\/pre-commit/i);
+
+  const foreignHook = "#!/bin/sh\necho custom hook\n";
+  writeFileSync(preCommitPath, foreignHook, "utf8");
+  const preserved = run(dir, ["install", "git-hooks", "--write"]);
+  assert.match(preserved, /Existing pre-commit hook detected and left untouched/);
+  assert.equal(readFileSync(preCommitPath, "utf8"), foreignHook);
+});
+
+test("claude install registers the gate PreToolUse hook idempotently", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-claude-hooks-test-"));
+  run(dir, ["init"]);
+  mkdirSync(path.join(dir, ".claude"), { recursive: true });
+  writeFileSync(path.join(dir, ".claude", "settings.json"), JSON.stringify({
+    env: { KEEP: "1" },
+    hooks: { PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo done" }] }] }
+  }, null, 2), "utf8");
+
+  run(dir, ["install", "claude", "--write"]);
+  run(dir, ["install", "claude", "--write"]);
+
+  const settings = JSON.parse(readFileSync(path.join(dir, ".claude", "settings.json"), "utf8")) as {
+    env: Record<string, string>;
+    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }>; PostToolUse: unknown[] };
+  };
+  assert.equal(settings.env.KEEP, "1");
+  assert.equal(settings.hooks.PostToolUse.length, 1);
+  assert.equal(settings.hooks.PreToolUse.length, 1);
+  assert.equal(settings.hooks.PreToolUse[0]?.matcher, "Edit|Write|MultiEdit|NotebookEdit");
+  assert.equal(settings.hooks.PreToolUse[0]?.hooks[0]?.command, "agentpack task gate --client claude");
+});
+
 test("parks current task over MCP so a new task can start", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-park-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('park')\n", "utf8");
@@ -3003,6 +3137,29 @@ function run(cwd: string, args: string[]): string {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"]
+  });
+}
+
+function runWithStatus(cwd: string, args: string[]): { status: number; stdout: string; stderr: string } {
+  try {
+    const stdout = run(cwd, args);
+    return { status: 0, stdout, stderr: "" };
+  } catch (error) {
+    const failure = error as { status?: number; stdout?: Buffer | string; stderr?: Buffer | string };
+    return {
+      status: typeof failure.status === "number" ? failure.status : 1,
+      stdout: String(failure.stdout || ""),
+      stderr: String(failure.stderr || "")
+    };
+  }
+}
+
+function runWithInput(cwd: string, args: string[], input: string): string {
+  return execFileSync(process.execPath, [cli, ...args], {
+    cwd,
+    encoding: "utf8",
+    input,
+    stdio: ["pipe", "pipe", "pipe"]
   });
 }
 

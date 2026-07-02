@@ -174,6 +174,23 @@ Status: implementation scope complete; `v1.0.0` is the current release target.
 - npm publish as `agentpack-cli`.
 - Good demo and examples.
 
+## v1.1: Task Gate
+
+Status: gate core and first adapters implemented.
+
+Layered enforcement of the Task Passport protocol, warn-first:
+
+- `agentpack task gate`: fast lifecycle/write-scope/branch check that never
+  reads the event log; `gateMode` config (`off`/`warn`/`block`).
+- Git adapter: `agentpack install git-hooks` pre-commit hook running
+  `task gate --staged` — client-neutral hard boundary at commit time.
+- Claude Code adapter: PreToolUse hook via `agentpack install claude`
+  (warn injects context, block denies the edit).
+- MCP-warn layer: `load_context`/`resume`/`task_status` append gate warnings
+  for clients without hook support.
+- Still open for v1.1: events.jsonl compaction/rotation and checkpoint
+  pruning tooling.
+
 ## After v1.0
 
 - List Agentpack in current public MCP directories after the polished

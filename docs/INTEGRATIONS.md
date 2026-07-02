@@ -102,11 +102,14 @@ This writes:
 
 - `CLAUDE.md`
 - `.mcp.json`
+- `.claude/settings.json`
 - `.agentpack/instructions/claude.md`
 
 The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-example-app`, so it does not shadow a global `agentpack` server.
 
-Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp).
+The `.claude/settings.json` merge adds one PreToolUse hook (`agentpack task gate --client claude`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved, and re-running the installer does not duplicate the hook.
+
+Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
 ## Claude Desktop
 
@@ -190,6 +193,22 @@ agentpack checkpoint -m "<summary>" --status "<status>" --next "<next action>"
 ```
 
 Official reference: [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
+
+## Git Hooks
+
+```bash
+agentpack install git-hooks --write
+```
+
+This installs a `pre-commit` hook that runs `agentpack task gate --staged` against the files staged for commit. It is the client-neutral enforcement layer: it works the same for Codex, Claude Code, Cursor, and human commits.
+
+- In the default `warn` mode, findings are printed and the commit proceeds.
+- With `"gateMode": "block"` in `.agentpack/config.json`, lifecycle and write-scope violations fail the commit (exit code 2); branch drift stays advisory.
+- The hook is skipped silently when `agentpack` is not on `PATH`, and `task gate` exits 0 quietly in repos without `.agentpack/`, so the hook never breaks unrelated workflows.
+
+If a foreign `pre-commit` hook already exists, the installer leaves it untouched and writes `.agentpack/instructions/pre-commit-gate.example.sh` for a manual merge instead.
+
+Clients without a hook surface (Codex today) still get gate findings through MCP: `load_context` and `task_status` responses append a `Gate Warnings` section whenever the current passport has lifecycle or drift findings.
 
 ## Verify
 

@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import type { GitInfo } from "./types.js";
 
 interface GetGitInfoOptions {
@@ -56,6 +57,45 @@ export function getGitInfo(root: string, options: GetGitInfoOptions = {}): GitIn
     diffStat: runGit(root, ["diff", "--shortstat", "--"]),
     diff: options.includeDiff ? runGit(root, ["diff", "--"]) : ""
   };
+}
+
+export interface GitBranchState {
+  available: boolean;
+  branch: string | null;
+  head: string | null;
+}
+
+// Lightweight read for hot paths such as `task gate`; getGitInfo runs several extra git commands.
+export function getGitBranchState(root: string): GitBranchState {
+  const topLevel = runGit(root, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) {
+    return { available: false, branch: null, head: null };
+  }
+  return {
+    available: true,
+    branch: runGit(root, ["branch", "--show-current"]) || "detached",
+    head: runGit(root, ["rev-parse", "--short", "HEAD"]) || null
+  };
+}
+
+export function listStagedFiles(root: string): string[] {
+  const topLevel = runGit(root, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) {
+    return [];
+  }
+  return runGit(root, ["diff", "--cached", "--name-only"])
+    .split("\n")
+    .filter(Boolean)
+    .map((gitPath) => path.relative(root, path.resolve(topLevel, gitPath)))
+    .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+export function getGitHooksPath(root: string): string | null {
+  const hooksPath = runGit(root, ["rev-parse", "--git-path", "hooks"]);
+  if (!hooksPath) {
+    return null;
+  }
+  return path.resolve(root, hooksPath);
 }
 
 function parseAheadBehind(output: string): { ahead: number; behind: number } | null {

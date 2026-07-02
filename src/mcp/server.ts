@@ -18,6 +18,7 @@ import path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { BUDGET_PRESET_NAMES, isBudgetPreset, resolveBudget, type BudgetPreset } from "../core/presets.js";
+import { evaluateGate } from "../core/gate.js";
 import { redactForRoot } from "../core/redaction.js";
 import {
   auditCurrentTask,
@@ -512,7 +513,7 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       ...(preset ? { preset } : {})
     }, 4000);
     const resume = buildResume(root, { budget, query: text(args.query) });
-    return toolText(resume.markdown);
+    return toolText(appendGateWarnings(root, resume.markdown));
   }
 
   if (name === "record_decision") {
@@ -641,7 +642,7 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "task_status") {
-    return toolText(redactForRoot(root, formatCurrentTaskStatus(root)));
+    return toolText(appendGateWarnings(root, redactForRoot(root, formatCurrentTaskStatus(root))));
   }
 
   if (name === "task_role") {
@@ -747,6 +748,21 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   throw new Error(`Unknown tool: ${name}`);
+}
+
+// MCP-warn layer: state-reading tools carry current gate findings so any MCP client sees
+// lifecycle/drift warnings without needing client-specific hooks.
+function appendGateWarnings(root: string, body: string): string {
+  try {
+    const report = evaluateGate(root, {});
+    if (report.findings.length === 0) {
+      return body;
+    }
+    const lines = report.findings.map((finding) => `- [${finding.level}] ${finding.message}`);
+    return `${body}\n\n## Gate Warnings\n${lines.join("\n")}`;
+  } catch {
+    return body;
+  }
 }
 
 function toolText(textValue: string): { content: Array<{ type: "text"; text: string }> } {

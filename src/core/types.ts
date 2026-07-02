@@ -1,9 +1,12 @@
+export type GateMode = "off" | "warn" | "block";
+
 export interface AgentpackConfig {
   schemaVersion: number;
   projectName: string;
   redactions: string[];
   defaultBudget: number;
   includeGitDiff: boolean;
+  gateMode?: GateMode;
 }
 
 export interface AgentpackState {

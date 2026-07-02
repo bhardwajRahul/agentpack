@@ -1,9 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { getGitHooksPath } from "../core/git.js";
 import { getPackPath, readJson } from "../core/store.js";
 
-const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor"] as const;
+const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor", "git-hooks"] as const;
+const GATE_HOOK_MARKER = "# agentpack:gate";
+const CLAUDE_GATE_COMMAND = "agentpack task gate --client claude";
 
 function collaborationModesSection(): string {
   return `Collaboration modes:
@@ -100,6 +103,7 @@ interface InstallFile {
   filePath: string;
   description: string;
   content: string;
+  executable?: boolean;
 }
 
 interface InstallPlan {
@@ -158,14 +162,46 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       files: [
         writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", INSTRUCTIONS),
-        jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer())
+        jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
+        claudeHooksMergePlan(root)
       ],
       notes: [
         "Only project-local files are modified.",
         `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
-        "Claude Code prompts before using project-scoped MCP servers from .mcp.json."
+        "Claude Code prompts before using project-scoped MCP servers from .mcp.json.",
+        "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json."
       ]
     };
+  }
+
+  if (target === "git-hooks") {
+    const hooksPath = getGitHooksPath(root);
+    if (!hooksPath) {
+      throw new Error("install git-hooks requires a git repository");
+    }
+    const preCommitPath = path.join(hooksPath, "pre-commit");
+    const hookScript = preCommitGateScript();
+    const snippetRelativePath = ".agentpack/instructions/pre-commit-gate.example.sh";
+    const files = [
+      writeFilePlan(root, snippetRelativePath, "Write the gate pre-commit snippet for manual review.", hookScript)
+    ];
+    const notes = [
+      "The pre-commit hook runs `agentpack task gate --staged` on the staged files.",
+      "Warn mode (default) prints findings and allows the commit; \"gateMode\": \"block\" in .agentpack/config.json makes violations fail the commit.",
+      "The hook is skipped silently when the agentpack binary is not on PATH."
+    ];
+    const existing = existsSync(preCommitPath) ? readFileSync(preCommitPath, "utf8") : "";
+    if (!existing || existing.includes(GATE_HOOK_MARKER)) {
+      files.push({
+        filePath: preCommitPath,
+        description: "Install the Agentpack gate pre-commit hook.",
+        content: hookScript,
+        executable: true
+      });
+    } else {
+      notes.push(`Existing pre-commit hook detected and left untouched. Append the gate call manually from ${snippetRelativePath}.`);
+    }
+    return { target, files, notes };
   }
 
   if (target === "claude-desktop") {
@@ -228,6 +264,9 @@ function applyPlan(plan: InstallPlan): void {
       }
       writes.push({ filePath: file.filePath, previous });
       writeFileSync(file.filePath, file.content, "utf8");
+      if (file.executable) {
+        chmodSync(file.filePath, 0o755);
+      }
     }
   } catch (error) {
     let rollbackFailed = false;
@@ -410,6 +449,44 @@ function removeTomlTable(existing: string, tableName: string): string {
 
   lines.splice(start, end - start);
   return ensureTrailingNewline(lines.join("\n").trimEnd());
+}
+
+function preCommitGateScript(): string {
+  return [
+    "#!/bin/sh",
+    GATE_HOOK_MARKER,
+    "# Agentpack task gate: checks staged files against the current Task Passport.",
+    "# Warn mode prints findings and allows the commit; block mode fails the commit with exit code 2.",
+    "if command -v agentpack >/dev/null 2>&1; then",
+    "  agentpack task gate --staged",
+    "fi",
+    ""
+  ].join("\n");
+}
+
+function claudeHooksMergePlan(root: string): InstallFile {
+  const filePath = path.join(root, ".claude", "settings.json");
+  const existing = readJson<Record<string, unknown>>(filePath, {});
+  const hooks = isRecord(existing.hooks) ? { ...existing.hooks } : {};
+  const preToolUse = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
+
+  if (!preToolUse.some((entry) => JSON.stringify(entry).includes(CLAUDE_GATE_COMMAND))) {
+    preToolUse.push({
+      matcher: "Edit|Write|MultiEdit|NotebookEdit",
+      hooks: [{ type: "command", command: CLAUDE_GATE_COMMAND }]
+    });
+  }
+
+  const next = {
+    ...existing,
+    hooks: { ...hooks, PreToolUse: preToolUse }
+  };
+
+  return {
+    filePath,
+    description: "Add the Agentpack gate PreToolUse hook to project Claude Code settings.",
+    content: `${JSON.stringify(next, null, 2)}\n`
+  };
 }
 
 function codexTomlSnippet(serverName: string): string {
