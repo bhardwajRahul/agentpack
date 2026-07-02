@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync
@@ -2445,6 +2447,46 @@ test("previews and writes project-local MCP client install files", () => {
   assert.doesNotMatch(codexSnippet, /cwd =/);
 });
 
+test("writes ledger files and directories with owner-only permissions", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-perms-test-"));
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Permission check task"]);
+  run(dir, ["record", "decision", "permission check decision"]);
+  run(dir, ["run", "echo permission-check-output"]);
+  run(dir, ["checkpoint", "-m", "permission check checkpoint"]);
+
+  const packPath = path.join(dir, ".agentpack");
+  for (const entry of walkEntries(packPath)) {
+    const mode = statSync(entry).mode & 0o777;
+    assert.equal(mode & 0o077, 0, `expected owner-only permissions for ${entry}, got ${mode.toString(8)}`);
+  }
+});
+
+test("rolls back client install writes when a later file write fails", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-rollback-test-"));
+  run(dir, ["init"]);
+
+  const claudeMdPath = path.join(dir, "CLAUDE.md");
+  const mcpJsonPath = path.join(dir, ".mcp.json");
+  writeFileSync(claudeMdPath, "# Existing project instructions\n", "utf8");
+  writeFileSync(mcpJsonPath, "{}\n", "utf8");
+  chmodSync(mcpJsonPath, 0o444);
+
+  try {
+    const error = runExpectError(dir, ["install", "claude", "--write"]);
+    assert.match(error, /Install failed; already-written files were rolled back/);
+    assert.equal(readFileSync(claudeMdPath, "utf8"), "# Existing project instructions\n");
+    assert.equal(existsSync(path.join(dir, ".agentpack", "instructions", "claude.md")), false);
+    assert.equal(readFileSync(mcpJsonPath, "utf8"), "{}\n");
+  } finally {
+    chmodSync(mcpJsonPath, 0o644);
+  }
+
+  const install = run(dir, ["install", "claude", "--write"]);
+  assert.match(install, /Installed Agentpack claude integration/);
+  assert.match(readFileSync(claudeMdPath, "utf8"), /agentpack:start/);
+});
+
 test("parks current task over MCP so a new task can start", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-park-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('park')\n", "utf8");
@@ -2942,6 +2984,19 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8");
   assert.match(events, /MCP can record decisions through stdio/);
 });
+
+function walkEntries(rootPath: string): string[] {
+  const entries: string[] = [rootPath];
+  for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
+    const entryPath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      entries.push(...walkEntries(entryPath));
+    } else {
+      entries.push(entryPath);
+    }
+  }
+  return entries;
+}
 
 function run(cwd: string, args: string[]): string {
   return execFileSync(process.execPath, [cli, ...args], {

@@ -5,6 +5,9 @@ import type { AgentpackEvent, AgentpackState, SourcesFile } from "./types.js";
 
 export const PACK_DIR = ".agentpack";
 export const SCHEMA_VERSION = 1;
+// Ledger content can carry command output and code snippets; keep it owner-only on multi-user machines.
+export const PACK_FILE_MODE = 0o600;
+export const PACK_DIR_MODE = 0o700;
 export const AGENTPACK_IGNORE_PATTERNS = [
   `${PACK_DIR}/`,
   ".codex",
@@ -48,9 +51,9 @@ export function initPack(root: string): string {
   const packPath = path.join(root, PACK_DIR);
   const now = new Date().toISOString();
 
-  mkdirSync(packPath, { recursive: true });
+  mkdirSync(packPath, { recursive: true, mode: PACK_DIR_MODE });
   for (const dir of ["checkpoints", "evidence", "instructions", "exports", "cache"]) {
-    mkdirSync(path.join(packPath, dir), { recursive: true });
+    mkdirSync(path.join(packPath, dir), { recursive: true, mode: PACK_DIR_MODE });
   }
 
   writeJsonIfMissing(path.join(packPath, "config.json"), {
@@ -82,7 +85,7 @@ export function initPack(root: string): string {
   });
 
   if (!existsSync(path.join(packPath, "events.jsonl"))) {
-    writeFileSync(path.join(packPath, "events.jsonl"), "", "utf8");
+    writeFileSync(path.join(packPath, "events.jsonl"), "", { encoding: "utf8", mode: PACK_FILE_MODE });
   }
 
   ensurePackIgnored(root);
@@ -171,7 +174,8 @@ export function appendEvent(root: string, type: string, payload: Record<string, 
   withPackWriteLock(root, () => {
     writeFileSync(getPackPath(root, "events.jsonl"), `${JSON.stringify(event)}\n`, {
       encoding: "utf8",
-      flag: "a"
+      flag: "a",
+      mode: PACK_FILE_MODE
     });
   });
 
@@ -241,8 +245,8 @@ export function writePackTransaction(root: string, files: PackTransactionFile[])
         const stagedPath = path.join(transactionRoot, "staged", String(stagedFiles.length));
         const targetPath = getPackPath(root, relativePath);
         assertPackTransactionDirectoryChain(packRoot, path.dirname(targetPath));
-        mkdirSync(path.dirname(stagedPath), { recursive: true });
-        writeFileSync(stagedPath, file.content, "utf8");
+        mkdirSync(path.dirname(stagedPath), { recursive: true, mode: PACK_DIR_MODE });
+        writeFileSync(stagedPath, file.content, { encoding: "utf8", mode: PACK_FILE_MODE });
         stagedFiles.push({ ...file, relativePath, stagedPath, targetPath });
       }
 
@@ -258,7 +262,7 @@ export function writePackTransaction(root: string, files: PackTransactionFile[])
             throw new Error(`Pack transaction refuses to overwrite existing file: ${file.relativePath}`);
           }
           const backupPath = path.join(transactionRoot, "backup", String(index));
-          mkdirSync(path.dirname(backupPath), { recursive: true });
+          mkdirSync(path.dirname(backupPath), { recursive: true, mode: PACK_DIR_MODE });
           renameSync(file.targetPath, backupPath);
           backups.push({ targetPath: file.targetPath, backupPath });
         }
@@ -349,7 +353,7 @@ function ensureTransactionDirectory(directory: string, packRoot: string, created
   if (parent !== directory && parent !== path.dirname(packRoot)) {
     ensureTransactionDirectory(parent, packRoot, createdDirectories);
   }
-  mkdirSync(directory);
+  mkdirSync(directory, { mode: PACK_DIR_MODE });
   createdDirectories.push(directory);
 }
 
@@ -361,7 +365,7 @@ function writeTextFileAtomic(filePath: string, content: string): void {
   );
 
   try {
-    writeFileSync(tempPath, content, "utf8");
+    writeFileSync(tempPath, content, { encoding: "utf8", mode: PACK_FILE_MODE });
     renameSync(tempPath, filePath);
   } catch (error) {
     try {

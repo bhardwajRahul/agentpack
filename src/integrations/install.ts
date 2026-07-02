@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPackPath, readJson } from "../core/store.js";
@@ -212,12 +212,67 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
 }
 
 function applyPlan(plan: InstallPlan): void {
-  for (const file of plan.files) {
-    mkdirSync(path.dirname(file.filePath), { recursive: true });
-    if (existsSync(file.filePath) && readFileSync(file.filePath, "utf8") === file.content) {
-      continue;
+  const writes: Array<{ filePath: string; previous: string | null }> = [];
+  const createdDirectories: Array<{ deepest: string; shallowest: string }> = [];
+
+  try {
+    for (const file of plan.files) {
+      const directory = path.dirname(file.filePath);
+      const firstCreated = mkdirSync(directory, { recursive: true });
+      if (firstCreated) {
+        createdDirectories.push({ deepest: directory, shallowest: firstCreated });
+      }
+      const previous = existsSync(file.filePath) ? readFileSync(file.filePath, "utf8") : null;
+      if (previous === file.content) {
+        continue;
+      }
+      writes.push({ filePath: file.filePath, previous });
+      writeFileSync(file.filePath, file.content, "utf8");
     }
-    writeFileSync(file.filePath, file.content, "utf8");
+  } catch (error) {
+    let rollbackFailed = false;
+    for (const write of [...writes].reverse()) {
+      try {
+        const current = existsSync(write.filePath) ? readFileSync(write.filePath, "utf8") : null;
+        if (current === write.previous) {
+          continue;
+        }
+        if (write.previous === null) {
+          unlinkSync(write.filePath);
+        } else {
+          writeFileSync(write.filePath, write.previous, "utf8");
+        }
+      } catch {
+        rollbackFailed = true;
+      }
+    }
+    for (const created of [...createdDirectories].reverse()) {
+      removeEmptyDirectoryChain(created.deepest, created.shallowest);
+    }
+    if (rollbackFailed) {
+      throw new Error(`Install failed and rollback was incomplete; review the files listed in the plan. Original error: ${String(error)}`);
+    }
+    throw new Error(`Install failed; already-written files were rolled back. Original error: ${String(error)}`);
+  }
+}
+
+function removeEmptyDirectoryChain(deepest: string, shallowest: string): void {
+  let current = deepest;
+  while (true) {
+    try {
+      rmdirSync(current);
+    } catch {
+      // Directory is missing or holds pre-existing/user files; leave it intact.
+      return;
+    }
+    if (current === shallowest) {
+      return;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      return;
+    }
+    current = parent;
   }
 }
 

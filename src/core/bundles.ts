@@ -5,7 +5,7 @@ import { getGitInfo } from "./git.js";
 import { getFileRecord, normalizePath, sha256, sha256File } from "./hash.js";
 import { createId } from "./ids.js";
 import { redactForRoot } from "./redaction.js";
-import { getPackPath, readEvents, readJson, readSources, SCHEMA_VERSION, withPackWriteLock, writePackTransaction } from "./store.js";
+import { getPackPath, PACK_FILE_MODE, readEvents, readJson, readSources, SCHEMA_VERSION, withPackWriteLock, writePackTransaction } from "./store.js";
 import {
   formatTaskPassportHandoff,
   getCurrentPassport,
@@ -99,7 +99,7 @@ export function exportTaskBundle(root: string, options: BundleExportOptions): Bu
 
   mkdirSync(path.dirname(outputPath), { recursive: true });
   try {
-    writeFileSync(outputPath, content, { encoding: "utf8", flag: "wx" });
+    writeFileSync(outputPath, content, { encoding: "utf8", flag: "wx", mode: PACK_FILE_MODE });
   } catch (error) {
     if (isNodeError(error) && error.code === "EEXIST") {
       throw new Error(`Refusing to overwrite existing bundle output: ${options.outputPath}`);

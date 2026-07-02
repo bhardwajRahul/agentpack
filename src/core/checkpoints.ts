@@ -6,6 +6,8 @@ import {
   appendEvent,
   getPackPath,
   listCheckpoints,
+  PACK_DIR_MODE,
+  PACK_FILE_MODE,
   readJson,
   readState,
   withPackWriteLock,
@@ -38,7 +40,7 @@ export function createCheckpoint(root: string, options: CheckpointOptions = {}) 
     const checkpointPath = getPackPath(root, "checkpoints", id);
     const summary = redactForRoot(root, options.summary || "Checkpoint created.");
 
-    mkdirSync(checkpointPath, { recursive: true });
+    mkdirSync(checkpointPath, { recursive: true, mode: PACK_DIR_MODE });
 
     if (options.status) {
       state.currentStatus = redactForRoot(root, options.status);
@@ -66,14 +68,14 @@ export function createCheckpoint(root: string, options: CheckpointOptions = {}) 
     };
 
     writeJson(path.join(checkpointPath, "checkpoint.json"), manifest);
-    writeFileSync(path.join(checkpointPath, "git-status.txt"), redactForRoot(root, git.status || ""), "utf8");
+    writeFileSync(path.join(checkpointPath, "git-status.txt"), redactForRoot(root, git.status || ""), { encoding: "utf8", mode: PACK_FILE_MODE });
 
     if (config.includeGitDiff !== false) {
-      writeFileSync(path.join(checkpointPath, "diff.patch"), redactForRoot(root, git.diff || ""), "utf8");
+      writeFileSync(path.join(checkpointPath, "diff.patch"), redactForRoot(root, git.diff || ""), { encoding: "utf8", mode: PACK_FILE_MODE });
     }
 
     const resume = buildResume(root, { budget: config.defaultBudget || 4000 });
-    writeFileSync(path.join(checkpointPath, "resume.md"), resume.markdown, "utf8");
+    writeFileSync(path.join(checkpointPath, "resume.md"), resume.markdown, { encoding: "utf8", mode: PACK_FILE_MODE });
 
     appendEvent(root, "checkpoint", {
       checkpointId: id,

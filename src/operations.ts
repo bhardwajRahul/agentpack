@@ -7,6 +7,8 @@ import {
   appendEvent,
   getPackPath,
   listCheckpoints,
+  PACK_DIR_MODE,
+  PACK_FILE_MODE,
   readEvents,
   readSources,
   withPackWriteLock,
@@ -187,8 +189,8 @@ export function addEvidence(root: string, options: EvidenceOptions = {}): Agentp
   const absolutePath = getPackPath(root, evidencePath);
   const exitCode = options.exitCode === undefined || options.exitCode === null ? null : Number(options.exitCode);
 
-  mkdirSync(path.dirname(absolutePath), { recursive: true });
-  writeFileSync(absolutePath, content, "utf8");
+  mkdirSync(path.dirname(absolutePath), { recursive: true, mode: PACK_DIR_MODE });
+  writeFileSync(absolutePath, content, { encoding: "utf8", mode: PACK_FILE_MODE });
 
   return appendEvent(root, "evidence", {
     kind,

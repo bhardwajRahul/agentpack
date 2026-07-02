@@ -5,6 +5,8 @@ import { normalizePath } from "./hash.js";
 import { createId } from "./ids.js";
 import {
   getPackPath,
+  PACK_DIR_MODE,
+  PACK_FILE_MODE,
   readJson,
   SCHEMA_VERSION,
   withPackWriteLock,
@@ -858,7 +860,7 @@ function createTaskId(title: string): string {
 }
 
 function ensureTasksDir(root: string): void {
-  mkdirSync(getPackPath(root, "tasks"), { recursive: true });
+  mkdirSync(getPackPath(root, "tasks"), { recursive: true, mode: PACK_DIR_MODE });
 }
 
 function listTaskIds(root: string): string[] {
@@ -895,16 +897,16 @@ function readCurrentTaskId(root: string): string | null {
 
 function writeCurrentTaskId(root: string, taskId: string): void {
   ensureTasksDir(root);
-  writeFileSync(currentTaskPath(root), `${taskId}\n`, "utf8");
+  writeFileSync(currentTaskPath(root), `${taskId}\n`, { encoding: "utf8", mode: PACK_FILE_MODE });
 }
 
 function writePassport(root: string, passport: TaskPassport): void {
   const taskPath = getPackPath(root, "tasks", passport.id);
-  mkdirSync(path.join(taskPath, "checkpoints"), { recursive: true });
-  mkdirSync(path.join(taskPath, "evidence"), { recursive: true });
-  mkdirSync(path.join(taskPath, "exports"), { recursive: true });
+  mkdirSync(path.join(taskPath, "checkpoints"), { recursive: true, mode: PACK_DIR_MODE });
+  mkdirSync(path.join(taskPath, "evidence"), { recursive: true, mode: PACK_DIR_MODE });
+  mkdirSync(path.join(taskPath, "exports"), { recursive: true, mode: PACK_DIR_MODE });
   if (!existsSync(taskEventsPath(root, passport.id))) {
-    writeFileSync(taskEventsPath(root, passport.id), "", "utf8");
+    writeFileSync(taskEventsPath(root, passport.id), "", { encoding: "utf8", mode: PACK_FILE_MODE });
   }
   writeJson(passportPath(root, passport.id), passport);
 }
@@ -918,7 +920,8 @@ function appendTaskEvent(root: string, taskId: string, type: string, payload: Re
   };
   writeFileSync(taskEventsPath(root, taskId), `${JSON.stringify(event)}\n`, {
     encoding: "utf8",
-    flag: "a"
+    flag: "a",
+    mode: PACK_FILE_MODE
   });
   return event;
 }

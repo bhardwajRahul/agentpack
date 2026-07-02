@@ -52,7 +52,17 @@ The full release flow is documented in [docs/RELEASING.md](docs/RELEASING.md).
 
 Agentpack redacts common secret-looking values and configured environment variable values from generated context and key local records such as source summaries, evidence, checkpoints, replay output, and MCP context responses.
 
-Redaction is best-effort, not a guarantee. Users should treat `.agentpack/` as project-sensitive data and review exported handoff files before sharing them.
+Redaction is best-effort, not a guarantee. Know its limits:
+
+- The built-in pattern catches `key: value`-style assignments whose key ends with `api_key`, `api-key`, `apikey`, `token`, `secret`, or `password` right before the `:` or `=` separator (case-insensitive). `DATABASE_PASSWORD=...` is caught; `AWS_SECRET_ACCESS_KEY=...` is not, because `secret` is not immediately followed by the separator.
+- Environment variable values are redacted only for the names listed in `config.json` `redactions`. `agentpack init` seeds `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, and `NPM_TOKEN`; add your own names (for example `DATABASE_URL`, `SLACK_BOT_TOKEN`, cloud provider keys) per repo.
+- Secrets with other key names, multiline secrets (private keys, certificates), and secrets embedded in structured output can pass through unredacted.
+
+Users should treat `.agentpack/` as project-sensitive data, avoid pasting raw secrets into summaries or evidence, and review exported handoff files and bundles before sharing them.
+
+## Local File Permissions
+
+Files written inside `.agentpack/` (state, sources, events, task passports, evidence, checkpoints) and exported bundles are created with owner-only permissions (`0600` for files, `0700` for directories). Ledgers initialized by older versions keep their original directory permissions; on shared machines, tighten them with `chmod -R go-rwx .agentpack` if needed. Generated client integration files (`.mcp.json`, `AGENTS.md`, `CLAUDE.md`, `.cursor/`, `.codex/`) are project configuration and keep default permissions.
 
 ## Reporting a vulnerability
 
