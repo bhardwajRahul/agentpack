@@ -1,0 +1,101 @@
+<svg viewBox="0 0 960 480" xmlns="http://www.w3.org/2000/svg" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 9 5 L 0 9 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="1" y="1" width="958" height="478" rx="14" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+
+  <!-- ===== left: session ends ===== -->
+  <rect x="36" y="120" width="232" height="200" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="152" y="152" text-anchor="middle" font-size="16" font-weight="700" fill="#0f172a">Session ends</text>
+
+  <!-- agent glyph -->
+  <g transform="translate(132,168)">
+    <line x1="20" y1="0" x2="20" y2="-6" stroke="#3b82f6" stroke-width="2"/>
+    <circle cx="20" cy="-8" r="3" fill="#3b82f6"/>
+    <rect x="0" y="0" width="40" height="32" rx="9" fill="#3b82f6"/>
+    <circle cx="13" cy="14" r="4" fill="#ffffff"/>
+    <circle cx="27" cy="14" r="4" fill="#ffffff"/>
+    <path d="M 12 23 Q 20 28 28 23" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="152" y="222" text-anchor="middle" font-size="12" fill="#334155">a coding agent at work</text>
+
+  <!-- fading context lines -->
+  <line x1="76" y1="240" x2="228" y2="240" stroke="#94a3b8" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+  <line x1="76" y1="254" x2="204" y2="254" stroke="#94a3b8" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  <line x1="76" y1="268" x2="180" y2="268" stroke="#94a3b8" stroke-width="4" stroke-linecap="round" opacity="0.2"/>
+  <text x="152" y="296" text-anchor="middle" font-size="12" fill="#64748b">context is compacted,</text>
+  <text x="152" y="311" text-anchor="middle" font-size="12" fill="#64748b">the chat closes, the day ends</text>
+
+  <!-- arrow left -> center -->
+  <line x1="268" y1="208" x2="360" y2="208" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="314" y="178" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">records</text>
+  <text x="314" y="193" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">as it works</text>
+
+  <!-- ===== center: the ledger ===== -->
+  <rect x="364" y="96" width="248" height="248" rx="12" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+  <text x="488" y="130" text-anchor="middle" font-size="17" font-weight="700" fill="#78350f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">.agentpack/</text>
+  <text x="488" y="149" text-anchor="middle" font-size="12" fill="#92400e">the task ledger in your repo</text>
+
+  <rect x="384" y="164" width="208" height="38" rx="7" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="488" y="180" text-anchor="middle" font-size="12" font-weight="700" fill="#0f172a">Task Passport</text>
+  <text x="488" y="195" text-anchor="middle" font-size="11" fill="#475569">goal &#183; status &#183; next actions</text>
+
+  <rect x="384" y="210" width="208" height="26" rx="7" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="488" y="227" text-anchor="middle" font-size="12" fill="#334155">decisions &amp; dead ends</text>
+
+  <rect x="384" y="244" width="208" height="26" rx="7" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="488" y="261" text-anchor="middle" font-size="12" fill="#334155">evidence &amp; checkpoints</text>
+
+  <rect x="384" y="278" width="208" height="26" rx="7" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="488" y="295" text-anchor="middle" font-size="12" fill="#334155">source cache with file hashes</text>
+
+  <text x="488" y="326" text-anchor="middle" font-size="11" fill="#92400e">plain reviewable files &#183; local-first</text>
+
+  <!-- fan arrows center -> right -->
+  <path d="M 612 180 C 660 180, 660 112, 696 112" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M 612 220 C 656 220, 656 232, 696 232" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <path d="M 612 260 C 660 260, 660 352, 696 352" fill="none" stroke="#64748b" stroke-width="2.5" marker-end="url(#arrow)"/>
+  <text x="640" y="76" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">any next</text>
+  <text x="640" y="91" text-anchor="middle" font-size="12" font-weight="600" fill="#475569">session continues</text>
+
+  <!-- ===== right: continuations ===== -->
+  <rect x="700" y="70" width="224" height="84" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <g transform="translate(716,86)">
+    <rect x="0" y="0" width="26" height="21" rx="6" fill="#22c55e"/>
+    <circle cx="8.5" cy="9" r="2.6" fill="#ffffff"/>
+    <circle cx="17.5" cy="9" r="2.6" fill="#ffffff"/>
+    <path d="M 8 15 Q 13 18.5 18 15" stroke="#ffffff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="754" y="102" font-size="13.5" font-weight="700" fill="#0f172a">New session</text>
+  <text x="716" y="126" font-size="11.5" fill="#475569">same agent &#8212; after compaction,</text>
+  <text x="716" y="141" font-size="11.5" fill="#475569">a fresh chat, or a restart</text>
+
+  <rect x="700" y="190" width="224" height="84" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <g transform="translate(716,206)">
+    <rect x="0" y="0" width="26" height="21" rx="6" fill="#8b5cf6"/>
+    <circle cx="8.5" cy="9" r="2.6" fill="#ffffff"/>
+    <circle cx="17.5" cy="9" r="2.6" fill="#ffffff"/>
+    <path d="M 8 15 Q 13 18.5 18 15" stroke="#ffffff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="754" y="222" font-size="13.5" font-weight="700" fill="#0f172a">Another client</text>
+  <text x="716" y="246" font-size="11.5" fill="#475569">Claude Code &#8644; Cursor &#8644; Codex &#8212;</text>
+  <text x="716" y="261" font-size="11.5" fill="#475569">any MCP-connected agent</text>
+
+  <rect x="700" y="310" width="224" height="84" rx="12" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
+  <g transform="translate(716,326)">
+    <rect x="0" y="0" width="26" height="21" rx="6" fill="#f43f5e"/>
+    <circle cx="8.5" cy="9" r="2.6" fill="#ffffff"/>
+    <circle cx="17.5" cy="9" r="2.6" fill="#ffffff"/>
+    <path d="M 8 15 Q 13 18.5 18 15" stroke="#ffffff" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="754" y="342" font-size="13.5" font-weight="700" fill="#0f172a">Later</text>
+  <text x="716" y="366" font-size="11.5" fill="#475569">next week, another worktree,</text>
+  <text x="716" y="381" font-size="11.5" fill="#475569">or a teammate&#8217;s handoff</text>
+
+  <!-- caption -->
+  <text x="480" y="442" text-anchor="middle" font-size="13" fill="#64748b">The work continues from reviewed task state &#8212; not from scratch, not from chat history.</text>
+</svg>
