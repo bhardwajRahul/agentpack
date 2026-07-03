@@ -2758,6 +2758,74 @@ test("ledger compact refuses traversal and symlink evidence paths", { skip: proc
   assert.ok(existsSync(path.join(evidenceDir, "ev_link.txt")), "symlinked evidence entries must be left untouched");
 });
 
+test("ledger compact fails closed when a task passport hides its referenced evidence", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-passport-test-"));
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Broken passport task"]);
+  run(dir, ["evidence", "add", "--kind", "note", "--content", "must survive a broken passport"]);
+  run(dir, ["task", "park"]);
+
+  const tasksDir = path.join(dir, ".agentpack", "tasks");
+  const taskId = readdirSync(tasksDir).find((name) => name.startsWith("task_")) || "";
+  const passportPath = path.join(tasksDir, taskId, "passport.json");
+  const passport = JSON.parse(readFileSync(passportPath, "utf8")) as Record<string, unknown>;
+  delete passport.verification;
+  writeFileSync(passportPath, JSON.stringify(passport), "utf8");
+
+  const error = runExpectError(dir, ["ledger", "compact", "--write", "--purge", "--evidence-age-days", "0"]);
+  assert.match(error, /cannot determine its referenced evidence/);
+  assert.equal(readdirSync(path.join(dir, ".agentpack", "evidence")).length, 1, "evidence must stay when a passport cannot be read");
+
+  assert.match(run(dir, ["ledger", "status"]), /Evidence/, "ledger status must stay best-effort with a broken passport");
+});
+
+test("ledger compact keeps aliased referenced evidence and evidence with malformed timestamps", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-alias-test-"));
+  run(dir, ["init"]);
+  run(dir, ["evidence", "add", "--kind", "note", "--content", "referenced payload"]);
+
+  const evidenceDir = path.join(dir, ".agentpack", "evidence");
+  const referencedFile = readdirSync(evidenceDir)[0] || "";
+  assert.ok(referencedFile, "evidence add must create a file");
+
+  const eventsPath = path.join(dir, ".agentpack", "events.jsonl");
+  const evidenceEvent = readFileSync(eventsPath, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { id: string; type: string })
+    .find((event) => event.type === "evidence");
+  assert.ok(evidenceEvent, "evidence add must record an event");
+
+  writeFileSync(path.join(evidenceDir, "ev_unknown_age.txt"), "unknown age\n", "utf8");
+
+  const crafted = [
+    { id: "evt_ref", ts: "2020-01-01T00:00:00.000Z", type: "verification", evidence: [evidenceEvent.id] },
+    { id: "evt_alias", ts: "2020-01-01T00:00:01.000Z", type: "evidence", kind: "note", path: `evidence/${referencedFile}` },
+    { id: "evt_bad_ts", ts: "not-a-date", type: "evidence", kind: "note", path: "evidence/ev_unknown_age.txt" }
+  ].map((event) => JSON.stringify(event)).join("\n");
+  writeFileSync(eventsPath, `${readFileSync(eventsPath, "utf8")}${crafted}\n`, "utf8");
+
+  const plan = run(dir, ["ledger", "compact", "--evidence-age-days", "0"]);
+  assert.match(plan, /archive 0 unreferenced file\(s\)/, "aliased and unknown-age evidence must not enter the plan");
+
+  run(dir, ["ledger", "compact", "--write", "--purge", "--evidence-age-days", "0"]);
+  assert.ok(existsSync(path.join(evidenceDir, referencedFile)), "an unreferenced event aliasing a referenced file's path must not purge it");
+  assert.ok(existsSync(path.join(evidenceDir, "ev_unknown_age.txt")), "evidence with a malformed timestamp must survive purge");
+});
+
+test("ledger compact rejects invalid numeric options", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-options-test-"));
+  run(dir, ["init"]);
+  assert.match(
+    runExpectError(dir, ["ledger", "compact", "--keep-checkpoints", "abc"]),
+    /--keep-checkpoints requires a non-negative number/
+  );
+  assert.match(
+    runExpectError(dir, ["ledger", "compact", "--evidence-age-days", "3O"]),
+    /--evidence-age-days requires a non-negative number/
+  );
+});
+
 test("installs the git-hooks gate for a pack in a repository subdirectory", { skip: process.platform === "win32" }, () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), "agentpack-subdir-hooks-test-"));
   runGit(repo, ["init"]);

@@ -977,10 +977,10 @@ function ledgerCommand(root: string, rest: string[]): void {
     const parsed = parseArgs(rest.slice(1));
     const options: CompactOptions = { purge: Boolean(parsed.options.purge) };
     if (optionValue(parsed.options, "keep-checkpoints")) {
-      options.keepCheckpoints = numberOption(parsed.options["keep-checkpoints"]);
+      options.keepCheckpoints = countOption(parsed.options["keep-checkpoints"], "--keep-checkpoints");
     }
     if (optionValue(parsed.options, "evidence-age-days")) {
-      options.evidenceAgeDays = numberOption(parsed.options["evidence-age-days"]);
+      options.evidenceAgeDays = countOption(parsed.options["evidence-age-days"], "--evidence-age-days");
     }
     if (parsed.options.write) {
       const result = applyCompactPlan(root, options);
@@ -1212,6 +1212,15 @@ function numberOption(value: ArgValue | undefined): number {
   }
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+// For destructive knobs a typo must not silently become 0, the most aggressive setting.
+function countOption(value: ArgValue | undefined, flag: string): number {
+  const number = typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  if (!Number.isFinite(number) || number < 0) {
+    throw new Error(`${flag} requires a non-negative number`);
+  }
+  return number;
 }
 
 function installDryRun(options: Record<string, ArgValue>): boolean {

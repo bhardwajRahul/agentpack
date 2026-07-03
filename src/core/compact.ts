@@ -67,19 +67,35 @@ export function buildCompactPlan(root: string, options: CompactOptions = {}): Co
 
   const archivableEventIds = supersededSourceEventIds(root, events);
 
-  const referencedEvidence = referencedEvidenceIds(root, events);
+  const referencedEvidence = referencedEvidenceIds(root, events, { strict: true });
+  // Referenced-ness is tracked by event id, but removal is keyed by file name; a crafted
+  // second event aliasing a referenced file's path must not make that file removable.
+  const referencedFileNames = new Set<string>();
+  for (const event of events) {
+    if (event.type !== "evidence" || !referencedEvidence.has(event.id)) {
+      continue;
+    }
+    const fileName = safeEvidenceFileName(event.path);
+    if (fileName) {
+      referencedFileNames.add(fileName);
+    }
+  }
+
   const evidenceCutoff = Date.now() - evidenceAgeDays * 24 * 60 * 60 * 1000;
   const evidenceToArchive: string[] = [];
+  const plannedFileNames = new Set<string>();
   let evidenceBytes = 0;
   for (const event of events) {
     if (event.type !== "evidence" || referencedEvidence.has(event.id)) {
       continue;
     }
-    if (Date.parse(event.ts) >= evidenceCutoff) {
+    const eventTime = Date.parse(event.ts);
+    // A malformed timestamp means unknown age, and unknown is never old enough to remove.
+    if (!Number.isFinite(eventTime) || eventTime >= evidenceCutoff) {
       continue;
     }
     const fileName = safeEvidenceFileName(event.path);
-    if (!fileName) {
+    if (!fileName || referencedFileNames.has(fileName) || plannedFileNames.has(fileName)) {
       continue;
     }
     const filePath = getPackPath(root, "evidence", fileName);
@@ -94,6 +110,7 @@ export function buildCompactPlan(root: string, options: CompactOptions = {}): Co
     if (!stats.isFile()) {
       continue;
     }
+    plannedFileNames.add(fileName);
     evidenceToArchive.push(fileName);
     evidenceBytes += stats.size;
   }
@@ -232,7 +249,11 @@ export function countFullCheckpoints(root: string): number {
   ).length;
 }
 
-export function referencedEvidenceIds(root: string, events: AgentpackEvent[]): Set<string> {
+export function referencedEvidenceIds(
+  root: string,
+  events: AgentpackEvent[],
+  options: { strict?: boolean } = {}
+): Set<string> {
   const ids = new Set<string>();
   for (const event of events) {
     if (Array.isArray(event.evidence)) {
@@ -250,7 +271,14 @@ export function referencedEvidenceIds(root: string, events: AgentpackEvent[]): S
         ids.add(evidenceId);
       }
     } catch {
-      // Compaction must not fail on one unreadable passport; its evidence simply stays referenced-unknown and untouched.
+      // An unreadable passport hides which evidence it references. Compaction (strict) must
+      // fail closed rather than treat that evidence as unreferenced and removable; diagnostic
+      // callers like ledger status stay best-effort.
+      if (options.strict) {
+        throw new Error(
+          `Task passport ${task.id} is unreadable; cannot determine its referenced evidence. Fix or remove the passport before compacting.`
+        );
+      }
     }
   }
   return ids;
