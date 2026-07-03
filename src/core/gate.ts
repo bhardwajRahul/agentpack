@@ -8,7 +8,15 @@ import type { AgentpackConfig, GateMode, TaskStatus } from "./types.js";
 export type GateDecision = "allow" | "warn" | "block";
 
 export interface GateFinding {
-  code: "no-active-task" | "task-not-active" | "out-of-scope" | "branch-drift" | "passport-unreadable";
+  code:
+    | "no-active-task"
+    | "task-not-active"
+    | "out-of-scope"
+    | "branch-drift"
+    | "passport-unreadable"
+    | "invalid-gate-mode"
+    | "no-write-scope"
+    | "outside-root";
   level: "warn" | "block";
   message: string;
 }
@@ -27,9 +35,15 @@ export interface GateOptions {
   mode?: GateMode;
 }
 
+const GATE_MODES: readonly GateMode[] = ["off", "warn", "block"];
+
 export function evaluateGate(root: string, options: GateOptions = {}): GateReport {
   const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
-  const mode = options.mode || config.gateMode || "warn";
+  const requestedMode = options.mode || config.gateMode || "warn";
+  const modeValid = GATE_MODES.includes(requestedMode);
+  // An unrecognized mode falls back to warn instead of silently disabling the gate,
+  // and the finding below surfaces the config problem on every run.
+  const mode: GateMode = modeValid ? requestedMode : "warn";
 
   if (mode === "off") {
     return { mode, decision: "allow", taskId: null, taskStatus: null, findings: [] };
@@ -44,18 +58,35 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
   let taskId: string | null = null;
   let taskStatus: TaskStatus | null = null;
 
-  let passport: ReturnType<typeof getCurrentPassport> = null;
-  try {
-    passport = getCurrentPassport(root);
-  } catch (error) {
+  if (!modeValid) {
     findings.push({
-      code: "passport-unreadable",
+      code: "invalid-gate-mode",
       level: "warn",
-      message: `Cannot read current task passport: ${error instanceof Error ? error.message : String(error)}`
+      message: `Unknown gateMode "${String(requestedMode)}" in .agentpack/config.json; using "warn". Valid values: off, warn, block.`
     });
   }
 
-  const files = collectGateFiles(root, options);
+  let passport: ReturnType<typeof getCurrentPassport> = null;
+  let passportUnreadable = false;
+  try {
+    passport = getCurrentPassport(root);
+  } catch (error) {
+    passportUnreadable = true;
+    findings.push(violation(
+      "passport-unreadable",
+      `Cannot read current task passport: ${error instanceof Error ? error.message : String(error)}`
+    ));
+  }
+
+  const { files, outsideRoot } = collectGateFiles(root, options);
+
+  if (outsideRoot.length > 0) {
+    findings.push({
+      code: "outside-root",
+      level: "warn",
+      message: `Outside this repository and not checked by the gate: ${outsideRoot.join(", ")}.`
+    });
+  }
 
   if (passport) {
     taskId = passport.id;
@@ -73,6 +104,12 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
           `Outside the task write scope: ${outOfScope.join(", ")}. Extend the scope with \`agentpack task update --write-scope <path>\`, switch tasks, or start the right task.`
         ));
       }
+    } else if (passport.writeScope.length === 0 && mode === "block") {
+      findings.push({
+        code: "no-write-scope",
+        level: "warn",
+        message: `Task ${passport.id} has no write scope, so block mode cannot enforce file scope. Set one with \`agentpack task update --write-scope <path>\`.`
+      });
     }
 
     if (passport.branch) {
@@ -87,7 +124,7 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
         });
       }
     }
-  } else if (findings.length === 0) {
+  } else if (!passportUnreadable) {
     findings.push(violation(
       "no-active-task",
       "No current task passport. Start one with `agentpack task start <title>` before editing code."
@@ -111,8 +148,9 @@ export function formatGateReport(report: GateReport): string {
   return [`Gate: ${report.decision} (mode: ${report.mode})`, ...lines].join("\n");
 }
 
-function collectGateFiles(root: string, options: GateOptions): string[] {
+function collectGateFiles(root: string, options: GateOptions): { files: string[]; outsideRoot: string[] } {
   const files: string[] = [];
+  const outsideRoot: string[] = [];
   if (options.staged) {
     files.push(...listStagedFiles(root));
   }
@@ -120,11 +158,15 @@ function collectGateFiles(root: string, options: GateOptions): string[] {
     const absolutePath = path.resolve(root, file);
     const relativePath = path.relative(root, absolutePath);
     if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+      outsideRoot.push(file);
       continue;
     }
     files.push(relativePath);
   }
-  return [...new Set(files.map((file) => normalizePath(file)))];
+  return {
+    files: [...new Set(files.map((file) => normalizePath(file)))],
+    outsideRoot: [...new Set(outsideRoot)]
+  };
 }
 
 function isInWriteScope(file: string, writeScope: string[]): boolean {

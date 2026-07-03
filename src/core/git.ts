@@ -98,6 +98,18 @@ export function getGitHooksPath(root: string): string | null {
   return path.resolve(root, hooksPath);
 }
 
+export function getGitRepoBounds(root: string): { topLevel: string; commonDir: string } | null {
+  const topLevel = runGit(root, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) {
+    return null;
+  }
+  const commonDir = runGit(root, ["rev-parse", "--git-common-dir"]) || ".git";
+  return {
+    topLevel: path.resolve(root, topLevel),
+    commonDir: path.resolve(root, commonDir)
+  };
+}
+
 function parseAheadBehind(output: string): { ahead: number; behind: number } | null {
   const [aheadRaw, behindRaw] = output.trim().split(/\s+/);
   const ahead = Number.parseInt(aheadRaw || "", 10);

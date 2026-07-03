@@ -2568,6 +2568,51 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   assert.match(status.result.content[0].text, /Current task is parked/);
 });
 
+test("task gate rejects unknown modes, fail-closes on unreadable passports, and reports unchecked paths", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-gate-hardening-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Gate hardening task"]);
+
+  const configPath = path.join(dir, ".agentpack", "config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "blokc" }, null, 2), "utf8");
+  const invalidMode = JSON.parse(run(dir, ["task", "gate", "--file", "src/a.ts", "--json"])) as {
+    mode: string;
+    decision: string;
+    findings: Array<{ code: string; level: string }>;
+  };
+  assert.equal(invalidMode.mode, "warn", "unknown gateMode must fall back to warn, not silently disable");
+  assert.equal(invalidMode.decision, "warn");
+  assert.ok(invalidMode.findings.some((finding) => finding.code === "invalid-gate-mode"));
+
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }, null, 2), "utf8");
+
+  const noScope = JSON.parse(run(dir, ["task", "gate", "--file", "src/a.ts", "--json"])) as {
+    decision: string;
+    findings: Array<{ code: string; level: string }>;
+  };
+  assert.equal(noScope.decision, "warn", "missing write scope must surface, not block");
+  assert.deepEqual(noScope.findings.map((finding) => finding.code), ["no-write-scope"]);
+
+  const outside = JSON.parse(run(dir, ["task", "gate", "--file", "../elsewhere.txt", "--file", "/tmp/elsewhere.txt", "--json"])) as {
+    findings: Array<{ code: string; level: string; message: string }>;
+  };
+  const outsideFinding = outside.findings.find((finding) => finding.code === "outside-root");
+  assert.ok(outsideFinding, "paths outside the repository must produce a finding, not a silent skip");
+  assert.equal(outsideFinding?.level, "warn");
+  assert.match(outsideFinding?.message || "", /\.\.\/elsewhere\.txt/);
+  assert.match(outsideFinding?.message || "", /\/tmp\/elsewhere\.txt/);
+
+  writeFileSync(path.join(dir, ".agentpack", "tasks", "current"), "task_missing_passport\n", "utf8");
+  const unreadable = runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.equal(unreadable.status, 2, "unreadable passport must fail closed in block mode");
+  assert.match(unreadable.stderr, /Cannot read current task passport/);
+});
+
 test("installs the git-hooks gate and preserves foreign pre-commit hooks", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-githooks-test-"));
   runGit(dir, ["init"]);
@@ -2585,11 +2630,24 @@ test("installs the git-hooks gate and preserves foreign pre-commit hooks", { ski
   const hook = readFileSync(preCommitPath, "utf8");
   assert.match(hook, /# agentpack:gate/);
   assert.match(hook, /agentpack task gate --staged/);
+  assert.match(hook, /-eq 2/, "hook must fail the commit only on gate exit code 2");
+  assert.match(hook, /commit allowed \(gate skipped\)/, "hook must degrade gracefully on gate errors");
   assert.ok(statSync(preCommitPath).mode & 0o100, "pre-commit hook must be executable");
   assert.match(readFileSync(path.join(dir, ".agentpack", "instructions", "pre-commit-gate.example.sh"), "utf8"), /task gate --staged/);
 
   const rerun = run(dir, ["install", "git-hooks", "--write"]);
   assert.match(rerun, /UNCHANGED \.git\/hooks\/pre-commit/i);
+
+  chmodSync(preCommitPath, 0o644);
+  run(dir, ["install", "git-hooks", "--write"]);
+  assert.ok(statSync(preCommitPath).mode & 0o100, "reinstall must restore a lost executable bit");
+
+  const externalHooks = mkdtempSync(path.join(os.tmpdir(), "agentpack-external-hooks-"));
+  runGit(dir, ["config", "core.hooksPath", externalHooks]);
+  const external = run(dir, ["install", "git-hooks", "--write"]);
+  assert.match(external, /outside this repository/);
+  assert.equal(existsSync(path.join(externalHooks, "pre-commit")), false, "installer must not write outside the repository");
+  runGit(dir, ["config", "--unset", "core.hooksPath"]);
 
   const foreignHook = "#!/bin/sh\necho custom hook\n";
   writeFileSync(preCommitPath, foreignHook, "utf8");
@@ -2598,13 +2656,49 @@ test("installs the git-hooks gate and preserves foreign pre-commit hooks", { ski
   assert.equal(readFileSync(preCommitPath, "utf8"), foreignHook);
 });
 
+test("installs the git-hooks gate for a pack in a repository subdirectory", { skip: process.platform === "win32" }, () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), "agentpack-subdir-hooks-test-"));
+  runGit(repo, ["init"]);
+  runGit(repo, ["config", "user.name", "Agentpack Test"]);
+  runGit(repo, ["config", "user.email", "test@example.com"]);
+  const packDir = path.join(repo, "services", "ledger");
+  mkdirSync(packDir, { recursive: true });
+  run(packDir, ["init"]);
+
+  const install = run(packDir, ["install", "git-hooks", "--write"]);
+  assert.match(install, /Installed Agentpack git-hooks integration/);
+  assert.match(install, /The hook runs the gate for the Agentpack pack at/);
+
+  const hookPath = path.join(repo, ".git", "hooks", "pre-commit");
+  const hook = readFileSync(hookPath, "utf8");
+  assert.match(hook, /cd "/, "hook must change into the pack directory before running the gate");
+  assert.match(hook, /services\/ledger/);
+  assert.match(hook, /task gate --staged/);
+
+  const secondPack = path.join(repo, "tools", "ops");
+  mkdirSync(secondPack, { recursive: true });
+  run(secondPack, ["init"]);
+  const second = run(secondPack, ["install", "git-hooks", "--write"]);
+  assert.match(second, /gates 2 packs/);
+  const merged = readFileSync(hookPath, "utf8");
+  assert.match(merged, /services\/ledger/, "adding a second pack must keep the first pack gated");
+  assert.match(merged, /tools\/ops/);
+  assert.equal(merged.match(/run_gate "/g)?.length, 2);
+
+  const rerun = run(secondPack, ["install", "git-hooks", "--write"]);
+  assert.match(rerun, /UNCHANGED/i, "re-installing from either pack must be idempotent");
+});
+
 test("claude install registers the gate PreToolUse hook idempotently", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-claude-hooks-test-"));
   run(dir, ["init"]);
   mkdirSync(path.join(dir, ".claude"), { recursive: true });
   writeFileSync(path.join(dir, ".claude", "settings.json"), JSON.stringify({
     env: { KEEP: "1" },
-    hooks: { PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo done" }] }] }
+    hooks: {
+      PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo done" }] }],
+      PreToolUse: [{ matcher: "Edit", hooks: [{ type: "command", command: "agentpack task gate --client claude" }] }]
+    }
   }, null, 2), "utf8");
 
   run(dir, ["install", "claude", "--write"]);
@@ -2616,9 +2710,12 @@ test("claude install registers the gate PreToolUse hook idempotently", () => {
   };
   assert.equal(settings.env.KEEP, "1");
   assert.equal(settings.hooks.PostToolUse.length, 1);
-  assert.equal(settings.hooks.PreToolUse.length, 1);
+  assert.equal(settings.hooks.PreToolUse.length, 1, "old PATH-based gate entries must be upgraded, not duplicated");
   assert.equal(settings.hooks.PreToolUse[0]?.matcher, "Edit|Write|MultiEdit|NotebookEdit");
-  assert.equal(settings.hooks.PreToolUse[0]?.hooks[0]?.command, "agentpack task gate --client claude");
+  const gateCommand = settings.hooks.PreToolUse[0]?.hooks[0]?.command || "";
+  assert.match(gateCommand, /task gate --client claude$/);
+  assert.match(gateCommand, /agentpack\.js/, "hook must launch through the Agentpack entrypoint, not the shell PATH");
+  assert.ok(!gateCommand.startsWith("agentpack "), "hook must not depend on agentpack being on PATH");
 });
 
 test("parks current task over MCP so a new task can start", async () => {

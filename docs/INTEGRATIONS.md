@@ -107,7 +107,7 @@ This writes:
 
 The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-example-app`, so it does not shadow a global `agentpack` server.
 
-The `.claude/settings.json` merge adds one PreToolUse hook (`agentpack task gate --client claude`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved, and re-running the installer does not duplicate the hook.
+The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client claude`, launched through the current Node executable and Agentpack entrypoint rather than the shell `PATH`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved; re-running the installer does not duplicate the hook and upgrades older PATH-based hook entries in place. Because the launcher path pins the Node install, re-run `agentpack install claude --write` after switching Node versions.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
@@ -205,8 +205,11 @@ This installs a `pre-commit` hook that runs `agentpack task gate --staged` again
 - In the default `warn` mode, findings are printed and the commit proceeds.
 - With `"gateMode": "block"` in `.agentpack/config.json`, lifecycle and write-scope violations fail the commit (exit code 2); branch drift stays advisory.
 - The hook is skipped silently when `agentpack` is not on `PATH`, and `task gate` exits 0 quietly in repos without `.agentpack/`, so the hook never breaks unrelated workflows.
+- The hook fails the commit only on gate exit code 2 (block mode). Any other gate error — for example an outdated `agentpack` binary — prints a notice and lets the commit through.
 
-If a foreign `pre-commit` hook already exists, the installer leaves it untouched and writes `.agentpack/instructions/pre-commit-gate.example.sh` for a manual merge instead.
+If a foreign `pre-commit` hook already exists, the installer leaves it untouched and writes `.agentpack/instructions/pre-commit-gate.example.sh` for a manual merge instead. If `core.hooksPath` points outside the repository (for example a shared global hooks directory), the installer refuses to write there and only generates the snippet.
+
+Packs that live in a subdirectory of the repository are supported: the hook is installed at the repository's own hooks directory and changes into the pack directory before running the gate. A repository with several packs gets one shared hook that gates each pack — running the installer from another pack adds it to the list, and a pack whose directory disappears is skipped. The commit is blocked when any gated pack blocks.
 
 Clients without a hook surface (Codex today) still get gate findings through MCP: `load_context` and `task_status` responses append a `Gate Warnings` section whenever the current passport has lifecycle or drift findings.
 

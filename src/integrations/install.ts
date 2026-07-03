@@ -1,12 +1,16 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { getGitHooksPath } from "../core/git.js";
+import { getGitHooksPath, getGitRepoBounds } from "../core/git.js";
 import { getPackPath, readJson } from "../core/store.js";
 
 const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor", "git-hooks"] as const;
 const GATE_HOOK_MARKER = "# agentpack:gate";
-const CLAUDE_GATE_COMMAND = "agentpack task gate --client claude";
+const CLAUDE_GATE_MARKER = "task gate --client claude";
+
+function claudeGateCommand(): string {
+  return `"${process.execPath}" "${agentpackEntrypoint()}" task gate --client claude`;
+}
 
 function collaborationModesSection(): string {
   return `Collaboration modes:
@@ -169,7 +173,8 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
         "Only project-local files are modified.",
         `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json.",
-        "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json."
+        "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json.",
+        "The hook launches the gate through the current Node executable and Agentpack entrypoint, not the shell PATH; re-run this install after switching Node versions."
       ]
     };
   }
@@ -180,22 +185,33 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       throw new Error("install git-hooks requires a git repository");
     }
     const preCommitPath = path.join(hooksPath, "pre-commit");
-    const hookScript = preCommitGateScript();
     const snippetRelativePath = ".agentpack/instructions/pre-commit-gate.example.sh";
     const files = [
-      writeFilePlan(root, snippetRelativePath, "Write the gate pre-commit snippet for manual review.", hookScript)
+      writeFilePlan(root, snippetRelativePath, "Write the gate pre-commit snippet for manual review.", preCommitGateScript([root]))
     ];
     const notes = [
       "The pre-commit hook runs `agentpack task gate --staged` on the staged files.",
       "Warn mode (default) prints findings and allows the commit; \"gateMode\": \"block\" in .agentpack/config.json makes violations fail the commit.",
       "The hook is skipped silently when the agentpack binary is not on PATH."
     ];
+    const bounds = getGitRepoBounds(root);
+    const insideRepo = bounds && (isWithin(bounds.topLevel, hooksPath) || isWithin(bounds.commonDir, hooksPath));
+    if (!insideRepo) {
+      notes.push(`Git hooks path ${hooksPath} is outside this repository (custom core.hooksPath); not writing there. Append the gate call manually from ${snippetRelativePath}.`);
+      return { target, files, notes };
+    }
     const existing = existsSync(preCommitPath) ? readFileSync(preCommitPath, "utf8") : "";
     if (!existing || existing.includes(GATE_HOOK_MARKER)) {
+      const roots = [...new Set([...parseGateHookRoots(existing), root])];
+      if (roots.length > 1) {
+        notes.push(`The hook gates ${roots.length} packs in this repository: ${[...roots].sort().join(", ")}.`);
+      } else if (bounds && bounds.topLevel !== root) {
+        notes.push(`The hook runs the gate for the Agentpack pack at ${root}; installing from another pack in this repository adds it to the same hook.`);
+      }
       files.push({
         filePath: preCommitPath,
         description: "Install the Agentpack gate pre-commit hook.",
-        content: hookScript,
+        content: preCommitGateScript(roots),
         executable: true
       });
     } else {
@@ -260,6 +276,9 @@ function applyPlan(plan: InstallPlan): void {
       }
       const previous = existsSync(file.filePath) ? readFileSync(file.filePath, "utf8") : null;
       if (previous === file.content) {
+        if (file.executable) {
+          chmodSync(file.filePath, 0o755);
+        }
         continue;
       }
       writes.push({ filePath: file.filePath, previous });
@@ -451,17 +470,49 @@ function removeTomlTable(existing: string, tableName: string): string {
   return ensureTrailingNewline(lines.join("\n").trimEnd());
 }
 
-function preCommitGateScript(): string {
+function isWithin(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function preCommitGateScript(roots: string[]): string {
+  // git runs hooks from the repository top level; packs may live in subdirectories,
+  // and one repository can hold several packs — the hook gates each listed pack.
+  const gateLines = [...roots].sort().map((root) => `  run_gate "${root}"`);
   return [
     "#!/bin/sh",
     GATE_HOOK_MARKER,
-    "# Agentpack task gate: checks staged files against the current Task Passport.",
+    "# Agentpack task gate: checks staged files against the current Task Passport of each listed pack.",
     "# Warn mode prints findings and allows the commit; block mode fails the commit with exit code 2.",
+    "overall=0",
+    "run_gate() {",
+    "  if [ -d \"$1\" ]; then",
+    "    (cd \"$1\" && agentpack task gate --staged)",
+    "    gate_status=$?",
+    "    if [ \"$gate_status\" -eq 2 ]; then",
+    "      overall=2",
+    "    elif [ \"$gate_status\" -ne 0 ]; then",
+    "      echo \"agentpack task gate exited with $gate_status for $1; commit allowed (gate skipped)\"",
+    "    fi",
+    "  fi",
+    "}",
     "if command -v agentpack >/dev/null 2>&1; then",
-    "  agentpack task gate --staged",
+    ...gateLines,
     "fi",
+    "exit $overall",
     ""
   ].join("\n");
+}
+
+function parseGateHookRoots(script: string): string[] {
+  const roots: string[] = [];
+  for (const line of script.split("\n")) {
+    const match = line.match(/^\s*run_gate "(.+)"\s*$/);
+    if (match?.[1]) {
+      roots.push(match[1]);
+    }
+  }
+  return roots;
 }
 
 function claudeHooksMergePlan(root: string): InstallFile {
@@ -470,16 +521,15 @@ function claudeHooksMergePlan(root: string): InstallFile {
   const hooks = isRecord(existing.hooks) ? { ...existing.hooks } : {};
   const preToolUse = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
 
-  if (!preToolUse.some((entry) => JSON.stringify(entry).includes(CLAUDE_GATE_COMMAND))) {
-    preToolUse.push({
-      matcher: "Edit|Write|MultiEdit|NotebookEdit",
-      hooks: [{ type: "command", command: CLAUDE_GATE_COMMAND }]
-    });
-  }
+  const withoutGate = preToolUse.filter((entry) => !JSON.stringify(entry).includes(CLAUDE_GATE_MARKER));
+  withoutGate.push({
+    matcher: "Edit|Write|MultiEdit|NotebookEdit",
+    hooks: [{ type: "command", command: claudeGateCommand() }]
+  });
 
   const next = {
     ...existing,
-    hooks: { ...hooks, PreToolUse: preToolUse }
+    hooks: { ...hooks, PreToolUse: withoutGate }
   };
 
   return {
