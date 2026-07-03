@@ -10,9 +10,10 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 | Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | Tested |
 | Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Tested |
 | Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Tested |
-| Web chats | Markdown handoff | No local stdio MCP support in v0; use `agentpack export` | Manual fallback |
+| Git (any client) | Pre-commit gate hook | None; installs `.git/hooks/pre-commit` via `agentpack install git-hooks --write` | Tested |
+| Web chats | Markdown handoff | No local stdio MCP support; use `agentpack export` | Manual fallback |
 
-Coding-agent clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live. Web chats are fallback targets for pasted markdown handoffs; they are not the primary v0 integration surface.
+Coding-agent clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live. Web chats are fallback targets for pasted markdown handoffs; they are not a primary integration surface.
 
 Generated integration files are local developer setup by default. Until Agentpack has an explicit shared/team mode, keep `.agentpack/`, `.codex/`, `.claude/`, `.mcp.json`, `AGENTS.md`, `CLAUDE.md`, and similar client config files out of origin unless a repo deliberately chooses to version its own agent policy.
 
@@ -61,7 +62,7 @@ Force preview explicitly:
 agentpack install claude --dry-run
 ```
 
-Agentpack only writes project-local files and `.agentpack/instructions/*`. These files are intended to be ignored/local for v0. Agentpack does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
+Agentpack only writes project-local files and `.agentpack/instructions/*`. These files are intended to stay ignored/local. Agentpack does not silently edit global files such as `~/.codex/config.toml`, `~/.claude.json`, `~/Library/Application Support/Claude/claude_desktop_config.json`, or `~/.cursor/mcp.json`.
 
 Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-example-app`.
 

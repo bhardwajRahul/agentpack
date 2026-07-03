@@ -50,8 +50,7 @@
     "docs",
     "README.md",
     "SECURITY.md",
-    "LICENSE",
-    "assets/agentpack-logo.jpg"
+    "LICENSE"
   ],
   "publishConfig": {
     "access": "public",
