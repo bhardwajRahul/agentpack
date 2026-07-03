@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
   appendEvent,
@@ -78,16 +78,24 @@ export function buildCompactPlan(root: string, options: CompactOptions = {}): Co
     if (Date.parse(event.ts) >= evidenceCutoff) {
       continue;
     }
-    const relativePath = typeof event.path === "string" ? event.path : "";
-    if (!relativePath.startsWith("evidence/")) {
+    const fileName = safeEvidenceFileName(event.path);
+    if (!fileName) {
       continue;
     }
-    const filePath = getPackPath(root, relativePath);
-    if (!existsSync(filePath)) {
+    const filePath = getPackPath(root, "evidence", fileName);
+    // Event paths come from persisted (and importable) ledger data; only plain regular
+    // files directly inside evidence/ may ever be moved or deleted.
+    let stats;
+    try {
+      stats = lstatSync(filePath);
+    } catch {
       continue;
     }
-    evidenceToArchive.push(relativePath.slice("evidence/".length));
-    evidenceBytes += statSync(filePath).size;
+    if (!stats.isFile()) {
+      continue;
+    }
+    evidenceToArchive.push(fileName);
+    evidenceBytes += stats.size;
   }
 
   return {
@@ -150,7 +158,13 @@ export function applyCompactPlan(root: string, options: CompactOptions = {}): Co
 
     for (const fileName of plan.evidenceToArchive) {
       const filePath = getPackPath(root, "evidence", fileName);
-      if (!existsSync(filePath)) {
+      let stats;
+      try {
+        stats = lstatSync(filePath);
+      } catch {
+        continue;
+      }
+      if (!stats.isFile()) {
         continue;
       }
       if (archiveDir) {
@@ -240,6 +254,17 @@ export function referencedEvidenceIds(root: string, events: AgentpackEvent[]): S
     }
   }
   return ids;
+}
+
+function safeEvidenceFileName(eventPath: unknown): string | null {
+  if (typeof eventPath !== "string" || !eventPath.startsWith("evidence/")) {
+    return null;
+  }
+  const fileName = eventPath.slice("evidence/".length);
+  if (!fileName || fileName === "." || fileName === ".." || fileName.includes("/") || fileName.includes("\\") || fileName.includes("\0")) {
+    return null;
+  }
+  return fileName;
 }
 
 function moveIntoArchive(sourcePath: string, targetPath: string): void {

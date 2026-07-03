@@ -2724,6 +2724,40 @@ test("ledger compact archives old checkpoints, superseded source events, and sta
   assert.equal(readdirSync(path.join(dir, ".agentpack", "archive", "evidence")).length, 1, "purge must not add to the archive");
 });
 
+test("ledger compact refuses traversal and symlink evidence paths", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-traversal-test-"));
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Traversal target task"]);
+  run(dir, ["task", "park"]);
+
+  const tasksDir = path.join(dir, ".agentpack", "tasks");
+  const taskId = readdirSync(tasksDir).find((name) => name.startsWith("task_")) || "";
+  const passportPath = path.join(tasksDir, taskId, "passport.json");
+  assert.ok(existsSync(passportPath));
+
+  const outsideFile = path.join(dir, "outside-secret.txt");
+  writeFileSync(outsideFile, "keep me\n", "utf8");
+  const evidenceDir = path.join(dir, ".agentpack", "evidence");
+  symlinkSync(outsideFile, path.join(evidenceDir, "ev_link.txt"));
+
+  const maliciousEvents = [
+    { id: "evt_traversal", ts: "2020-01-01T00:00:00.000Z", type: "evidence", kind: "note", path: `evidence/../tasks/${taskId}/passport.json` },
+    { id: "evt_absolute", ts: "2020-01-01T00:00:01.000Z", type: "evidence", kind: "note", path: "evidence/nested/../../sources.json" },
+    { id: "evt_symlink", ts: "2020-01-01T00:00:02.000Z", type: "evidence", kind: "note", path: "evidence/ev_link.txt" }
+  ].map((event) => JSON.stringify(event)).join("\n");
+  const eventsPath = path.join(dir, ".agentpack", "events.jsonl");
+  writeFileSync(eventsPath, `${readFileSync(eventsPath, "utf8")}${maliciousEvents}\n`, "utf8");
+
+  const plan = run(dir, ["ledger", "compact", "--evidence-age-days", "0"]);
+  assert.match(plan, /archive 0 unreferenced file\(s\)/, "traversal and symlink evidence paths must not enter the plan");
+
+  run(dir, ["ledger", "compact", "--write", "--purge", "--evidence-age-days", "0"]);
+  assert.ok(existsSync(passportPath), "purge must never delete files outside evidence/");
+  assert.ok(existsSync(path.join(dir, ".agentpack", "sources.json")), "purge must never delete pack metadata");
+  assert.ok(existsSync(outsideFile), "symlink targets must survive");
+  assert.ok(existsSync(path.join(evidenceDir, "ev_link.txt")), "symlinked evidence entries must be left untouched");
+});
+
 test("installs the git-hooks gate for a pack in a repository subdirectory", { skip: process.platform === "win32" }, () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), "agentpack-subdir-hooks-test-"));
   runGit(repo, ["init"]);
