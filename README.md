@@ -74,7 +74,6 @@ See [SECURITY.md](SECURITY.md) for the full policy.
 - [docs/MCP.md](docs/MCP.md) — the MCP server contract and tool list
 - [docs/TASK-PASSPORT.md](docs/TASK-PASSPORT.md) — task lifecycle, handoffs, and portable bundles
 - [docs/DEMOS.md](docs/DEMOS.md) — compact continuity demos you can run yourself
-- [docs/ROADMAP.md](docs/ROADMAP.md) — where this is going
 - [docs/VISION.md](docs/VISION.md) — the strategic north star
 
 ## Contributing / local development

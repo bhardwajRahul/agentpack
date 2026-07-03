@@ -271,7 +271,7 @@ export function resolveMcpStartDir(options: Record<string, ArgValue>, cwd: strin
 function printHelp(): void {
   process.stdout.write(`Agentpack
 
-Portable task continuity for AI coding agents.
+Repo-native task continuity for AI coding agents.
 
 Default workflow:
   Initialize a repo, install an MCP client surface, then let connected agents
