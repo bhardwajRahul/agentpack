@@ -1,7 +1,8 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { getGitInfo } from "./git.js";
+import { countFullCheckpoints } from "./compact.js";
 import { AGENTPACK_IGNORE_PATTERNS, findPackRoot, getPackPath, PACK_DIR } from "./store.js";
 import { getSourceStatuses } from "../operations.js";
 
@@ -63,6 +64,8 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
     detail: formatSourceHealth(sourceStatuses.length, changed, missing)
   });
 
+  checks.push(checkLedgerSize(root));
+
   checks.push({
     status: "ok",
     name: "Node",
@@ -70,6 +73,23 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
   });
 
   return renderDoctor(checks);
+}
+
+const LEDGER_EVENTS_WARN_BYTES = 2 * 1024 * 1024;
+const LEDGER_CHECKPOINTS_WARN_COUNT = 100;
+
+function checkLedgerSize(root: string): DoctorCheck {
+  const eventsPath = getPackPath(root, "events.jsonl");
+  const eventsBytes = existsSync(eventsPath) ? statSync(eventsPath).size : 0;
+  // Slimmed checkpoints keep only checkpoint.json and stay cheap forever; only full snapshots count.
+  const fullCheckpoints = countFullCheckpoints(root);
+  const oversized = eventsBytes > LEDGER_EVENTS_WARN_BYTES || fullCheckpoints > LEDGER_CHECKPOINTS_WARN_COUNT;
+  const summary = `events.jsonl ${(eventsBytes / 1024).toFixed(0)} KiB, ${fullCheckpoints} full checkpoint(s)`;
+  return {
+    status: oversized ? "warn" : "ok",
+    name: "Ledger size",
+    detail: oversized ? `${summary}; run \`agentpack ledger compact\` to review a cleanup plan` : summary
+  };
 }
 
 function formatSourceHealth(recorded: number, changed: number, missing: number): string {

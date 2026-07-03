@@ -15,6 +15,14 @@ import {
 } from "../core/bundles.js";
 import { buildResume } from "../core/resume.js";
 import { formatBudgetPresets, resolveBudget } from "../core/presets.js";
+import {
+  applyCompactPlan,
+  buildCompactPlan,
+  DEFAULT_EVIDENCE_AGE_DAYS,
+  DEFAULT_KEEP_CHECKPOINTS,
+  formatCompactPlan
+} from "../core/compact.js";
+import type { CompactOptions } from "../core/compact.js";
 import { buildDoctorReport } from "../core/doctor.js";
 import { buildReleasePreflightReport } from "../core/release.js";
 import { redactForRoot } from "../core/redaction.js";
@@ -389,8 +397,11 @@ Record, inspect, refresh, and prune durable source conclusions.`;
 
   if (command === "ledger") {
     return `agentpack ledger status
+agentpack ledger compact [--write] [--purge] [--keep-checkpoints <n>] [--evidence-age-days <n>]
 
 Print a read-only ledger hygiene inventory: task counts, event/evidence/checkpoint/export sizes, source-cache status counts, and referenced evidence counts.
+compact slims old checkpoints (keeps checkpoint.json, moves diff/status/resume of snapshots beyond the newest ${DEFAULT_KEEP_CHECKPOINTS}), archives superseded source-cache events from events.jsonl, and archives unreferenced evidence older than ${DEFAULT_EVIDENCE_AGE_DAYS} days.
+Decisions, dead ends, referenced evidence, and checkpoint metadata always stay. Dry-run by default; --write moves data into .agentpack/archive/; --purge deletes instead of archiving.
 No cleanup is performed.`;
   }
 
@@ -962,7 +973,28 @@ function ledgerCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("ledger command supports `status`");
+  if (subcommand === "compact") {
+    const parsed = parseArgs(rest.slice(1));
+    const options: CompactOptions = { purge: Boolean(parsed.options.purge) };
+    if (optionValue(parsed.options, "keep-checkpoints")) {
+      options.keepCheckpoints = numberOption(parsed.options["keep-checkpoints"]);
+    }
+    if (optionValue(parsed.options, "evidence-age-days")) {
+      options.evidenceAgeDays = numberOption(parsed.options["evidence-age-days"]);
+    }
+    if (parsed.options.write) {
+      const result = applyCompactPlan(root, options);
+      process.stdout.write(`${formatCompactPlan(result.plan, true)}\n`);
+      if (result.archiveDir) {
+        process.stdout.write(`Archived into ${result.archiveDir}\n`);
+      }
+      return;
+    }
+    process.stdout.write(`${formatCompactPlan(buildCompactPlan(root, options), false)}\n`);
+    return;
+  }
+
+  throw new Error("ledger command supports `status` and `compact`");
 }
 
 function releaseCommand(cwd: string, rest: string[]): void {

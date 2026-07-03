@@ -2656,6 +2656,74 @@ test("installs the git-hooks gate and preserves foreign pre-commit hooks", { ski
   assert.equal(readFileSync(preCommitPath, "utf8"), foreignHook);
 });
 
+test("ledger compact archives old checkpoints, superseded source events, and stale evidence", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-test-"));
+  run(dir, ["init"]);
+
+  writeFileSync(path.join(dir, "a.txt"), "one\n", "utf8");
+  run(dir, ["source", "add", "a.txt", "--summary", "first conclusion"]);
+  writeFileSync(path.join(dir, "a.txt"), "two\n", "utf8");
+  run(dir, ["source", "review", "a.txt", "--summary", "second conclusion"]);
+  writeFileSync(path.join(dir, "b.txt"), "gone\n", "utf8");
+  run(dir, ["source", "add", "b.txt", "--summary", "to be removed"]);
+  run(dir, ["source", "remove", "b.txt"]);
+
+  run(dir, ["record", "decision", "Keep decisions forever."]);
+  run(dir, ["record", "dead-end", "Do not try the slow path again."]);
+  run(dir, ["evidence", "add", "--kind", "note", "--content", "unreferenced and stale"]);
+
+  run(dir, ["checkpoint", "-m", "first"]);
+  run(dir, ["checkpoint", "-m", "second"]);
+  run(dir, ["checkpoint", "-m", "third"]);
+
+  const checkpointsDir = path.join(dir, ".agentpack", "checkpoints");
+  const before = readdirSync(checkpointsDir).sort();
+  assert.equal(before.length, 3);
+
+  const dryRun = run(dir, ["ledger", "compact", "--keep-checkpoints", "1", "--evidence-age-days", "0"]);
+  assert.match(dryRun, /dry run, archive mode/);
+  assert.match(dryRun, /slim 2 older snapshot/);
+  assert.equal(readdirSync(checkpointsDir).sort().length, 3);
+  assert.ok(existsSync(path.join(checkpointsDir, before[0] || "", "resume.md")), "dry run must not touch checkpoint files");
+
+  const applied = run(dir, ["ledger", "compact", "--write", "--keep-checkpoints", "1", "--evidence-age-days", "0"]);
+  assert.match(applied, /Ledger compact applied \(archive mode\)/);
+
+  for (const slimmed of before.slice(0, 2)) {
+    assert.ok(existsSync(path.join(checkpointsDir, slimmed, "checkpoint.json")), "checkpoint.json must stay");
+    assert.equal(existsSync(path.join(checkpointsDir, slimmed, "resume.md")), false, "heavy files must be archived");
+    assert.ok(existsSync(path.join(dir, ".agentpack", "archive", "checkpoints", slimmed, "resume.md")), "heavy files must land in the archive");
+  }
+  assert.ok(existsSync(path.join(checkpointsDir, before[2] || "", "resume.md")), "newest checkpoint stays full");
+
+  const events = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8");
+  assert.match(events, /Keep decisions forever/);
+  assert.match(events, /Do not try the slow path again/);
+  assert.match(events, /second conclusion/, "latest source conclusion for a live path must stay");
+  assert.doesNotMatch(events, /first conclusion/, "superseded source events must be archived");
+  assert.doesNotMatch(events, /to be removed/, "events for pruned sources must be archived");
+  assert.match(events, /ledger-compact/, "compaction must be recorded as an event");
+
+  const archiveEvents = readdirSync(path.join(dir, ".agentpack", "archive")).filter((name) => name.startsWith("events-"));
+  assert.equal(archiveEvents.length, 1);
+  assert.match(readFileSync(path.join(dir, ".agentpack", "archive", archiveEvents[0] || ""), "utf8"), /first conclusion/);
+
+  assert.equal(readdirSync(path.join(dir, ".agentpack", "evidence")).length, 0, "unreferenced stale evidence must be archived");
+  assert.equal(readdirSync(path.join(dir, ".agentpack", "archive", "evidence")).length, 1);
+
+  assert.match(run(dir, ["replay"]), /ledger-compact/);
+  assert.match(run(dir, ["resume", "--preset", "quick"]), /Keep decisions forever|Agentpack Resume/);
+
+  const again = run(dir, ["ledger", "compact", "--write", "--keep-checkpoints", "1", "--evidence-age-days", "0"]);
+  assert.match(again, /Nothing to compact/);
+
+  run(dir, ["evidence", "add", "--kind", "note", "--content", "purge me"]);
+  const purged = run(dir, ["ledger", "compact", "--write", "--purge", "--keep-checkpoints", "1", "--evidence-age-days", "0"]);
+  assert.match(purged, /purge mode/);
+  assert.equal(readdirSync(path.join(dir, ".agentpack", "evidence")).length, 0, "purge must delete instead of archiving");
+  assert.equal(readdirSync(path.join(dir, ".agentpack", "archive", "evidence")).length, 1, "purge must not add to the archive");
+});
+
 test("installs the git-hooks gate for a pack in a repository subdirectory", { skip: process.platform === "win32" }, () => {
   const repo = mkdtempSync(path.join(os.tmpdir(), "agentpack-subdir-hooks-test-"));
   runGit(repo, ["init"]);

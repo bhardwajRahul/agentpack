@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { referencedEvidenceIds } from "./core/compact.js";
 import { getFileRecord, normalizePath, sha256File } from "./core/hash.js";
 import { getGitInfo } from "./core/git.js";
 import { listTasks, readPassport } from "./core/tasks.js";
@@ -394,36 +395,6 @@ function countTasks(root: string): Record<TaskStatus, number> {
   }
 
   return counts;
-}
-
-function referencedEvidenceIds(root: string, events: AgentpackEvent[]): Set<string> {
-  const ids = new Set<string>();
-  for (const event of events) {
-    for (const evidenceId of evidenceIdsFromEvent(event)) {
-      ids.add(evidenceId);
-    }
-  }
-
-  for (const task of listTasks(root)) {
-    try {
-      for (const evidenceId of readPassport(root, task.id).verification.evidence || []) {
-        ids.add(evidenceId);
-      }
-    } catch {
-      // Ledger status is diagnostic-only; unreadable task details should not crash the whole inventory.
-    }
-  }
-  return ids;
-}
-
-function evidenceIdsFromEvent(event: AgentpackEvent): string[] {
-  if (!Array.isArray(event.evidence)) {
-    return [];
-  }
-
-  return event.evidence.filter(
-    (evidenceId): evidenceId is string => typeof evidenceId === "string" && evidenceId.length > 0
-  );
 }
 
 function countSourceStatuses(statuses: SourceStatus[]): LedgerStatus["sources"] {

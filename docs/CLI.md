@@ -14,6 +14,7 @@ agentpack source status
 agentpack source status --changed
 agentpack source status --missing
 agentpack ledger status
+agentpack ledger compact [--write]
 agentpack doctor
 agentpack replay
 agentpack diff
@@ -40,6 +41,8 @@ agentpack source remove docs/old-file.md
 `source prune --missing` only removes records whose files no longer exist. `source remove <file>` removes one explicit source record.
 
 `ledger status` prints a read-only hygiene inventory: task counts, event/evidence/checkpoint/export sizes, referenced evidence counts, and source-cache status counts. It does not delete, compact, archive, or refresh anything.
+
+`ledger compact [--write] [--purge] [--keep-checkpoints <n>] [--evidence-age-days <n>]` keeps the ledger from growing unbounded. It slims checkpoints beyond the newest 30 (their `diff.patch`, `git-status.txt`, and `resume.md` move out; `checkpoint.json` always stays, so the timeline and replay are unaffected), moves superseded source-cache events out of `events.jsonl` (the current conclusion per live path stays; `sources.json` remains authoritative), and moves unreferenced evidence files older than 30 days. Decisions, dead ends, referenced evidence, and checkpoint metadata are never touched — that is the durable memory. Dry-run by default; `--write` moves data into `.agentpack/archive/` where it stays inspectable; `--purge` deletes instead of archiving. The `events.jsonl` format does not change, and each applied compaction is itself recorded as a `ledger-compact` event. `doctor` suggests compaction when `events.jsonl` or the checkpoint count grows large.
 
 `doctor` checks pack setup, local integration config, git availability, and source-cache health. Changed or missing source records are warnings, not setup failures; use `agentpack source status --changed --missing` to review details before a release-like handoff.
 
