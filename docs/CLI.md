@@ -42,7 +42,7 @@ agentpack source remove docs/old-file.md
 
 `ledger status` prints a read-only hygiene inventory: task counts, event/evidence/checkpoint/export sizes, referenced evidence counts, and source-cache status counts. It does not delete, compact, archive, or refresh anything.
 
-`ledger compact [--write] [--purge] [--keep-checkpoints <n>] [--evidence-age-days <n>]` keeps the ledger from growing unbounded. It slims checkpoints beyond the newest 30 (their `diff.patch`, `git-status.txt`, and `resume.md` move out; `checkpoint.json` always stays, so the timeline and replay are unaffected), moves superseded source-cache events out of `events.jsonl` (the current conclusion per live path stays; `sources.json` remains authoritative), and moves unreferenced evidence files older than 30 days. Decisions, dead ends, referenced evidence, and checkpoint metadata are never touched — that is the durable memory. Dry-run by default; `--write` moves data into `.agentpack/archive/` where it stays inspectable; `--purge` deletes instead of archiving. The `events.jsonl` format does not change, and each applied compaction is itself recorded as a `ledger-compact` event. `doctor` suggests compaction when `events.jsonl` or the checkpoint count grows large.
+`ledger compact [--write] [--purge] [--keep-checkpoints <n>] [--evidence-age-days <n>]` keeps the ledger from growing unbounded. It slims checkpoints beyond the newest 30 (their `diff.patch`, `git-status.txt`, and `resume.md` move out; `checkpoint.json` always stays, so the timeline and replay are unaffected), moves superseded source-cache events out of `events.jsonl` (the current conclusion per live path stays; `sources.json` remains authoritative), and moves unreferenced evidence files older than 30 days. Decisions, dead ends, referenced evidence, and checkpoint metadata are never touched — that is the durable memory. Dry-run by default; `--write` moves data into `.agentpack/archive/` where it stays inspectable; `--purge` deletes instead of archiving. Applied compaction is transactional: if staging or an archive move fails, Agentpack restores the original event log and files. Archive paths must remain ordinary directories inside `.agentpack/`; symlinked archive destinations are rejected. The `events.jsonl` format does not change, and each successful compaction is itself recorded as a `ledger-compact` event. `doctor` suggests compaction when `events.jsonl` or the checkpoint count grows large.
 
 `doctor` checks pack setup, local integration config, git availability, and source-cache health. Changed or missing source records are warnings, not setup failures; use `agentpack source status --changed --missing` to review details before a release-like handoff.
 
@@ -144,6 +144,8 @@ When MCP is unavailable, export a compact markdown handoff and paste it into the
 ```bash
 agentpack export --to markdown --preset chat --query "MCP install"
 ```
+
+The export target is a simple local name (letters, numbers, `.`, `_`, or `-`), not a filesystem path. Output always stays under `.agentpack/exports/`.
 
 For the normal coding-agent workflow, prefer MCP and `resume --preset agent`. Markdown export is a fallback for clients that cannot read local MCP tools.
 

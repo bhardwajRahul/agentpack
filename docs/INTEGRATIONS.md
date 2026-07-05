@@ -45,7 +45,7 @@ agentpack install claude-desktop
 agentpack install cursor
 ```
 
-`install` defaults to dry-run mode. It shows the files Agentpack would create or update and prints the command needed to apply the plan.
+`install` defaults to side-effect-free dry-run mode. It shows the files Agentpack would create or update and prints the command needed to apply the plan without creating instruction directories. Symlinked destinations are rejected before any write. Pass `--write` to apply the validated plan.
 
 Apply explicitly:
 
