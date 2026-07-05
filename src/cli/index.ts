@@ -72,7 +72,7 @@ import {
 } from "../operations.js";
 import type { SourceStatusKind } from "../operations.js";
 import { installIntegration } from "../integrations/install.js";
-import { evaluateGate, formatGateReport, type GateOptions } from "../core/gate.js";
+import { evaluateGate, formatGateReport, type GateOptions, type GateReport } from "../core/gate.js";
 import { startMcpServer } from "../mcp/server.js";
 
 export type ArgValue = string | boolean | string[];
@@ -498,7 +498,7 @@ Inspection and coordination:
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
-  agentpack task gate [--file <path> ...] [--staged] [--json]
+  agentpack task gate [--file <path> ...] [--staged] [--client claude|codex|cursor] [--json]
   agentpack task park
   agentpack task block --reason <text>
   agentpack task close
@@ -513,6 +513,7 @@ Notes:
   task finalize refuses unknown or pending verification by default.
   task finalize --status accepted refuses tasks with remaining next actions unless --force is passed.
   task gate checks the current passport lifecycle, write scope, and branch before edits or commits.
+  task gate --client adapts native Claude, Codex, or Cursor pre-tool hook JSON on stdin.
   task gate warns by default; set "gateMode": "block" in .agentpack/config.json to enforce (exit code 2).
   task gate exits 0 quietly when no .agentpack exists, so hooks are safe in non-Agentpack repos.
 `);
@@ -557,7 +558,7 @@ function noteCommand(root: string, rest: string[]): void {
 function gateCommand(root: string | null, args: string[]): void {
   const parsed = parseArgs(args);
   const client = stringOption(parsed.options.client);
-  if (client && client !== "claude") {
+  if (client && !["claude", "codex", "cursor"].includes(client)) {
     throw new Error(`Unknown gate client: ${client}`);
   }
 
@@ -573,13 +574,11 @@ function gateCommand(root: string | null, args: string[]): void {
     staged: Boolean(parsed.options.staged)
   };
 
-  if (client === "claude") {
-    const hookFile = readClaudeHookFilePath();
-    if (hookFile) {
-      gateOptions.files = [...(gateOptions.files || []), hookFile];
-    }
-    const report = evaluateGate(root, gateOptions);
-    writeClaudeHookOutput(report);
+  if (client) {
+    const hookInput = readHookFilePaths(client);
+    gateOptions.files = [...(gateOptions.files || []), ...hookInput.files];
+    const report = withHookInputFinding(evaluateGate(root, gateOptions), client, hookInput.understood);
+    writeHookOutput(client, report);
     return;
   }
 
@@ -598,26 +597,84 @@ function gateCommand(root: string | null, args: string[]): void {
   }
 }
 
-function readClaudeHookFilePath(): string | null {
+function readHookFilePaths(client: string): { files: string[]; understood: boolean } {
   let payload = "";
   try {
     payload = readFileSync(0, "utf8");
   } catch {
-    return null;
+    return { files: [], understood: false };
   }
   if (!payload.trim()) {
-    return null;
+    return { files: [], understood: false };
   }
   try {
-    const hook = JSON.parse(payload) as { tool_input?: { file_path?: unknown; notebook_path?: unknown } };
-    const filePath = hook.tool_input?.file_path ?? hook.tool_input?.notebook_path;
-    return typeof filePath === "string" && filePath ? filePath : null;
+    const hook = JSON.parse(payload) as { tool_input?: Record<string, unknown> };
+    if (client === "codex") {
+      const patch = hook.tool_input?.command;
+      const files = typeof patch === "string" ? codexPatchFilePaths(patch) : [];
+      return { files, understood: files.length > 0 };
+    }
+    const filePath = hook.tool_input?.file_path
+      ?? hook.tool_input?.notebook_path
+      ?? hook.tool_input?.path
+      ?? hook.tool_input?.target_file
+      ?? hook.tool_input?.target_path;
+    const files = typeof filePath === "string" && filePath ? [filePath] : [];
+    return { files, understood: files.length > 0 };
   } catch {
-    return null;
+    return { files: [], understood: false };
   }
 }
 
-function writeClaudeHookOutput(report: ReturnType<typeof evaluateGate>): void {
+function withHookInputFinding(report: GateReport, client: string, understood: boolean): GateReport {
+  if (understood || report.mode === "off") {
+    return report;
+  }
+  const level = report.mode === "block" ? "block" : "warn";
+  return {
+    ...report,
+    decision: level === "block" ? "block" : "warn",
+    findings: [
+      ...report.findings,
+      {
+        code: "hook-input-unreadable",
+        level,
+        message: `Cannot determine edited file paths from the ${client} hook payload; the gate cannot enforce task write scope.`
+      }
+    ]
+  };
+}
+
+function codexPatchFilePaths(patch: string): string[] {
+  const paths: string[] = [];
+  for (const line of patch.split(/\r?\n/)) {
+    const match = line.match(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/)
+      || line.match(/^\*\*\* Move to: (.+)$/);
+    const filePath = match?.[1]?.trim();
+    if (filePath) {
+      paths.push(filePath);
+    }
+  }
+  return [...new Set(paths)];
+}
+
+function writeHookOutput(client: string, report: ReturnType<typeof evaluateGate>): void {
+  if (client === "cursor") {
+    const summary = report.findings.map((finding) => finding.message).join(" ");
+    const output = report.decision === "block"
+      ? {
+        permission: "deny",
+        user_message: `Agentpack gate: ${summary}`,
+        agent_message: `Agentpack gate blocked this edit: ${summary}`
+      }
+      : {
+        permission: "allow",
+        ...(summary ? { agent_message: `Agentpack gate warning: ${summary}` } : {})
+      };
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+    return;
+  }
+
   if (report.findings.length === 0) {
     return;
   }

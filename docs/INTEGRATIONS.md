@@ -4,14 +4,14 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 
 ## Client Matrix
 
-| Client | Instruction file | MCP config surface | Status |
-| --- | --- | --- | --- |
-| Codex | `AGENTS.md` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | Tested |
-| Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | Tested |
-| Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | Tested |
-| Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | Tested |
-| Git (any client) | Pre-commit gate hook | None; installs `.git/hooks/pre-commit` via `agentpack install git-hooks --write` | Tested |
-| Web chats | Markdown handoff | No local stdio MCP support; use `agentpack export` | Manual fallback |
+| Client | Instruction file | MCP config surface | Native task gate | Status |
+| --- | --- | --- | --- | --- |
+| Codex | `AGENTS.md` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | `.codex/hooks.json` `PreToolUse` | Tested |
+| Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | `.claude/settings.json` `PreToolUse` | Tested |
+| Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | None | Tested |
+| Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | `.cursor/hooks.json` `preToolUse` | Tested |
+| Git (any client) | Pre-commit gate hook | None; installs `.git/hooks/pre-commit` via `agentpack install git-hooks --write` | `.git/hooks/pre-commit` | Tested |
+| Web chats | Markdown handoff | No local stdio MCP support; use `agentpack export` | None | Manual fallback |
 
 Coding-agent clients use the same `agentpack mcp` server. The difference is where each client expects instructions and MCP configuration to live. Web chats are fallback targets for pasted markdown handoffs; they are not a primary integration surface.
 
@@ -27,6 +27,8 @@ In a local project setup:
 - `.mcp.json`: repo-root project MCP config for Claude Code.
 - `AGENTS.md`: repo-root project instructions for Codex.
 - `.codex/config.toml`: repo-local Codex MCP config created by `agentpack install codex --write`.
+- `.codex/hooks.json`: repo-local Codex task-gate hook created or merged by `agentpack install codex --write`.
+- `.cursor/hooks.json`: repo-local Cursor task-gate hook created or merged by `agentpack install cursor --write`.
 - `.agentpack/instructions/codex-mcp.example.toml`: local Codex config snippet, created by `agentpack install codex --write`.
 - `.agentpack/instructions/claude-desktop-mcp.example.json`: local Claude Desktop config snippet, created by `agentpack install claude-desktop --write`.
 
@@ -76,6 +78,7 @@ This writes:
 
 - `AGENTS.md`
 - `.codex/config.toml`
+- `.codex/hooks.json`
 - `.agentpack/instructions/codex.md`
 - `.agentpack/instructions/codex-mcp.example.toml`
 
@@ -91,7 +94,11 @@ Do not keep an older global `~/.codex/config.toml` entry with `args = ["mcp", "-
 
 If Agentpack still reports the wrong Pack root in Codex, remove the stale global `mcp_servers.agentpack` block, keep the project-local `.codex/config.toml`, then restart or reconnect the MCP server.
 
-Official reference: [Codex configuration reference](https://developers.openai.com/codex/config-reference).
+The `.codex/hooks.json` merge adds one `PreToolUse` hook on `apply_patch`. It runs the shared gate through the current Node executable and Agentpack entrypoint. Codex sends the patch text to the adapter, which checks every add, update, delete, and move path against the current Task Passport. Block mode returns a deny decision; warn mode adds model-visible context. Existing hooks are preserved and re-running the installer replaces the Agentpack entry instead of duplicating it.
+
+Codex requires project-local command hooks to be reviewed and trusted before they run. Open `/hooks` after install and approve the Agentpack definition. Codex documents `PreToolUse` as a guardrail rather than a complete enforcement boundary, so keep the git pre-commit gate when commit-time enforcement matters. Because the generated command pins the current Node installation, rerun the installer after switching Node versions.
+
+Official references: [Codex configuration reference](https://developers.openai.com/codex/config-reference) and [Codex hooks](https://developers.openai.com/codex/hooks).
 
 ## Claude Code
 
@@ -172,10 +179,13 @@ This writes:
 
 - `.cursor/rules/agentpack.mdc`
 - `.cursor/mcp.json`
+- `.cursor/hooks.json`
 - `.agentpack/instructions/cursor.md`
 
 The Cursor MCP config uses `${workspaceFolder}` so it can point Agentpack at the current project root without hard-coding your local filesystem path.
 The generated MCP entry launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Cursor's GUI `PATH`.
+
+The `.cursor/hooks.json` merge adds one `preToolUse` hook for `Write|Delete`. Block mode returns `permission: "deny"`; warn mode returns `permission: "allow"` with best-effort agent warning context. Existing hooks and top-level settings are preserved, and repeated installs are idempotent. Cursor hook failures are fail-open by default, and current clients may surface agent messages most clearly on denial, so MCP warnings and the git pre-commit gate remain the reliable client-neutral layers. Rerun the installer after switching Node versions.
 
 After writing the config, open this folder as the Cursor workspace and reload the Cursor window so project MCP is re-read. Then open Cursor's MCP Servers menu and enable `agentpack` if it appears toggled off. Cursor empty-window sessions do not load project `.cursor/mcp.json`.
 
@@ -193,7 +203,7 @@ agentpack source status
 agentpack checkpoint -m "<summary>" --status "<status>" --next "<next action>"
 ```
 
-Official reference: [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol).
+Official references: [Cursor MCP docs](https://docs.cursor.com/context/model-context-protocol) and [Cursor hooks](https://cursor.com/docs/hooks).
 
 ## Git Hooks
 
@@ -212,7 +222,7 @@ If a foreign `pre-commit` hook already exists, the installer leaves it untouched
 
 Packs that live in a subdirectory of the repository are supported: the hook is installed at the repository's own hooks directory and changes into the pack directory before running the gate. A repository with several packs gets one shared hook that gates each pack — running the installer from another pack adds it to the list, and a pack whose directory disappears is skipped. The commit is blocked when any gated pack blocks.
 
-Clients without a hook surface (Codex today) still get gate findings through MCP: `load_context` and `task_status` responses append a `Gate Warnings` section whenever the current passport has lifecycle or drift findings.
+MCP remains the client-neutral warning layer: `load_context` and `task_status` responses append a `Gate Warnings` section whenever the current passport has lifecycle or drift findings, independently of native hook installation.
 
 ## Verify
 

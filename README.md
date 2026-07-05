@@ -44,7 +44,7 @@ See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for client-by-client setup, inc
 3. At a coherent boundary, it creates a checkpoint with status, next actions, and git state.
 4. The next session — any MCP-connected agent — continues from that state instead of rebuilding it from chat history.
 
-The ledger is task-scoped: a **Task Passport** carries the goal, status, constraints, write scope, next actions, and verification for the current task, with an explicit lifecycle (start, park, switch, finalize) for handoffs. An optional **task gate** (pre-commit hook and Claude Code hook) warns — or in block mode, stops — when edits bypass the active task.
+The ledger is task-scoped: a **Task Passport** carries the goal, status, constraints, write scope, next actions, and verification for the current task, with an explicit lifecycle (start, park, switch, finalize) for handoffs. An optional **task gate** (native Claude Code, Codex, and Cursor hooks plus a client-neutral pre-commit hook) warns — or in block mode, stops — when edits bypass the active task.
 
 Context is budgeted: resume output is compressed under a rough token estimate, so agents get the useful state back, not a pile of history.
 

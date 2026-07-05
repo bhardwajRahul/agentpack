@@ -2409,6 +2409,14 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(cursorMcp.mcpServers[serverName].args[0], cli);
   assert.deepEqual(cursorMcp.mcpServers[serverName].args.slice(1), ["mcp", "--root", "${workspaceFolder}"]);
   assert.equal(cursorMcp.mcpServers.agentpack, undefined);
+  const cursorHooks = JSON.parse(readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")) as {
+    version: number;
+    hooks: { preToolUse: Array<{ command: string; matcher: string }> };
+  };
+  assert.equal(cursorHooks.version, 1);
+  assert.equal(cursorHooks.hooks.preToolUse.length, 1);
+  assert.equal(cursorHooks.hooks.preToolUse[0]?.matcher, "Write|Delete");
+  assert.match(cursorHooks.hooks.preToolUse[0]?.command || "", /task gate --client cursor$/);
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
@@ -2440,6 +2448,12 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexConfig, /args = \["mcp"\]/);
   assert.doesNotMatch(codexConfig, /--root/);
   assert.doesNotMatch(codexConfig, /cwd =/);
+  const codexHooks = JSON.parse(readFileSync(path.join(dir, ".codex", "hooks.json"), "utf8")) as {
+    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+  };
+  assert.equal(codexHooks.hooks.PreToolUse.length, 1);
+  assert.equal(codexHooks.hooks.PreToolUse[0]?.matcher, "^apply_patch$");
+  assert.match(codexHooks.hooks.PreToolUse[0]?.hooks[0]?.command || "", /task gate --client codex$/);
   const codexSnippet = readFileSync(path.join(dir, ".agentpack", "instructions", "codex-mcp.example.toml"), "utf8");
   assert.match(codexSnippet, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.match(codexSnippet, /args = \["mcp"\]/);
@@ -2535,6 +2549,29 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   assert.equal(denyOutput.hookSpecificOutput.permissionDecision, "deny");
   assert.match(denyOutput.hookSpecificOutput.permissionDecisionReason || "", /Outside the task write scope/);
 
+  const codexDeny = runWithInput(dir, ["task", "gate", "--client", "codex"], JSON.stringify({
+    tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Update File: src/a.ts\n*** Add File: other/b.ts\n*** End Patch" }
+  }));
+  const codexDenyOutput = JSON.parse(codexDeny) as { hookSpecificOutput: Record<string, string> };
+  assert.equal(codexDenyOutput.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(codexDenyOutput.hookSpecificOutput.permissionDecisionReason || "", /other\/b\.ts/);
+
+  const cursorDeny = runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
+    tool_name: "Write",
+    tool_input: { file_path: "other/b.ts" }
+  }));
+  const cursorDenyOutput = JSON.parse(cursorDeny) as Record<string, string>;
+  assert.equal(cursorDenyOutput.permission, "deny");
+  assert.match(cursorDenyOutput.agent_message || "", /Outside the task write scope/);
+
+  const malformedCodex = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "codex"], JSON.stringify({
+    tool_name: "apply_patch",
+    tool_input: { unexpected_patch_field: "*** Update File: other/b.ts" }
+  }))) as { hookSpecificOutput: Record<string, string> };
+  assert.equal(malformedCodex.hookSpecificOutput.permissionDecision, "deny");
+  assert.match(malformedCodex.hookSpecificOutput.permissionDecisionReason || "", /Cannot determine edited file paths/);
+
   writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "warn" }, null, 2), "utf8");
   const warn = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
     tool_name: "Edit",
@@ -2544,11 +2581,41 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   assert.equal(warnOutput.hookSpecificOutput.permissionDecision, undefined);
   assert.match(warnOutput.hookSpecificOutput.additionalContext || "", /Agentpack gate warning/);
 
+  const codexWarn = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "codex"], JSON.stringify({
+    tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Delete File: other/b.ts\n*** End Patch" }
+  }))) as { hookSpecificOutput: Record<string, string> };
+  assert.match(codexWarn.hookSpecificOutput.additionalContext || "", /Agentpack gate warning/);
+
+  const cursorWarn = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
+    tool_name: "Delete",
+    tool_input: { path: "other/b.ts" }
+  }))) as Record<string, string>;
+  assert.equal(cursorWarn.permission, "allow");
+  assert.match(cursorWarn.agent_message || "", /Agentpack gate warning/);
+
+  const malformedCursor = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
+    tool_name: "Write",
+    tool_input: { unexpected_path_field: "other/b.ts" }
+  }))) as Record<string, string>;
+  assert.equal(malformedCursor.permission, "allow");
+  assert.match(malformedCursor.agent_message || "", /Cannot determine edited file paths/);
+
   const allow = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
     tool_name: "Edit",
     tool_input: { file_path: "src/a.ts" }
   }));
   assert.equal(allow.trim(), "");
+  const codexAllow = runWithInput(dir, ["task", "gate", "--client", "codex"], JSON.stringify({
+    tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Update File: src/a.ts\n*** Move to: src/moved.ts\n*** End Patch" }
+  }));
+  assert.equal(codexAllow.trim(), "");
+  const cursorAllow = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
+    tool_name: "Write",
+    tool_input: { target_file: "src/a.ts" }
+  }))) as Record<string, string>;
+  assert.equal(cursorAllow.permission, "allow");
 
   writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "off" }, null, 2), "utf8");
   assert.equal(run(dir, ["task", "gate", "--file", "other/b.ts"]).trim(), "");
@@ -2997,6 +3064,51 @@ test("claude install registers the gate PreToolUse hook idempotently", () => {
   assert.match(gateCommand, /task gate --client claude$/);
   assert.match(gateCommand, /agentpack\.js/, "hook must launch through the Agentpack entrypoint, not the shell PATH");
   assert.ok(!gateCommand.startsWith("agentpack "), "hook must not depend on agentpack being on PATH");
+});
+
+test("codex and cursor installs merge native task-gate hooks idempotently", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-native-hooks-test-"));
+  run(dir, ["init"]);
+  mkdirSync(path.join(dir, ".codex"), { recursive: true });
+  mkdirSync(path.join(dir, ".cursor"), { recursive: true });
+  writeFileSync(path.join(dir, ".codex", "hooks.json"), JSON.stringify({
+    keep: true,
+    hooks: {
+      PostToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "echo done" }] }],
+      PreToolUse: [{ matcher: "apply_patch", hooks: [{ type: "command", command: "agentpack task gate --client codex" }] }]
+    }
+  }, null, 2), "utf8");
+  writeFileSync(path.join(dir, ".cursor", "hooks.json"), JSON.stringify({
+    version: 1,
+    keep: true,
+    hooks: {
+      postToolUse: [{ command: "echo done", matcher: "Shell" }],
+      preToolUse: [{ command: "agentpack task gate --client cursor", matcher: "Write" }]
+    }
+  }, null, 2), "utf8");
+
+  run(dir, ["install", "codex", "--write"]);
+  run(dir, ["install", "codex", "--write"]);
+  run(dir, ["install", "cursor", "--write"]);
+  run(dir, ["install", "cursor", "--write"]);
+
+  const codex = JSON.parse(readFileSync(path.join(dir, ".codex", "hooks.json"), "utf8")) as {
+    keep: boolean;
+    hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }>; PostToolUse: unknown[] };
+  };
+  assert.equal(codex.keep, true);
+  assert.equal(codex.hooks.PostToolUse.length, 1);
+  assert.equal(codex.hooks.PreToolUse.length, 1);
+  assert.match(codex.hooks.PreToolUse[0]?.hooks[0]?.command || "", /agentpack\.js.*task gate --client codex$/);
+
+  const cursor = JSON.parse(readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")) as {
+    keep: boolean;
+    hooks: { preToolUse: Array<{ command: string }>; postToolUse: unknown[] };
+  };
+  assert.equal(cursor.keep, true);
+  assert.equal(cursor.hooks.postToolUse.length, 1);
+  assert.equal(cursor.hooks.preToolUse.length, 1);
+  assert.match(cursor.hooks.preToolUse[0]?.command || "", /agentpack\.js.*task gate --client cursor$/);
 });
 
 test("parks current task over MCP so a new task can start", async () => {

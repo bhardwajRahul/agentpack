@@ -16,7 +16,8 @@ export interface GateFinding {
     | "passport-unreadable"
     | "invalid-gate-mode"
     | "no-write-scope"
-    | "outside-root";
+    | "outside-root"
+    | "hook-input-unreadable";
   level: "warn" | "block";
   message: string;
 }

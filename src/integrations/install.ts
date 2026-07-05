@@ -8,9 +8,11 @@ const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor", "git-hoo
 const GATE_HOOK_MARKER = "# agentpack:gate";
 const GATE_ROOT_MARKER = "# agentpack:root-base64 ";
 const CLAUDE_GATE_MARKER = "task gate --client claude";
+const CODEX_GATE_MARKER = "task gate --client codex";
+const CURSOR_GATE_MARKER = "task gate --client cursor";
 
-function claudeGateCommand(): string {
-  return `${shellQuote(process.execPath)} ${shellQuote(agentpackEntrypoint())} task gate --client claude`;
+function clientGateCommand(client: "claude" | "codex" | "cursor"): string {
+  return `${shellQuote(process.execPath)} ${shellQuote(agentpackEntrypoint())} task gate --client ${client}`;
 }
 
 function collaborationModesSection(): string {
@@ -150,11 +152,13 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
         writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", INSTRUCTIONS),
         tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", `mcp_servers.${serverName}`, codexMcpTomlTable(serverName), "mcp_servers.agentpack"),
+        codexHooksMergePlan(root),
         writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(serverName))
       ],
       notes: [
         "No global Codex config is modified.",
         `Codex should use the project-local .codex/config.toml entry named ${serverName} for this repo.`,
+        "The project PreToolUse hook runs `agentpack task gate` before apply_patch edits; Codex requires the hook definition to be reviewed and trusted before it runs.",
         "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
         `For manual review, see ${relativePath(root, codexSnippetPath)}.`
       ]
@@ -253,11 +257,13 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     files: [
       writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
       writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
-      jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer())
+      jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer()),
+      cursorHooksMergePlan(root)
     ],
     notes: [
       "Only project-local files are modified.",
       "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
+      "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode returns allow with warning context, while block mode denies violations.",
       "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
       "The Cursor MCP entry uses an absolute Node launcher so Cursor does not depend on your shell/fnm/nvm PATH."
     ]
@@ -576,7 +582,7 @@ function claudeHooksMergePlan(root: string): InstallFile {
   const withoutGate = preToolUse.filter((entry) => !JSON.stringify(entry).includes(CLAUDE_GATE_MARKER));
   withoutGate.push({
     matcher: "Edit|Write|MultiEdit|NotebookEdit",
-    hooks: [{ type: "command", command: claudeGateCommand() }]
+    hooks: [{ type: "command", command: clientGateCommand("claude") }]
   });
 
   const next = {
@@ -588,6 +594,46 @@ function claudeHooksMergePlan(root: string): InstallFile {
     filePath,
     description: "Add the Agentpack gate PreToolUse hook to project Claude Code settings.",
     content: `${JSON.stringify(next, null, 2)}\n`
+  };
+}
+
+function codexHooksMergePlan(root: string): InstallFile {
+  const filePath = path.join(root, ".codex", "hooks.json");
+  const existing = readJson<Record<string, unknown>>(filePath, {});
+  const hooks = isRecord(existing.hooks) ? { ...existing.hooks } : {};
+  const preToolUse = Array.isArray(hooks.PreToolUse) ? [...hooks.PreToolUse] : [];
+  const withoutGate = preToolUse.filter((entry) => !JSON.stringify(entry).includes(CODEX_GATE_MARKER));
+  withoutGate.push({
+    matcher: "^apply_patch$",
+    hooks: [{
+      type: "command",
+      command: clientGateCommand("codex"),
+      statusMessage: "Checking Agentpack task scope"
+    }]
+  });
+
+  return {
+    filePath,
+    description: "Add the Agentpack gate PreToolUse hook to project Codex config.",
+    content: `${JSON.stringify({ ...existing, hooks: { ...hooks, PreToolUse: withoutGate } }, null, 2)}\n`
+  };
+}
+
+function cursorHooksMergePlan(root: string): InstallFile {
+  const filePath = path.join(root, ".cursor", "hooks.json");
+  const existing = readJson<Record<string, unknown>>(filePath, {});
+  const hooks = isRecord(existing.hooks) ? { ...existing.hooks } : {};
+  const preToolUse = Array.isArray(hooks.preToolUse) ? [...hooks.preToolUse] : [];
+  const withoutGate = preToolUse.filter((entry) => !JSON.stringify(entry).includes(CURSOR_GATE_MARKER));
+  withoutGate.push({
+    command: clientGateCommand("cursor"),
+    matcher: "Write|Delete"
+  });
+
+  return {
+    filePath,
+    description: "Add the Agentpack gate preToolUse hook to project Cursor config.",
+    content: `${JSON.stringify({ ...existing, version: existing.version || 1, hooks: { ...hooks, preToolUse: withoutGate } }, null, 2)}\n`
   };
 }
 
