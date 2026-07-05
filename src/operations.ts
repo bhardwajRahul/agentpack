@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { referencedEvidenceIds } from "./core/compact.js";
-import { getFileRecord, normalizePath, sha256File } from "./core/hash.js";
+import { getFileRecord, normalizePath, resolveRegularFileWithin, sha256File } from "./core/hash.js";
 import { getGitInfo } from "./core/git.js";
-import { listTasks, readPassport } from "./core/tasks.js";
+import { listTaskIds, readPassport } from "./core/tasks.js";
 import {
   appendEvent,
   getPackPath,
@@ -369,11 +369,7 @@ export function formatLedgerStatus(root: string): string {
 function readEvidenceContent(root: string, options: EvidenceOptions): string {
   const inputPath = options.file || options.path;
   if (inputPath) {
-    const absolutePath = path.resolve(root, inputPath);
-    const relativePath = path.relative(root, absolutePath);
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      throw new Error(`Refusing to attach evidence outside project root: ${inputPath}`);
-    }
+    const absolutePath = resolveRegularFileWithin(root, inputPath, "evidence file");
     return readFileSync(absolutePath, "utf8");
   }
 
@@ -390,8 +386,12 @@ function countTasks(root: string): Record<TaskStatus, number> {
     abandoned: 0
   };
 
-  for (const task of listTasks(root)) {
-    counts[task.status] += 1;
+  for (const taskId of listTaskIds(root)) {
+    try {
+      counts[readPassport(root, taskId).status] += 1;
+    } catch {
+      // Ledger status is diagnostic and remains best-effort when one passport is corrupt.
+    }
   }
 
   return counts;

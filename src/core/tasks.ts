@@ -25,6 +25,7 @@ import type {
 
 export const TASK_ROLE_NAMES = ["scout", "builder", "reviewer", "archivist"] as const;
 export const TASK_ROLE_STATUSES = ["pending", "active", "done", "blocked"] as const;
+const TASK_STATUSES = new Set<TaskStatus>(["active", "parked", "blocked", "verifying", "completed", "abandoned"]);
 
 const TASK_ROLE_GUIDANCE: Record<TaskRoleName, string> = {
   scout: "Inspect relevant sources and record durable conclusions, risks, and known unknowns. Do not modify project files in this lane.",
@@ -192,10 +193,14 @@ export function getCurrentPassport(root: string): TaskPassport | null {
 }
 
 export function readPassport(root: string, taskId: string): TaskPassport {
-  const passport = readJson<TaskPassport | null>(passportPath(root, taskId), null);
-  if (!passport) {
+  if (!/^task_[A-Za-z0-9][A-Za-z0-9._-]*$/.test(taskId)) {
+    throw new Error(`Invalid task id: ${taskId || "(empty)"}`);
+  }
+  const value = readJson<unknown>(passportPath(root, taskId), null);
+  if (!value) {
     throw new Error(`Task passport not found: ${taskId}`);
   }
+  const passport = validateTaskPassport(value, taskId);
   return {
     ...passport,
     roles: passport.roles || {}
@@ -863,7 +868,7 @@ function ensureTasksDir(root: string): void {
   mkdirSync(getPackPath(root, "tasks"), { recursive: true, mode: PACK_DIR_MODE });
 }
 
-function listTaskIds(root: string): string[] {
+export function listTaskIds(root: string): string[] {
   const tasksPath = getPackPath(root, "tasks");
   if (!existsSync(tasksPath)) {
     return [];
@@ -873,6 +878,58 @@ function listTaskIds(root: string): string[] {
     .filter((entry) => entry.isDirectory())
     .filter((entry) => existsSync(passportPath(root, entry.name)))
     .map((entry) => entry.name);
+}
+
+function validateTaskPassport(value: unknown, taskId: string): TaskPassport {
+  if (!isRecord(value)) {
+    throw new Error(`Task passport is invalid: ${taskId}`);
+  }
+  const status = value.status;
+  const risk = value.risk;
+  const verification = value.verification;
+  const roles = value.roles;
+  const validRoles = roles === undefined || (isRecord(roles) && Object.entries(roles).every(([role, state]) =>
+    (TASK_ROLE_NAMES as readonly string[]).includes(role) &&
+    isRecord(state) &&
+    (TASK_ROLE_STATUSES as readonly string[]).includes(String(state.status)) &&
+    typeof state.summary === "string"
+  ));
+  if (
+    value.schemaVersion !== SCHEMA_VERSION ||
+    value.id !== taskId ||
+    typeof value.title !== "string" ||
+    !TASK_STATUSES.has(status as TaskStatus) ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string" ||
+    !(value.closedAt === null || typeof value.closedAt === "string") ||
+    typeof value.objective !== "string" ||
+    !stringArrayValue(value.constraints) ||
+    !(value.branch === null || typeof value.branch === "string") ||
+    !(value.baseHead === null || typeof value.baseHead === "string") ||
+    !(value.currentHead === null || typeof value.currentHead === "string") ||
+    typeof value.worktree !== "string" ||
+    !stringArrayValue(value.writeScope) ||
+    !(risk === "low" || risk === "medium" || risk === "high" || risk === "unknown") ||
+    !validRoles ||
+    !isRecord(verification) ||
+    !VERIFICATION_STATUSES.has(verification.status as TaskVerification["status"]) ||
+    !stringArrayValue(verification.evidence) ||
+    typeof verification.summary !== "string" ||
+    !stringArrayValue(value.nextActions) ||
+    !stringArrayValue(value.tags) ||
+    !(value.blockedReason === undefined || typeof value.blockedReason === "string")
+  ) {
+    throw new Error(`Task passport is invalid: ${taskId}`);
+  }
+  return value as unknown as TaskPassport;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function stringArrayValue(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
 function passportPath(root: string, taskId: string): string {

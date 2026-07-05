@@ -1,7 +1,7 @@
-import { existsSync, lstatSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { createId } from "./ids.js";
 import {
-  appendEvent,
   getPackPath,
   listCheckpoints,
   PACK_DIR_MODE,
@@ -10,7 +10,7 @@ import {
   readSources,
   withPackWriteLock
 } from "./store.js";
-import { listTasks, readPassport } from "./tasks.js";
+import { listTaskIds, readPassport } from "./tasks.js";
 import type { AgentpackEvent } from "./types.js";
 
 export const DEFAULT_KEEP_CHECKPOINTS = 30;
@@ -138,69 +138,146 @@ export function applyCompactPlan(root: string, options: CompactOptions = {}): Co
 
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const archiveDir = plan.purge ? null : getPackPath(root, "archive");
-
-    for (const checkpointId of plan.checkpointsToSlim) {
-      for (const name of CHECKPOINT_HEAVY_FILES) {
-        const filePath = getPackPath(root, "checkpoints", checkpointId, name);
-        if (!existsSync(filePath)) {
-          continue;
-        }
-        if (archiveDir) {
-          moveIntoArchive(filePath, path.join(archiveDir, "checkpoints", checkpointId, name));
-        } else {
-          unlinkSync(filePath);
-        }
-      }
-    }
-
     const events = readEvents(root);
     const archivableEventIds = supersededSourceEventIds(root, events);
     let eventsFile: string | null = null;
-    if (archivableEventIds.size > 0) {
+    const cacheDir = getPackPath(root, "cache");
+    assertSafePackDirectoryChain(root, cacheDir);
+    if (archiveDir) {
+      assertSafePackDirectoryChain(root, archiveDir);
+    }
+    const transactionDir = path.join(cacheDir, `.compact-${createId("txn")}`);
+    mkdirSync(transactionDir, { mode: PACK_DIR_MODE });
+    const moves: Array<{ source: string; staged: string; target: string | null; location: "source" | "staged" | "target" }> = [];
+    const eventsPath = getPackPath(root, "events.jsonl");
+    const eventsBackup = path.join(transactionDir, "events.original.jsonl");
+    const stagedEvents = path.join(transactionDir, "events.next.jsonl");
+    const stagedArchivedEvents = path.join(transactionDir, "events.archived.jsonl");
+    let eventsBackedUp = false;
+    let eventsReplaced = false;
+    let archivedEventsInstalled = false;
+
+    try {
       const kept: string[] = [];
       const archived: string[] = [];
       for (const event of events) {
         (archivableEventIds.has(event.id) ? archived : kept).push(JSON.stringify(event));
       }
+      kept.push(JSON.stringify({
+        id: createId("evt"),
+        ts: new Date().toISOString(),
+        type: "ledger-compact",
+        keepCheckpoints: plan.keepCheckpoints,
+        evidenceAgeDays: plan.evidenceAgeDays,
+        purge: plan.purge,
+        checkpointsSlimmed: plan.checkpointsToSlim.length,
+        eventsArchived: plan.eventsToArchive,
+        evidenceArchived: plan.evidenceToArchive.length
+      }));
+      writeFileSync(stagedEvents, kept.map((line) => `${line}\n`).join(""), { encoding: "utf8", mode: PACK_FILE_MODE });
+      if (archivableEventIds.size > 0) {
+        writeFileSync(stagedArchivedEvents, archived.map((line) => `${line}\n`).join(""), { encoding: "utf8", mode: PACK_FILE_MODE });
+        if (archiveDir) {
+          eventsFile = path.join(archiveDir, `events-${stamp}.jsonl`);
+          prepareArchiveTarget(root, eventsFile);
+        }
+      }
+
+      for (const checkpointId of plan.checkpointsToSlim) {
+        for (const name of CHECKPOINT_HEAVY_FILES) {
+          const source = getPackPath(root, "checkpoints", checkpointId, name);
+          if (!existsSync(source)) {
+            continue;
+          }
+          const target = archiveDir ? path.join(archiveDir, "checkpoints", checkpointId, name) : null;
+          if (target) {
+            prepareArchiveTarget(root, target);
+          }
+          moves.push({ source, staged: path.join(transactionDir, `item-${moves.length}`), target, location: "source" });
+        }
+      }
+      for (const fileName of plan.evidenceToArchive) {
+        const source = getPackPath(root, "evidence", fileName);
+        let stats;
+        try {
+          stats = lstatSync(source);
+        } catch {
+          continue;
+        }
+        if (!stats.isFile()) {
+          continue;
+        }
+        const target = archiveDir ? path.join(archiveDir, "evidence", fileName) : null;
+        if (target) {
+          prepareArchiveTarget(root, target);
+        }
+        moves.push({ source, staged: path.join(transactionDir, `item-${moves.length}`), target, location: "source" });
+      }
+
+      for (const move of moves) {
+        renameSync(move.source, move.staged);
+        move.location = "staged";
+      }
+
+      renameSync(eventsPath, eventsBackup);
+      eventsBackedUp = true;
+      renameSync(stagedEvents, eventsPath);
+      eventsReplaced = true;
+      if (eventsFile && archiveDir) {
+        renameSync(stagedArchivedEvents, eventsFile);
+        archivedEventsInstalled = true;
+      }
+
       if (archiveDir) {
-        eventsFile = path.join(archiveDir, `events-${stamp}.jsonl`);
-        mkdirSync(path.dirname(eventsFile), { recursive: true, mode: PACK_DIR_MODE });
-        writeFileSync(eventsFile, archived.map((line) => `${line}\n`).join(""), { encoding: "utf8", mode: PACK_FILE_MODE });
+        for (const move of moves) {
+          if (!move.target) {
+            continue;
+          }
+          renameSync(move.staged, move.target);
+          move.location = "target";
+        }
       }
-      const stagedPath = getPackPath(root, "cache", `.events-compact-${stamp}`);
-      mkdirSync(path.dirname(stagedPath), { recursive: true, mode: PACK_DIR_MODE });
-      writeFileSync(stagedPath, kept.map((line) => `${line}\n`).join(""), { encoding: "utf8", mode: PACK_FILE_MODE });
-      renameSync(stagedPath, getPackPath(root, "events.jsonl"));
+
+      rmSync(transactionDir, { recursive: true, force: true });
+      return { plan, archiveDir, eventsFile };
+    } catch (error) {
+      let rollbackFailed = false;
+      if (eventsBackedUp) {
+        try {
+          if (eventsReplaced && pathEntryExists(eventsPath)) {
+            unlinkSync(eventsPath);
+          }
+          renameSync(eventsBackup, eventsPath);
+        } catch {
+          rollbackFailed = true;
+        }
+      }
+      if (archivedEventsInstalled && eventsFile) {
+        try {
+          unlinkSync(eventsFile);
+        } catch {
+          rollbackFailed = true;
+        }
+      }
+      for (const move of [...moves].reverse()) {
+        try {
+          if (move.location === "target" && move.target) {
+            renameSync(move.target, move.source);
+          } else if (move.location === "staged") {
+            renameSync(move.staged, move.source);
+          }
+        } catch {
+          rollbackFailed = true;
+        }
+      }
+      if (!rollbackFailed) {
+        rmSync(transactionDir, { recursive: true, force: true });
+      }
+      if (rollbackFailed) {
+        throw new Error(`Ledger compact failed and rollback was incomplete; recovery files remain at ${transactionDir}. Original error: ${String(error)}`);
+      }
+      throw error;
     }
-
-    for (const fileName of plan.evidenceToArchive) {
-      const filePath = getPackPath(root, "evidence", fileName);
-      let stats;
-      try {
-        stats = lstatSync(filePath);
-      } catch {
-        continue;
-      }
-      if (!stats.isFile()) {
-        continue;
-      }
-      if (archiveDir) {
-        moveIntoArchive(filePath, path.join(archiveDir, "evidence", fileName));
-      } else {
-        unlinkSync(filePath);
-      }
-    }
-
-    appendEvent(root, "ledger-compact", {
-      keepCheckpoints: plan.keepCheckpoints,
-      evidenceAgeDays: plan.evidenceAgeDays,
-      purge: plan.purge,
-      checkpointsSlimmed: plan.checkpointsToSlim.length,
-      eventsArchived: plan.eventsToArchive,
-      evidenceArchived: plan.evidenceToArchive.length
-    });
-
-    return { plan, archiveDir, eventsFile };
   });
 }
 
@@ -265,9 +342,9 @@ export function referencedEvidenceIds(
     }
   }
 
-  for (const task of listTasks(root)) {
+  for (const taskId of listTaskIds(root)) {
     try {
-      for (const evidenceId of readPassport(root, task.id).verification.evidence || []) {
+      for (const evidenceId of readPassport(root, taskId).verification.evidence || []) {
         ids.add(evidenceId);
       }
     } catch {
@@ -276,7 +353,7 @@ export function referencedEvidenceIds(
       // callers like ledger status stay best-effort.
       if (options.strict) {
         throw new Error(
-          `Task passport ${task.id} is unreadable; cannot determine its referenced evidence. Fix or remove the passport before compacting.`
+          `Task passport ${taskId} is unreadable; cannot determine its referenced evidence. Fix or remove the passport before compacting.`
         );
       }
     }
@@ -295,9 +372,42 @@ function safeEvidenceFileName(eventPath: unknown): string | null {
   return fileName;
 }
 
-function moveIntoArchive(sourcePath: string, targetPath: string): void {
-  mkdirSync(path.dirname(targetPath), { recursive: true, mode: PACK_DIR_MODE });
-  renameSync(sourcePath, targetPath);
+function prepareArchiveTarget(root: string, targetPath: string): void {
+  const parent = path.dirname(targetPath);
+  assertSafePackDirectoryChain(root, parent);
+  mkdirSync(parent, { recursive: true, mode: PACK_DIR_MODE });
+  assertSafePackDirectoryChain(root, parent);
+  if (pathEntryExists(targetPath)) {
+    throw new Error(`Ledger compact refuses to overwrite archive target: ${targetPath}`);
+  }
+}
+
+function assertSafePackDirectoryChain(root: string, directory: string): void {
+  const packRoot = getPackPath(root);
+  const relative = path.relative(packRoot, directory);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Ledger compact path escapes .agentpack: ${directory}`);
+  }
+  let current = packRoot;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    if (!pathEntryExists(current)) {
+      break;
+    }
+    const stat = lstatSync(current);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`Ledger compact refuses unsafe directory: ${current}`);
+    }
+  }
+}
+
+function pathEntryExists(filePath: string): boolean {
+  try {
+    lstatSync(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeCount(value: number | undefined, fallback: number): number {

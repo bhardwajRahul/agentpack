@@ -2607,6 +2607,15 @@ test("task gate rejects unknown modes, fail-closes on unreadable passports, and 
   assert.match(outsideFinding?.message || "", /\.\.\/elsewhere\.txt/);
   assert.match(outsideFinding?.message || "", /\/tmp\/elsewhere\.txt/);
 
+  const currentTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
+  const currentPassportPath = path.join(dir, ".agentpack", "tasks", currentTaskId, "passport.json");
+  const currentPassport = JSON.parse(readFileSync(currentPassportPath, "utf8")) as Record<string, unknown>;
+  delete currentPassport.writeScope;
+  writeFileSync(currentPassportPath, JSON.stringify(currentPassport), "utf8");
+  const invalidShape = runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.equal(invalidShape.status, 2, "structurally invalid passport must fail closed in block mode");
+  assert.match(invalidShape.stderr, /Task passport is invalid/);
+
   writeFileSync(path.join(dir, ".agentpack", "tasks", "current"), "task_missing_passport\n", "utf8");
   const unreadable = runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]);
   assert.equal(unreadable.status, 2, "unreadable passport must fail closed in block mode");
@@ -2824,6 +2833,108 @@ test("ledger compact rejects invalid numeric options", () => {
     runExpectError(dir, ["ledger", "compact", "--evidence-age-days", "3O"]),
     /--evidence-age-days requires a non-negative number/
   );
+
+  run(dir, ["checkpoint", "-m", "inline false must stay dry"]);
+  const checkpointId = readdirSync(path.join(dir, ".agentpack", "checkpoints"))[0] || "";
+  const checkpointDir = path.join(dir, ".agentpack", "checkpoints", checkpointId);
+  const dryRun = run(dir, ["ledger", "compact", "--write=false", "--purge=false", "--keep-checkpoints=0"]);
+  assert.match(dryRun, /dry run, archive mode/);
+  assert.ok(existsSync(path.join(checkpointDir, "resume.md")), "--write=false must not apply compaction");
+});
+
+test("resume and evidence ingestion reject escaping and symlinked files", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-evidence-containment-test-"));
+  const outsideDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-evidence-outside-test-"));
+  const outsideFile = path.join(outsideDir, "secret.txt");
+  writeFileSync(outsideFile, "outside-secret-value\n", "utf8");
+  run(dir, ["init"]);
+
+  symlinkSync(outsideFile, path.join(dir, "secret-link.txt"));
+  assert.match(runExpectError(dir, ["evidence", "add", "--file", "secret-link.txt"]), /symbolic-link evidence file/);
+  assert.match(runExpectError(dir, ["source", "add", "secret-link.txt", "--summary", "unsafe"]), /symbolic-link source file/);
+
+  const eventsPath = path.join(dir, ".agentpack", "events.jsonl");
+  writeFileSync(eventsPath, `${JSON.stringify({
+    id: "evt_escape",
+    ts: new Date().toISOString(),
+    type: "evidence",
+    kind: "note",
+    path: path.relative(path.join(dir, ".agentpack"), outsideFile)
+  })}\n`, "utf8");
+  const resume = run(dir, ["resume", "--preset", "deep"]);
+  assert.match(resume, /unsafe or unreadable evidence path omitted/);
+  assert.doesNotMatch(resume, /outside-secret-value/);
+});
+
+test("legacy export targets stay inside the exports directory and note evidence omits exit code", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-export-containment-test-"));
+  run(dir, ["init"]);
+  assert.match(runExpectError(dir, ["export", "--to", "../../outside"]), /Invalid export target/);
+  assert.equal(existsSync(path.join(dir, "outside-handoff.md")), false);
+
+  run(dir, ["evidence", "add", "--content", "plain note"]);
+  const event = readFileSync(path.join(dir, ".agentpack", "events.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { type: string; exitCode?: number | null })
+    .find((entry) => entry.type === "evidence");
+  assert.equal(event?.exitCode, null);
+});
+
+test("install dry-run is pure and installer rejects symlink destinations", { skip: process.platform === "win32" }, () => {
+  const dryRunDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-pure-test-"));
+  mkdirSync(path.join(dryRunDir, ".agentpack"));
+  assert.match(run(dryRunDir, ["install", "codex"]), /No files were changed/);
+  assert.equal(existsSync(path.join(dryRunDir, ".agentpack", "instructions")), false);
+
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-symlink-test-"));
+  const outsideDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-outside-test-"));
+  const victim = path.join(outsideDir, "AGENTS.md");
+  writeFileSync(victim, "victim-original\n", "utf8");
+  run(dir, ["init"]);
+  symlinkSync(victim, path.join(dir, "AGENTS.md"));
+  assert.match(runExpectError(dir, ["install", "codex", "--write"]), /symbolic link/);
+  assert.equal(readFileSync(victim, "utf8"), "victim-original\n");
+});
+
+test("git hook shell-quotes repository roots", { skip: process.platform === "win32" }, () => {
+  const parent = mkdtempSync(path.join(os.tmpdir(), "agentpack-hook-quote-test-"));
+  const dir = path.join(parent, "repo-$(touch marker)-'quote");
+  mkdirSync(dir);
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  run(dir, ["install", "git-hooks", "--write"]);
+  const hook = readFileSync(path.join(dir, ".git", "hooks", "pre-commit"), "utf8");
+  assert.match(hook, /run_gate '\/.*\$\(touch marker\).*'"'"'quote'/);
+  assert.doesNotMatch(hook, /run_gate "[^\n]*\$\(touch marker\)/);
+});
+
+test("ledger compact rolls back on staging failure and rejects symlinked archives", { skip: process.platform === "win32" }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-rollback-test-"));
+  writeFileSync(path.join(dir, "source.txt"), "source\n", "utf8");
+  run(dir, ["init"]);
+  run(dir, ["source", "add", "source.txt", "--summary", "first"]);
+  run(dir, ["source", "add", "source.txt", "--summary", "second"]);
+  run(dir, ["checkpoint", "-m", "must survive failed compact"]);
+  const checkpointId = readdirSync(path.join(dir, ".agentpack", "checkpoints"))[0] || "";
+  const checkpointDir = path.join(dir, ".agentpack", "checkpoints", checkpointId);
+  const cacheDir = path.join(dir, ".agentpack", "cache");
+  chmodSync(cacheDir, 0o500);
+  try {
+    assert.match(
+      runExpectError(dir, ["ledger", "compact", "--write", "--purge", "--keep-checkpoints", "0"]),
+      /EACCES|permission denied/
+    );
+  } finally {
+    chmodSync(cacheDir, 0o700);
+  }
+  assert.ok(existsSync(path.join(checkpointDir, "resume.md")), "failed compact must not delete checkpoint files");
+
+  const archiveTarget = mkdtempSync(path.join(os.tmpdir(), "agentpack-compact-archive-target-"));
+  symlinkSync(archiveTarget, path.join(dir, ".agentpack", "archive"));
+  assert.match(runExpectError(dir, ["ledger", "compact", "--write", "--keep-checkpoints", "0"]), /unsafe directory/);
+  assert.deepEqual(readdirSync(archiveTarget), []);
+  assert.ok(existsSync(path.join(checkpointDir, "resume.md")));
 });
 
 test("installs the git-hooks gate for a pack in a repository subdirectory", { skip: process.platform === "win32" }, () => {
@@ -2853,7 +2964,7 @@ test("installs the git-hooks gate for a pack in a repository subdirectory", { sk
   const merged = readFileSync(hookPath, "utf8");
   assert.match(merged, /services\/ledger/, "adding a second pack must keep the first pack gated");
   assert.match(merged, /tools\/ops/);
-  assert.equal(merged.match(/run_gate "/g)?.length, 2);
+  assert.equal(merged.match(/^\s*# agentpack:root-base64 /gm)?.length, 2);
 
   const rerun = run(secondPack, ["install", "git-hooks", "--write"]);
   assert.match(rerun, /UNCHANGED/i, "re-installing from either pack must be idempotent");

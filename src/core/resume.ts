@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clipToTokenBudget, estimateTokens, packSections } from "./budget.js";
 import { getGitInfo } from "./git.js";
-import { sha256File } from "./hash.js";
+import { resolveRegularFileWithin, sha256File } from "./hash.js";
 import {
   getPackPath,
   readEvents,
@@ -598,9 +598,8 @@ function formatEvidence(root: string, events: AgentpackEvent[]): string[] {
 
   return evidenceEvents.slice(-20).map((event) => {
     const eventPath = text(event.path);
-    const file = eventPath ? getPackPath(root, eventPath) : null;
-    const preview = file && existsSync(file)
-      ? previewText(readFileSync(file, "utf8"))
+    const preview = eventPath
+      ? safeEvidencePreview(root, eventPath)
       : text(event.content);
     const lines = [
       `- ${event.ts}: ${text(event.kind) || "note"}`,
@@ -612,6 +611,23 @@ function formatEvidence(root: string, events: AgentpackEvent[]): string[] {
 
     return lines.filter(Boolean).join("\n");
   });
+}
+
+function safeEvidencePreview(root: string, eventPath: string): string {
+  try {
+    const packRoot = getPackPath(root);
+    const file = resolveRegularFileWithin(packRoot, eventPath, "evidence preview path");
+    const buffer = Buffer.alloc(4096);
+    const descriptor = openSync(file, "r");
+    try {
+      const bytes = readSync(descriptor, buffer, 0, buffer.length, 0);
+      return previewText(buffer.subarray(0, bytes).toString("utf8"));
+    } finally {
+      closeSync(descriptor);
+    }
+  } catch {
+    return "[unsafe or unreadable evidence path omitted]";
+  }
 }
 
 function formatTimeline(events: AgentpackEvent[]): string[] {

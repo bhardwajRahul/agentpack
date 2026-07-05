@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getGitHooksPath, getGitRepoBounds } from "../core/git.js";
@@ -6,10 +6,11 @@ import { getPackPath, readJson } from "../core/store.js";
 
 const INSTALL_TARGETS = ["codex", "claude", "claude-desktop", "cursor", "git-hooks"] as const;
 const GATE_HOOK_MARKER = "# agentpack:gate";
+const GATE_ROOT_MARKER = "# agentpack:root-base64 ";
 const CLAUDE_GATE_MARKER = "task gate --client claude";
 
 function claudeGateCommand(): string {
-  return `"${process.execPath}" "${agentpackEntrypoint()}" task gate --client claude`;
+  return `${shellQuote(process.execPath)} ${shellQuote(agentpackEntrypoint())} task gate --client claude`;
 }
 
 function collaborationModesSection(): string {
@@ -125,20 +126,20 @@ export function installIntegration(root: string, targetValue: string, options: I
   const target = parseTarget(targetValue);
   const dryRun = options.dryRun !== false;
   const plan = buildInstallPlan(root, target);
+  validateInstallPlan(root, plan);
   const statuses = plan.files.map((file) => ({
     file,
     status: fileStatus(file.filePath, file.content)
   }));
 
   if (!dryRun) {
-    applyPlan(plan);
+    applyPlan(root, plan);
   }
 
   return formatInstallResult(root, plan, statuses, dryRun);
 }
 
 function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
-  mkdirSync(getPackPath(root, "instructions"), { recursive: true });
   const serverName = mcpServerName(root);
 
   if (target === "codex") {
@@ -263,12 +264,13 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   };
 }
 
-function applyPlan(plan: InstallPlan): void {
+function applyPlan(root: string, plan: InstallPlan): void {
   const writes: Array<{ filePath: string; previous: string | null }> = [];
   const createdDirectories: Array<{ deepest: string; shallowest: string }> = [];
 
   try {
     for (const file of plan.files) {
+      validateInstallPath(root, file.filePath);
       const directory = path.dirname(file.filePath);
       const firstCreated = mkdirSync(directory, { recursive: true });
       if (firstCreated) {
@@ -478,7 +480,10 @@ function isWithin(parent: string, child: string): boolean {
 function preCommitGateScript(roots: string[]): string {
   // git runs hooks from the repository top level; packs may live in subdirectories,
   // and one repository can hold several packs — the hook gates each listed pack.
-  const gateLines = [...roots].sort().map((root) => `  run_gate "${root}"`);
+  const gateLines = [...roots].sort().flatMap((root) => [
+    `  ${GATE_ROOT_MARKER}${Buffer.from(root, "utf8").toString("base64")}`,
+    `  run_gate ${shellQuote(root)}`
+  ]);
   return [
     "#!/bin/sh",
     GATE_HOOK_MARKER,
@@ -504,9 +509,56 @@ function preCommitGateScript(roots: string[]): string {
   ].join("\n");
 }
 
+function validateInstallPlan(root: string, plan: InstallPlan): void {
+  for (const file of plan.files) {
+    validateInstallPath(root, file.filePath);
+  }
+}
+
+function validateInstallPath(root: string, filePath: string): void {
+  const bounds = getGitRepoBounds(root);
+  const bases = [root, bounds?.topLevel, bounds?.commonDir]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => path.resolve(value))
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort((left, right) => right.length - left.length);
+  const absolutePath = path.resolve(filePath);
+  const base = bases.find((candidate) => isWithin(candidate, absolutePath));
+  if (!base) {
+    throw new Error(`Install path escapes the repository: ${filePath}`);
+  }
+
+  const relative = path.relative(base, absolutePath);
+  let current = base;
+  for (const segment of relative.split(path.sep).filter(Boolean)) {
+    current = path.join(current, segment);
+    if (!existsSync(current)) {
+      break;
+    }
+    if (lstatSync(current).isSymbolicLink()) {
+      throw new Error(`Install path contains a symbolic link: ${filePath}`);
+    }
+  }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 function parseGateHookRoots(script: string): string[] {
   const roots: string[] = [];
   for (const line of script.split("\n")) {
+    const encoded = line.trim().startsWith(GATE_ROOT_MARKER)
+      ? line.trim().slice(GATE_ROOT_MARKER.length)
+      : "";
+    if (encoded) {
+      try {
+        roots.push(Buffer.from(encoded, "base64").toString("utf8"));
+        continue;
+      } catch {
+        // Fall through to the legacy quoted-line parser.
+      }
+    }
     const match = line.match(/^\s*run_gate "(.+)"\s*$/);
     if (match?.[1]) {
       roots.push(match[1]);

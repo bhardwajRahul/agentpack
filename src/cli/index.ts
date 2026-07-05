@@ -819,7 +819,7 @@ function bundleCommand(root: string, rest: string[]): void {
       taskId: stringOption(parsed.options.task) || "current",
       outputPath,
       sourcePaths: toArray(parsed.options.source),
-      includeEvidence: parsed.options["no-evidence"] !== true,
+      includeEvidence: !booleanOption(parsed.options["no-evidence"], "--no-evidence"),
       producerVersion: readPackageVersion()
     });
     process.stdout.write(`${formatBundleExportResult(result)}\n`);
@@ -851,7 +851,7 @@ function bundleImportPlanCommand(root: string, args: string[]): void {
   if (!filePath) {
     throw new Error("bundle import-plan requires a bundle file path");
   }
-  const plan = planTaskBundleImport(root, filePath, { asNew: parsed.options["as-new"] === true });
+  const plan = planTaskBundleImport(root, filePath, { asNew: booleanOption(parsed.options["as-new"], "--as-new") });
   if (parsed.options.json) {
     process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
     return;
@@ -865,8 +865,8 @@ function bundleImportCommand(root: string, args: string[]): void {
   if (!filePath) {
     throw new Error("bundle import requires a bundle file path");
   }
-  const options = { asNew: parsed.options["as-new"] === true };
-  if (parsed.options.write !== true) {
+  const options = { asNew: booleanOption(parsed.options["as-new"], "--as-new") };
+  if (!booleanOption(parsed.options.write, "--write")) {
     const plan = planTaskBundleImport(root, filePath, options);
     if (parsed.options.json) {
       process.stdout.write(`${JSON.stringify(plan, null, 2)}\n`);
@@ -913,7 +913,7 @@ function sourceCommand(root: string, rest: string[]): void {
 
   if (subcommand === "prune") {
     const parsed = parseArgs(args);
-    if (!parsed.options.missing) {
+    if (!booleanOption(parsed.options.missing, "--missing")) {
       throw new Error("source prune requires --missing");
     }
 
@@ -975,14 +975,14 @@ function ledgerCommand(root: string, rest: string[]): void {
 
   if (subcommand === "compact") {
     const parsed = parseArgs(rest.slice(1));
-    const options: CompactOptions = { purge: Boolean(parsed.options.purge) };
+    const options: CompactOptions = { purge: booleanOption(parsed.options.purge, "--purge") };
     if (optionValue(parsed.options, "keep-checkpoints")) {
       options.keepCheckpoints = countOption(parsed.options["keep-checkpoints"], "--keep-checkpoints");
     }
     if (optionValue(parsed.options, "evidence-age-days")) {
       options.evidenceAgeDays = countOption(parsed.options["evidence-age-days"], "--evidence-age-days");
     }
-    if (parsed.options.write) {
+    if (booleanOption(parsed.options.write, "--write")) {
       const result = applyCompactPlan(root, options);
       process.stdout.write(`${formatCompactPlan(result.plan, true)}\n`);
       if (result.archiveDir) {
@@ -1039,7 +1039,7 @@ function evidenceCommand(root: string, rest: string[]): void {
     file: stringOption(parsed.options.file),
     content: stringOption(parsed.options.content) || parsed.positionals.join(" "),
     command: stringOption(parsed.options.command),
-    exitCode: stringOption(parsed.options.exitCode)
+    exitCode: optionValue(parsed.options, "exitCode") ? stringOption(parsed.options.exitCode) : null
   });
 
   process.stdout.write(`Attached evidence ${event.id}\n`);
@@ -1120,6 +1120,9 @@ function setCommand(root: string, rest: string[]): void {
 
 function exportPath(root: string, target: string): string {
   const normalized = String(target).toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(normalized)) {
+    throw new Error(`Invalid export target: ${target}`);
+  }
   const fileName = normalized === "chatgpt" ? "chatgpt-handoff.md" : `${normalized}-handoff.md`;
   const filePath = getPackPath(root, "exports", fileName);
   if (!existsSync(path.dirname(filePath))) {
@@ -1143,12 +1146,16 @@ function parseArgs(args: string[]): ParsedArgs {
       if (!rawKey) {
         continue;
       }
-      const value = inlineValue !== undefined ? inlineValue : args[index + 1];
-      if (inlineValue === undefined && value && !value.startsWith("-")) {
-        index += 1;
-        addOption(options, rawKey, value);
+      if (inlineValue !== undefined) {
+        addOption(options, rawKey, inlineValue);
       } else {
-        addOption(options, rawKey, true);
+        const value = args[index + 1];
+        if (value && !value.startsWith("-")) {
+          index += 1;
+          addOption(options, rawKey, value);
+        } else {
+          addOption(options, rawKey, true);
+        }
       }
       continue;
     }
@@ -1223,9 +1230,22 @@ function countOption(value: ArgValue | undefined, flag: string): number {
   return number;
 }
 
+function booleanOption(value: ArgValue | undefined, flag: string): boolean {
+  if (value === undefined || value === false) {
+    return false;
+  }
+  if (value === true) {
+    return true;
+  }
+  if (typeof value === "string" && (value === "true" || value === "false")) {
+    return value === "true";
+  }
+  throw new Error(`${flag} requires true or false`);
+}
+
 function installDryRun(options: Record<string, ArgValue>): boolean {
-  const dryRun = options["dry-run"] === true;
-  const write = options.write === true;
+  const dryRun = booleanOption(options["dry-run"], "--dry-run");
+  const write = booleanOption(options.write, "--write");
 
   if (dryRun && write) {
     throw new Error("install accepts either --dry-run or --write, not both");
