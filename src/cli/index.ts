@@ -668,8 +668,7 @@ function writeHookOutput(client: string, report: ReturnType<typeof evaluateGate>
         agent_message: `Agentpack gate blocked this edit: ${summary}`
       }
       : {
-        permission: "allow",
-        ...(summary ? { agent_message: `Agentpack gate warning: ${summary}` } : {})
+        permission: "allow"
       };
     process.stdout.write(`${JSON.stringify(output)}\n`);
     return;

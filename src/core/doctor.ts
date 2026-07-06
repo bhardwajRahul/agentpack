@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { getGitInfo } from "./git.js";
 import { countFullCheckpoints } from "./compact.js";
 import { AGENTPACK_IGNORE_PATTERNS, findPackRoot, getPackPath, PACK_DIR } from "./store.js";
@@ -45,7 +46,9 @@ export function buildDoctorReport(startDir: string): { ok: boolean; text: string
   checks.push(checkLocalIgnores(root));
   checks.push(checkProjectMcpConfig(root));
   checks.push(checkCodexConfig(root));
+  checks.push(checkCodexGate(root));
   checks.push(checkCursorConfig(root));
+  checks.push(checkCursorGate(root));
   checks.push(checkClaudeDesktopConfig(root));
 
   const git = getGitInfo(root);
@@ -322,6 +325,100 @@ function checkCursorConfig(root: string): DoctorCheck {
       ? issues.join("; ")
       : `server key "${expectedName}" configured; open this folder as the Cursor workspace and reload MCP tools`
   };
+}
+
+function checkCodexGate(root: string): DoctorCheck {
+  const hooksPath = path.join(root, ".codex", "hooks.json");
+  if (!existsSync(hooksPath)) {
+    return missingGateCheck("Codex", path.join(root, ".codex", "config.toml"));
+  }
+
+  const parsed = readJson(hooksPath);
+  if (!parsed.ok) {
+    return { status: "fail", name: "Codex gate", detail: `.codex/hooks.json is not valid JSON: ${parsed.error}` };
+  }
+
+  const hooks = getRecord(parsed.value, "hooks");
+  const groups = Array.isArray(hooks?.PreToolUse) ? hooks.PreToolUse : [];
+  const handlers = groups.flatMap((group) => isRecord(group) && Array.isArray(group.hooks) ? group.hooks : []);
+  const handler = handlers.find((candidate) => isRecord(candidate) && commandValue(candidate).includes("task gate --client codex"));
+  const issues = validateGateHandler(handler, "codex");
+  if (isRecord(handler)) {
+    const windowsCommand = commandValue(handler, "commandWindows");
+    if (!windowsCommand.includes("task gate --client codex")) {
+      issues.push("Windows command override is missing");
+    } else if (!isCurrentGateCommand(windowsCommand)) {
+      issues.push("Windows launcher is stale; rerun `agentpack install codex --write`");
+    }
+  }
+  return gateDoctorCheck("Codex", issues);
+}
+
+function checkCursorGate(root: string): DoctorCheck {
+  const hooksPath = path.join(root, ".cursor", "hooks.json");
+  if (!existsSync(hooksPath)) {
+    return missingGateCheck("Cursor", path.join(root, ".cursor", "mcp.json"));
+  }
+
+  const parsed = readJson(hooksPath);
+  if (!parsed.ok) {
+    return { status: "fail", name: "Cursor gate", detail: `.cursor/hooks.json is not valid JSON: ${parsed.error}` };
+  }
+
+  const hooks = getRecord(parsed.value, "hooks");
+  const handlers = Array.isArray(hooks?.preToolUse) ? hooks.preToolUse : [];
+  const handler = handlers.find((candidate) => isRecord(candidate) && commandValue(candidate).includes("task gate --client cursor"));
+  const issues = validateGateHandler(handler, "cursor");
+  if (isRecord(handler)) {
+    const matcher = typeof handler.matcher === "string" ? handler.matcher : "";
+    if (!matcher.includes("Write") || !matcher.includes("Delete")) {
+      issues.push("matcher should cover Write and Delete");
+    }
+  }
+  return gateDoctorCheck("Cursor", issues);
+}
+
+function missingGateCheck(client: "Codex" | "Cursor", installSignalPath: string): DoctorCheck {
+  const installed = existsSync(installSignalPath);
+  return {
+    status: installed ? "warn" : "ok",
+    name: `${client} gate`,
+    detail: installed
+      ? `native task gate is missing; rerun \`agentpack install ${client.toLowerCase()} --write\``
+      : "not installed"
+  };
+}
+
+function validateGateHandler(handler: unknown, client: "codex" | "cursor"): string[] {
+  if (!isRecord(handler)) {
+    return [`Agentpack ${client} gate entry is missing; rerun \`agentpack install ${client} --write\``];
+  }
+  const command = commandValue(handler);
+  const issues: string[] = [];
+  if (!isCurrentGateCommand(command)) {
+    issues.push(`launcher is stale; rerun \`agentpack install ${client} --write\``);
+  }
+  return issues;
+}
+
+function isCurrentGateCommand(command: string): boolean {
+  return command.includes(process.execPath) && command.includes(agentpackEntrypoint());
+}
+
+function gateDoctorCheck(client: "Codex" | "Cursor", issues: string[]): DoctorCheck {
+  return {
+    status: issues.length ? "warn" : "ok",
+    name: `${client} gate`,
+    detail: issues.length ? issues.join("; ") : "native task gate configured"
+  };
+}
+
+function commandValue(value: Record<string, unknown>, key = "command"): string {
+  return typeof value[key] === "string" ? value[key] : "";
+}
+
+function agentpackEntrypoint(): string {
+  return fileURLToPath(new URL("../agentpack.js", import.meta.url));
 }
 
 function checkClaudeDesktopConfig(root: string): DoctorCheck {

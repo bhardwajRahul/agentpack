@@ -13,6 +13,7 @@ export interface GateFinding {
     | "task-not-active"
     | "out-of-scope"
     | "branch-drift"
+    | "config-unreadable"
     | "passport-unreadable"
     | "invalid-gate-mode"
     | "no-write-scope"
@@ -39,8 +40,19 @@ export interface GateOptions {
 const GATE_MODES: readonly GateMode[] = ["off", "warn", "block"];
 
 export function evaluateGate(root: string, options: GateOptions = {}): GateReport {
-  const config = readJson<Partial<AgentpackConfig>>(getPackPath(root, "config.json"), {});
-  const requestedMode = options.mode || config.gateMode || "warn";
+  let config: Partial<AgentpackConfig> = {};
+  let configError: string | null = null;
+  try {
+    const value = readJson<unknown>(getPackPath(root, "config.json"), {});
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("expected a JSON object");
+    }
+    config = value as Partial<AgentpackConfig>;
+  } catch (error) {
+    configError = error instanceof Error ? error.message : String(error);
+  }
+
+  const requestedMode = configError ? "block" : options.mode || config.gateMode || "warn";
   const modeValid = GATE_MODES.includes(requestedMode);
   // An unrecognized mode falls back to warn instead of silently disabling the gate,
   // and the finding below surfaces the config problem on every run.
@@ -58,6 +70,14 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
   const findings: GateFinding[] = [];
   let taskId: string | null = null;
   let taskStatus: TaskStatus | null = null;
+
+  if (configError) {
+    findings.push({
+      code: "config-unreadable",
+      level: "block",
+      message: `Cannot read .agentpack/config.json; refusing to bypass the task gate: ${configError}`
+    });
+  }
 
   if (!modeValid) {
     findings.push({

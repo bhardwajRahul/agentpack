@@ -11,8 +11,27 @@ const CLAUDE_GATE_MARKER = "task gate --client claude";
 const CODEX_GATE_MARKER = "task gate --client codex";
 const CURSOR_GATE_MARKER = "task gate --client cursor";
 
+export function formatClientGateCommand(
+  execPath: string,
+  entrypoint: string,
+  client: "claude" | "codex" | "cursor",
+  platform: "posix" | "win32"
+): string {
+  const quote = platform === "win32" ? windowsCommandQuote : shellQuote;
+  return `${quote(execPath)} ${quote(entrypoint)} task gate --client ${client}`;
+}
+
 function clientGateCommand(client: "claude" | "codex" | "cursor"): string {
-  return `${shellQuote(process.execPath)} ${shellQuote(agentpackEntrypoint())} task gate --client ${client}`;
+  return formatClientGateCommand(
+    process.execPath,
+    agentpackEntrypoint(),
+    client,
+    process.platform === "win32" ? "win32" : "posix"
+  );
+}
+
+function codexGateCommand(platform: "posix" | "win32"): string {
+  return formatClientGateCommand(process.execPath, agentpackEntrypoint(), "codex", platform);
 }
 
 function collaborationModesSection(): string {
@@ -255,6 +274,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   return {
     target,
     files: [
+      ignorePatternPlan(root, ".cursor", "Keep project-local Cursor integration files out of git."),
       writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
       writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
       jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer()),
@@ -263,7 +283,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     notes: [
       "Only project-local files are modified.",
       "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
-      "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode returns allow with warning context, while block mode denies violations.",
+      "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode allows silently, while block mode denies violations with feedback.",
       "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
       "The Cursor MCP entry uses an absolute Node launcher so Cursor does not depend on your shell/fnm/nvm PATH."
     ]
@@ -367,6 +387,19 @@ function writeFilePlan(root: string, relativeFilePath: string, description: stri
     filePath: path.join(root, relativeFilePath),
     description,
     content: ensureTrailingNewline(content)
+  };
+}
+
+function ignorePatternPlan(root: string, pattern: string, description: string): InstallFile {
+  const filePath = path.join(root, ".gitignore");
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const normalized = pattern.replace(/\/$/, "");
+  const present = existing.split(/\r?\n/).some((line) => line.trim().replace(/\/$/, "") === normalized);
+  const prefix = existing && !existing.endsWith("\n") ? "\n" : "";
+  return {
+    filePath,
+    description,
+    content: present ? existing : `${existing}${prefix}${pattern}\n`
   };
 }
 
@@ -551,6 +584,10 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
+function windowsCommandQuote(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
 function parseGateHookRoots(script: string): string[] {
   const roots: string[] = [];
   for (const line of script.split("\n")) {
@@ -607,7 +644,8 @@ function codexHooksMergePlan(root: string): InstallFile {
     matcher: "^apply_patch$",
     hooks: [{
       type: "command",
-      command: clientGateCommand("codex"),
+      command: codexGateCommand("posix"),
+      commandWindows: codexGateCommand("win32"),
       statusMessage: "Checking Agentpack task scope"
     }]
   });

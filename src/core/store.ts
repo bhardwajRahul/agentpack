@@ -12,6 +12,7 @@ export const AGENTPACK_IGNORE_PATTERNS = [
   `${PACK_DIR}/`,
   ".codex",
   ".claude",
+  ".cursor",
   ".mcp.json",
   "AGENTS.md",
   "CLAUDE.md"

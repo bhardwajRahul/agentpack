@@ -23,6 +23,7 @@ import { buildDoctorReport } from "../src/core/doctor.js";
 import { getGitInfo } from "../src/core/git.js";
 import { buildResume } from "../src/core/resume.js";
 import { writePackTransaction } from "../src/core/store.js";
+import { formatClientGateCommand } from "../src/integrations/install.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -1064,6 +1065,7 @@ test("init appends to existing gitignore without overwriting project rules", () 
     ".agentpack/",
     ".codex",
     ".claude",
+    ".cursor",
     ".mcp.json",
     "AGENTS.md",
     "CLAUDE.md",
@@ -2308,11 +2310,16 @@ test("serializes concurrent source record writes", async () => {
 test("previews and writes project-local MCP client install files", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-test-"));
   const serverName = expectedMcpServerName(dir);
+  runGit(dir, ["init"]);
   run(dir, ["init"]);
+  const gitignorePath = path.join(dir, ".gitignore");
+  writeFileSync(gitignorePath, readFileSync(gitignorePath, "utf8").replace(".cursor\n", ""), "utf8");
 
   const defaultPreview = run(dir, ["install", "cursor"]);
   assert.match(defaultPreview, /dry run/);
   assert.match(defaultPreview, /No files were changed/);
+  assert.match(defaultPreview, /UPDATE \.gitignore/);
+  assert.doesNotMatch(readFileSync(gitignorePath, "utf8"), /^\.cursor\/?$/m);
   assert.equal(existsSync(path.join(dir, ".cursor", "mcp.json")), false);
 
   const claudePreview = run(dir, ["install", "claude", "--dry-run"]);
@@ -2391,7 +2398,8 @@ test("previews and writes project-local MCP client install files", () => {
     new RegExp(`mcpServers\\.${serverName}`)
   );
 
-  run(dir, ["install", "cursor", "--write"]);
+  const cursorInstall = run(dir, ["install", "cursor", "--write"]);
+  assert.match(cursorInstall, /warn mode allows silently/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /preserve existing functionality/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
@@ -2417,6 +2425,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(cursorHooks.hooks.preToolUse.length, 1);
   assert.equal(cursorHooks.hooks.preToolUse[0]?.matcher, "Write|Delete");
   assert.match(cursorHooks.hooks.preToolUse[0]?.command || "", /task gate --client cursor$/);
+  assert.match(runGit(dir, ["check-ignore", ".cursor/hooks.json"]), /\.cursor\/hooks\.json/);
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
@@ -2449,11 +2458,12 @@ test("previews and writes project-local MCP client install files", () => {
   assert.doesNotMatch(codexConfig, /--root/);
   assert.doesNotMatch(codexConfig, /cwd =/);
   const codexHooks = JSON.parse(readFileSync(path.join(dir, ".codex", "hooks.json"), "utf8")) as {
-    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> };
+    hooks: { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string; commandWindows: string }> }> };
   };
   assert.equal(codexHooks.hooks.PreToolUse.length, 1);
   assert.equal(codexHooks.hooks.PreToolUse[0]?.matcher, "^apply_patch$");
   assert.match(codexHooks.hooks.PreToolUse[0]?.hooks[0]?.command || "", /task gate --client codex$/);
+  assert.match(codexHooks.hooks.PreToolUse[0]?.hooks[0]?.commandWindows || "", /task gate --client codex$/);
   const codexSnippet = readFileSync(path.join(dir, ".agentpack", "instructions", "codex-mcp.example.toml"), "utf8");
   assert.match(codexSnippet, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.match(codexSnippet, /args = \["mcp"\]/);
@@ -2592,14 +2602,14 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
     tool_input: { path: "other/b.ts" }
   }))) as Record<string, string>;
   assert.equal(cursorWarn.permission, "allow");
-  assert.match(cursorWarn.agent_message || "", /Agentpack gate warning/);
+  assert.equal(cursorWarn.agent_message, undefined, "Cursor only guarantees agent feedback for denied actions");
 
   const malformedCursor = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
     tool_name: "Write",
     tool_input: { unexpected_path_field: "other/b.ts" }
   }))) as Record<string, string>;
   assert.equal(malformedCursor.permission, "allow");
-  assert.match(malformedCursor.agent_message || "", /Cannot determine edited file paths/);
+  assert.equal(malformedCursor.agent_message, undefined);
 
   const allow = runWithInput(dir, ["task", "gate", "--client", "claude"], JSON.stringify({
     tool_name: "Edit",
@@ -2619,6 +2629,22 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
 
   writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "off" }, null, 2), "utf8");
   assert.equal(run(dir, ["task", "gate", "--file", "other/b.ts"]).trim(), "");
+
+  writeFileSync(configPath, "{ invalid json", "utf8");
+  const invalidConfig = runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.equal(invalidConfig.status, 2, "an unreadable config must fail closed");
+  assert.match(invalidConfig.stderr, /Cannot read \.agentpack\/config\.json/);
+  const invalidConfigCodex = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "codex"], JSON.stringify({
+    tool_name: "apply_patch",
+    tool_input: { command: "*** Begin Patch\n*** Update File: src/a.ts\n*** End Patch" }
+  }))) as { hookSpecificOutput: Record<string, string> };
+  assert.equal(invalidConfigCodex.hookSpecificOutput.permissionDecision, "deny");
+  const invalidConfigCursor = JSON.parse(runWithInput(dir, ["task", "gate", "--client", "cursor"], JSON.stringify({
+    tool_name: "Write",
+    tool_input: { file_path: "src/a.ts" }
+  }))) as Record<string, string>;
+  assert.equal(invalidConfigCursor.permission, "deny");
+
   writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "warn" }, null, 2), "utf8");
 
   run(dir, ["task", "park"]);
@@ -3094,12 +3120,13 @@ test("codex and cursor installs merge native task-gate hooks idempotently", () =
 
   const codex = JSON.parse(readFileSync(path.join(dir, ".codex", "hooks.json"), "utf8")) as {
     keep: boolean;
-    hooks: { PreToolUse: Array<{ hooks: Array<{ command: string }> }>; PostToolUse: unknown[] };
+    hooks: { PreToolUse: Array<{ hooks: Array<{ command: string; commandWindows: string }> }>; PostToolUse: unknown[] };
   };
   assert.equal(codex.keep, true);
   assert.equal(codex.hooks.PostToolUse.length, 1);
   assert.equal(codex.hooks.PreToolUse.length, 1);
   assert.match(codex.hooks.PreToolUse[0]?.hooks[0]?.command || "", /agentpack\.js.*task gate --client codex$/);
+  assert.match(codex.hooks.PreToolUse[0]?.hooks[0]?.commandWindows || "", /^".*agentpack\.js" task gate --client codex$/);
 
   const cursor = JSON.parse(readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")) as {
     keep: boolean;
@@ -3109,6 +3136,25 @@ test("codex and cursor installs merge native task-gate hooks idempotently", () =
   assert.equal(cursor.hooks.postToolUse.length, 1);
   assert.equal(cursor.hooks.preToolUse.length, 1);
   assert.match(cursor.hooks.preToolUse[0]?.command || "", /agentpack\.js.*task gate --client cursor$/);
+
+  const doctor = buildDoctorReport(dir).text;
+  assert.match(doctor, /\[ok\] Codex gate: native task gate configured/);
+  assert.match(doctor, /\[ok\] Cursor gate: native task gate configured/);
+
+  unlinkSync(path.join(dir, ".cursor", "hooks.json"));
+  const missingCursorGate = buildDoctorReport(dir).text;
+  assert.match(missingCursorGate, /\[warn\] Cursor gate: native task gate is missing/);
+});
+
+test("formats native gate commands for POSIX and Windows shells", () => {
+  assert.equal(
+    formatClientGateCommand("/opt/Node's/bin/node", "/tmp/Agent Pack/agentpack.js", "codex", "posix"),
+    "'/opt/Node'\"'\"'s/bin/node' '/tmp/Agent Pack/agentpack.js' task gate --client codex"
+  );
+  assert.equal(
+    formatClientGateCommand("C:\\Program Files\\nodejs\\node.exe", "C:\\Agent Pack\\agentpack.js", "cursor", "win32"),
+    "\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\Agent Pack\\agentpack.js\" task gate --client cursor"
+  );
 });
 
 test("parks current task over MCP so a new task can start", async () => {
