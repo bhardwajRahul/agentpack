@@ -242,8 +242,9 @@ This keeps one session focused on one part of the repo without splitting the led
 Structured bundles are an explicit handoff surface, separate from the current
 markdown export. A bundle moves reviewed task continuity between local
 workspaces without committing live `.agentpack/` state or pretending to move
-the Git working tree. Export, inspect, and read-only import planning are
-implemented; applying a bundle is still future work.
+the Git working tree. Export, inspect, read-only import planning, and explicit
+apply are all implemented: `bundle import` defaults to a read-only plan, and
+`--write` is required to change destination pack state.
 
 The first bundle format is one inspectable UTF-8 JSON file, conventionally
 named `*.agentpack-bundle.json`. It is not a zip archive and cannot contain
