@@ -50,6 +50,46 @@ agentpack source status
 
 Expected takeaway: the new session gets the goal, status, decisions, dead ends, source-cache guidance, and next action under a compact budget. Lower token usage is a side effect of less rediscovery; the main value is continuity.
 
+## Monorepo Focus With Scoped Tasks
+
+Scenario: one repo holds several parts (`api/`, `frontend/`, `cron/`, `service/`), and each work slice should keep the agent inside one part. One ledger serves the pack root; short Task Passports carry the folder boundary.
+
+1. Initialize once and install the client surface with its native task gate:
+
+```bash
+agentpack init
+agentpack install claude --write   # or codex | cursor
+```
+
+2. When work enters one part of the project, start a short scoped task manually, or let the connected agent do it through MCP:
+
+```bash
+agentpack task start "Fix token expiry in API" \
+  --objective "Refresh tokens expire early due to TTL in seconds vs ms" \
+  --write-scope api \
+  --next "Fix TTL conversion and cover it with a focused test"
+```
+
+3. Work normally. The native pre-tool gate checks every edit against the scope before it happens; simulate the boundary manually with:
+
+```bash
+agentpack task gate --file api/auth/token.ts        # inside the scope: silent
+agentpack task gate --file frontend/utils/token.ts  # outside: warning
+```
+
+In the default `warn` mode the finding lands in the agent's context as feedback it can act on; with `gateMode: "block"` in `.agentpack/config.json`, the native Claude Code, Codex, and Cursor hooks deny the edit outright.
+
+4. Finish the slice, then start the next scoped task when the work moves to another part:
+
+```bash
+agentpack task verify --status passed --evidence evt_... --summary "API token tests pass"
+agentpack task finalize
+agentpack task start "Dedupe token utils" --write-scope frontend
+agentpack task list
+```
+
+Expected takeaway: `task list` shows which part each short task owned via its scope, and the gate keeps a session focused on one folder — enforcement, not convention. The ledger stays whole, and per-task context stays small instead of accumulating the entire monorepo.
+
 ## Handoff Continuity Smoke
 
 Scenario: before a release, verify that an installed Agentpack package can create

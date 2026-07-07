@@ -3172,7 +3172,8 @@ test("parks current task over MCP so a new task can start", async () => {
       name: "task_start",
       arguments: {
         title: "Parkable MCP task",
-        nextActions: ["Resume later"]
+        nextActions: ["Resume later"],
+        writeScope: ["api", "frontend", "cron", "service"]
       }
     }
   });
@@ -3231,8 +3232,9 @@ test("parks current task over MCP so a new task can start", async () => {
   assert.match(status.result.content[0].text, /Replacement MCP task \[active\]/);
 
   const tasks = run(dir, ["task", "list"]);
-  assert.match(tasks, /- task_.* \[parked\] Parkable MCP task/);
+  assert.match(tasks, /- task_.* \[parked\] Parkable MCP task \(scope: api, frontend, cron \+1 more\)/);
   assert.match(tasks, /\* task_.* \[active\] Replacement MCP task/);
+  assert.doesNotMatch(tasks, /Replacement MCP task.*scope:/);
 
   const mcpList = await mcp.send({
     jsonrpc: "2.0",

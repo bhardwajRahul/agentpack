@@ -183,8 +183,15 @@ export function formatTaskList(tasks: TaskListItem[]): string {
     task.id,
     `[${task.status}]`,
     task.title,
-    task.branch ? `(branch: ${task.branch})` : ""
+    task.branch ? `(branch: ${task.branch})` : "",
+    task.writeScope.length > 0 ? `(scope: ${formatWriteScope(task.writeScope)})` : ""
   ].filter(Boolean).join(" ")).join("\n");
+}
+
+function formatWriteScope(writeScope: string[]): string {
+  const shown = writeScope.slice(0, 3);
+  const rest = writeScope.length - shown.length;
+  return rest > 0 ? `${shown.join(", ")} +${rest} more` : shown.join(", ");
 }
 
 export function getCurrentPassport(root: string): TaskPassport | null {

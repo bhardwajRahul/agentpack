@@ -74,7 +74,7 @@ agentpack task handoff
 agentpack task finalize
 ```
 
-Write scopes are repo-relative paths. `.` means the repository root.
+Write scopes are repo-relative paths. `.` means the repository root. A directory entry such as `api` covers every file under `api/`, so a scope can pin a task to one part of the project without enumerating files. `task list` shows each task's scope so short scoped tasks are easy to tell apart.
 
 The common workflow is:
 

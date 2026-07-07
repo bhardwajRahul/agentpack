@@ -55,6 +55,7 @@ Context is budgeted: resume output is compressed under a rough token estimate, s
 - You switch between Claude Code, Cursor, Codex, or another MCP client.
 - You return to a refactor or bugfix days later.
 - Another agent — or a teammate's agent — continues from your checkpoint.
+- You split one session across parts of a monorepo (`api/`, `frontend/`, `cron/`) with short scoped tasks, and the task gate keeps the agent from drifting outside the folder the current task owns.
 
 A side effect: agents spend fewer tokens re-reading unchanged files and re-explaining old decisions.
 

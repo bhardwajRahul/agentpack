@@ -119,7 +119,7 @@ Required fields for v1:
 - `writeScope`
 - `nextActions`
 
-Write scopes are repo-relative paths. `.` means the repository root.
+Write scopes are repo-relative paths. `.` means the repository root. A directory entry such as `api` covers every file under `api/`, so a scope can pin a task to one part of the project without enumerating files.
 
 Optional but recommended:
 
@@ -224,6 +224,18 @@ MCP exposes the same start/status/list/switch path for connected agents through 
 `task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
 
 `task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task finalize --status accepted` also refuses to close a task with remaining next actions unless `--force` is passed; use `task park` for deferred work. `task close` remains available for explicit manual closure.
+
+## Monorepo Focus Pattern
+
+In a repository with several parts — for example `api/`, `frontend/`, `cron/`, `service/` — one ledger serves the whole pack root, and short-lived Task Passports carry the folder boundary:
+
+```bash
+agentpack task start "API auth fix" --write-scope api
+```
+
+A directory write scope covers every file under it. The task gate turns that boundary into enforcement rather than a convention: in the default `warn` mode the agent is told when an edit leaves `api/`, and with `gateMode: "block"` in `.agentpack/config.json` the native Claude Code, Codex, and Cursor hooks deny the edit before it happens. Start a task when you enter one part of the project, finalize it when that slice is verified, and `task list` shows which part each task owned via its scope.
+
+This keeps one session focused on one part of the repo without splitting the ledger. The pack also does not have to sit at the repository root: a subfolder project can run `agentpack init` and keep its own ledger. Separate ledgers per part work too, but require switching working directories between packs, so prefer one ledger plus scoped tasks unless the parts really are independent projects.
 
 ## Portable Bundle Contract
 
