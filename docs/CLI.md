@@ -67,14 +67,14 @@ agentpack task update \
 agentpack task role scout
 agentpack task role scout --status done \
   --summary "Mapped checkout flow, risks, and relevant source conclusions."
-agentpack task list
+agentpack task list [--scope <path>]
 agentpack task status
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
 agentpack task handoff
 agentpack task finalize
 ```
 
-Write scopes are repo-relative paths. `.` means the repository root. A directory entry such as `api` covers every file under `api/`, so a scope can pin a task to one part of the project without enumerating files. `task list` shows each task's scope so short scoped tasks are easy to tell apart.
+Write scopes are repo-relative paths. `.` means the repository root. A directory entry such as `api` covers every file under `api/`, so a scope can pin a task to one part of the project without enumerating files. `task list` shows each task's scope so short scoped tasks are easy to tell apart, and `task list --scope api` filters the list to tasks whose scope overlaps that path; tasks without a write scope are omitted from filtered output. Repeating `--scope` unions the filters, `--scope .` matches every scoped task, and leading `./` or trailing slashes are normalized on both sides; an empty `--scope` value is rejected.
 
 The common workflow is:
 

@@ -41,6 +41,7 @@ import {
   listTasks,
   parkCurrentTask,
   readPassport,
+  scopeOverlaps,
   startTask,
   switchTask,
   type TaskUpdateOptions,
@@ -494,7 +495,7 @@ Common workflow:
   agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>] [--force]
 
 Inspection and coordination:
-  agentpack task list
+  agentpack task list [--scope <path>]
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
@@ -719,13 +720,32 @@ function taskCommand(root: string, rest: string[]): void {
   }
 
   if (subcommand === "list") {
-    const tasks = listTasks(root);
-    if (tasks.length === 0) {
+    const parsed = parseArgs(args);
+    // A bare --scope mixed with a valued one is silently dropped by addOption's
+    // union semantics before this check can see it; only a lone bare flag or an
+    // empty value is detectable here.
+    if (typeof parsed.options.scope === "boolean") {
+      throw new Error("task list --scope requires a path");
+    }
+    const scopeFilters = toArray(parsed.options.scope);
+    if (scopeFilters.some((filter) => !filter.trim())) {
+      throw new Error("task list --scope requires a path");
+    }
+    const all = listTasks(root);
+    if (all.length === 0) {
       process.stdout.write("No task passports yet. Run `agentpack task start <title>`.\n");
       return;
     }
 
-    process.stdout.write(`${formatTaskList(tasks)}\n`);
+    const tasks = scopeFilters.length > 0
+      ? all.filter((task) => scopeOverlaps(task.writeScope, scopeFilters))
+      : all;
+    if (tasks.length === 0) {
+      process.stdout.write(redactForRoot(root, `No task passports match scope ${scopeFilters.join(", ")}.\n`));
+      return;
+    }
+
+    process.stdout.write(`${redactForRoot(root, formatTaskList(tasks))}\n`);
     return;
   }
 

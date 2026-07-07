@@ -194,6 +194,23 @@ function formatWriteScope(writeScope: string[]): string {
   return rest > 0 ? `${shown.join(", ")} +${rest} more` : shown.join(", ");
 }
 
+export function scopeOverlaps(writeScope: string[], filters: string[]): boolean {
+  return writeScope.some((entry) => filters.some((filter) => {
+    const scope = normalizeScopePath(entry);
+    const target = normalizeScopePath(filter);
+    return scope === "." || target === "." || scope === target
+      || target.startsWith(`${scope}/`) || scope.startsWith(`${target}/`);
+  }));
+}
+
+export function normalizeScopePath(path: string): string {
+  let result = path.trim();
+  while (result.startsWith("./")) {
+    result = result.slice(2);
+  }
+  return result.replace(/\/+$/, "") || ".";
+}
+
 export function getCurrentPassport(root: string): TaskPassport | null {
   const current = readCurrentTaskId(root);
   return current ? readPassport(root, current) : null;

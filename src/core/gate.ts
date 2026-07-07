@@ -2,7 +2,7 @@ import path from "node:path";
 import { getGitBranchState, listStagedFiles } from "./git.js";
 import { normalizePath } from "./hash.js";
 import { getPackPath, readJson } from "./store.js";
-import { getCurrentPassport } from "./tasks.js";
+import { getCurrentPassport, normalizeScopePath } from "./tasks.js";
 import type { AgentpackConfig, GateMode, TaskStatus } from "./types.js";
 
 export type GateDecision = "allow" | "warn" | "block";
@@ -191,7 +191,10 @@ function collectGateFiles(root: string, options: GateOptions): { files: string[]
 }
 
 function isInWriteScope(file: string, writeScope: string[]): boolean {
-  return writeScope.some((entry) => entry === "." || file === entry || file.startsWith(`${entry}/`));
+  return writeScope.some((rawEntry) => {
+    const entry = normalizeScopePath(rawEntry);
+    return entry === "." || file === entry || file.startsWith(`${entry}/`);
+  });
 }
 
 function taskNotActiveMessage(status: TaskStatus): string {

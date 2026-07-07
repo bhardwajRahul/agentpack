@@ -2527,6 +2527,13 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   run(dir, ["task", "start", "Gate coverage task", "--write-scope", "src"]);
   assert.equal(run(dir, ["task", "gate", "--file", "src/nested/a.ts"]).trim(), "");
 
+  run(dir, ["task", "update", "--write-scope", "./lib/"]);
+  assert.equal(
+    run(dir, ["task", "gate", "--file", "lib/b.ts"]).trim(),
+    "",
+    "a ./-prefixed write-scope entry must not produce a false out-of-scope violation"
+  );
+
   const outOfScope = run(dir, ["task", "gate", "--file", "other/b.ts"]);
   assert.match(outOfScope, /Gate: warn \(mode: warn\)/);
   assert.match(outOfScope, /Outside the task write scope: other\/b\.ts/);
@@ -3235,6 +3242,22 @@ test("parks current task over MCP so a new task can start", async () => {
   assert.match(tasks, /- task_.* \[parked\] Parkable MCP task \(scope: api, frontend, cron \+1 more\)/);
   assert.match(tasks, /\* task_.* \[active\] Replacement MCP task/);
   assert.doesNotMatch(tasks, /Replacement MCP task.*scope:/);
+
+  const scopedTasks = run(dir, ["task", "list", "--scope", "api/auth"]);
+  assert.match(scopedTasks, /Parkable MCP task/);
+  assert.doesNotMatch(scopedTasks, /Replacement MCP task/, "tasks without a write scope are omitted from filtered output");
+  assert.match(run(dir, ["task", "list", "--scope", "docs"]), /No task passports match scope docs/);
+  assert.match(runExpectError(dir, ["task", "list", "--scope"]), /--scope requires a path/);
+  assert.match(runExpectError(dir, ["task", "list", "--scope="]), /--scope requires a path/, "empty inline value must not match everything");
+  assert.match(runExpectError(dir, ["task", "list", "--scope", "  "]), /--scope requires a path/);
+  assert.match(run(dir, ["task", "list", "--scope=api"]), /Parkable MCP task/, "inline --scope=value form");
+  assert.match(run(dir, ["task", "list", "--scope", "./api"]), /Parkable MCP task/, "leading ./ is normalized");
+  assert.match(run(dir, ["task", "list", "--scope", "api/"]), /Parkable MCP task/, "trailing slash is normalized");
+  const dotScoped = run(dir, ["task", "list", "--scope", "."]);
+  assert.match(dotScoped, /Parkable MCP task/);
+  assert.doesNotMatch(dotScoped, /Replacement MCP task/, "dot filter still omits scopeless tasks");
+  const unionScoped = run(dir, ["task", "list", "--scope", "docs", "--scope", "cron"]);
+  assert.match(unionScoped, /Parkable MCP task/, "repeated --scope unions filters");
 
   const mcpList = await mcp.send({
     jsonrpc: "2.0",
