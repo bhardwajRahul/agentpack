@@ -3259,6 +3259,41 @@ test("parks current task over MCP so a new task can start", async () => {
   const unionScoped = run(dir, ["task", "list", "--scope", "docs", "--scope", "cron"]);
   assert.match(unionScoped, /Parkable MCP task/, "repeated --scope unions filters");
 
+  const parkedOnly = run(dir, ["task", "list", "--status", "parked"]);
+  assert.match(parkedOnly, /Parkable MCP task/);
+  assert.doesNotMatch(parkedOnly, /Replacement MCP task/);
+  const statusUnion = run(dir, ["task", "list", "--status", "parked", "--status", "active"]);
+  assert.match(statusUnion, /Parkable MCP task/);
+  assert.match(statusUnion, /Replacement MCP task/, "repeated --status unions filters");
+  const openTasks = run(dir, ["task", "list", "--open"]);
+  assert.match(openTasks, /Parkable MCP task/);
+  assert.match(openTasks, /Replacement MCP task/);
+  assert.match(
+    run(dir, ["task", "list", "--status", "completed"]),
+    /No task passports match status completed/
+  );
+  const openScoped = run(dir, ["task", "list", "--open", "--scope", "api"]);
+  assert.match(openScoped, /Parkable MCP task/, "--open combines with --scope as AND");
+  assert.doesNotMatch(openScoped, /Replacement MCP task/, "scopeless open task filtered out by --scope");
+  assert.match(runExpectError(dir, ["task", "list", "--status", "bogus"]), /--status requires one of: active, parked/);
+  assert.match(runExpectError(dir, ["task", "list", "--status"]), /--status requires one of/);
+  assert.match(runExpectError(dir, ["task", "list", "--open", "--status", "parked"]), /--open cannot be combined with --status/);
+  assert.match(runExpectError(dir, ["task", "list", "--open", "now"]), /--open takes no value/);
+  assert.match(run(dir, ["task", "list", "--status=parked"]), /Parkable MCP task/, "inline --status=value form");
+  assert.match(run(dir, ["task", "list", "--open", "--open"]), /Parkable MCP task/, "duplicate --open is idempotent");
+  const statusScoped = run(dir, ["task", "list", "--status", "parked", "--scope", "api"]);
+  assert.match(statusScoped, /Parkable MCP task/, "--status combines with --scope as AND");
+  assert.match(
+    run(dir, ["task", "list", "--status", "completed", "--scope", "api"]),
+    /No task passports match scope api and status completed/,
+    "combined no-match message names both filters"
+  );
+  assert.match(
+    run(dir, ["task", "list", "--status", "completed", "--status", "completed"]),
+    /No task passports match status completed\./,
+    "repeated identical --status values are deduped"
+  );
+
   const mcpList = await mcp.send({
     jsonrpc: "2.0",
     id: 6,

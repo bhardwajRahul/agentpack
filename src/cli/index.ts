@@ -49,6 +49,7 @@ import {
   updateCurrentTaskRole,
   updateCurrentTaskVerification
 } from "../core/tasks.js";
+import type { TaskStatus } from "../core/types.js";
 import {
   appendEvent,
   findPackRoot,
@@ -495,7 +496,7 @@ Common workflow:
   agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>] [--force]
 
 Inspection and coordination:
-  agentpack task list [--scope <path>]
+  agentpack task list [--scope <path>] [--status <status>] [--open]
   agentpack task passport
   agentpack task switch <id>
   agentpack task audit
@@ -554,6 +555,33 @@ function noteCommand(root: string, rest: string[]): void {
 
   const event = appendEvent(root, "note", { text: redactForRoot(root, text) });
   process.stdout.write(`Recorded note ${event.id}\n`);
+}
+
+const TASK_LIST_STATUSES = ["active", "parked", "blocked", "verifying", "completed", "abandoned"] as const satisfies readonly TaskStatus[];
+const OPEN_TASK_STATUSES = ["active", "parked", "blocked", "verifying"] as const satisfies readonly TaskStatus[];
+
+function taskListStatusFilters(options: Record<string, ArgValue>): string[] {
+  if (options.open !== undefined && options.status !== undefined) {
+    throw new Error("task list --open cannot be combined with --status");
+  }
+  if (options.open !== undefined) {
+    // A repeated bare --open collapses to an empty array in addOption; both
+    // forms mean the same thing, only a string payload is a usage error.
+    const bare = options.open === true || (Array.isArray(options.open) && options.open.length === 0);
+    if (!bare) {
+      throw new Error("task list --open takes no value");
+    }
+    return [...OPEN_TASK_STATUSES];
+  }
+  if (options.status === undefined) {
+    return [];
+  }
+  const values = [...new Set(toArray(options.status).map((value) => value.trim()))];
+  const invalid = values.filter((value) => !(TASK_LIST_STATUSES as readonly string[]).includes(value));
+  if (values.length === 0 || invalid.length > 0) {
+    throw new Error(`task list --status requires one of: ${TASK_LIST_STATUSES.join(", ")}`);
+  }
+  return values;
 }
 
 function gateCommand(root: string | null, args: string[]): void {
@@ -721,9 +749,9 @@ function taskCommand(root: string, rest: string[]): void {
 
   if (subcommand === "list") {
     const parsed = parseArgs(args);
-    // A bare --scope mixed with a valued one is silently dropped by addOption's
-    // union semantics before this check can see it; only a lone bare flag or an
-    // empty value is detectable here.
+    // A bare --scope or --status mixed with a valued one is silently dropped by
+    // addOption's union semantics before these checks can see it; only a lone
+    // bare flag or an empty value is detectable here.
     if (typeof parsed.options.scope === "boolean") {
       throw new Error("task list --scope requires a path");
     }
@@ -731,17 +759,25 @@ function taskCommand(root: string, rest: string[]): void {
     if (scopeFilters.some((filter) => !filter.trim())) {
       throw new Error("task list --scope requires a path");
     }
+    const statusFilters = taskListStatusFilters(parsed.options);
     const all = listTasks(root);
     if (all.length === 0) {
       process.stdout.write("No task passports yet. Run `agentpack task start <title>`.\n");
       return;
     }
 
-    const tasks = scopeFilters.length > 0
+    let tasks = scopeFilters.length > 0
       ? all.filter((task) => scopeOverlaps(task.writeScope, scopeFilters))
       : all;
+    if (statusFilters.length > 0) {
+      tasks = tasks.filter((task) => statusFilters.includes(task.status));
+    }
     if (tasks.length === 0) {
-      process.stdout.write(redactForRoot(root, `No task passports match scope ${scopeFilters.join(", ")}.\n`));
+      const applied = [
+        scopeFilters.length > 0 ? `scope ${scopeFilters.join(", ")}` : "",
+        statusFilters.length > 0 ? `status ${statusFilters.join(", ")}` : ""
+      ].filter(Boolean).join(" and ");
+      process.stdout.write(redactForRoot(root, `No task passports match ${applied}.\n`));
       return;
     }
 

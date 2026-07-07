@@ -175,7 +175,7 @@ agentpack task start "Fix checkout discount bug" \
   --write-scope src/checkout.ts \
   --write-scope src/cart.ts
 
-agentpack task list [--scope <path>]
+agentpack task list [--scope <path>] [--status <status>] [--open]
 agentpack task status
 agentpack task handoff
 agentpack task passport

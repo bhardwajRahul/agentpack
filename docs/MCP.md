@@ -86,7 +86,7 @@ or verification.
 
 `task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
 
-`task_list` lists all Task Passports with id, status, title, and branch, matching `agentpack task list`; the current task is marked with `*`. Pass `{ "json": true }` for structured output.
+`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for structured output. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
 
 `task_switch` makes another open task current by `id` and resumes a parked target as `active`. It mirrors `agentpack task switch` exactly: park or finalize a different active, blocked, or verifying current task before switching, and closed target tasks remain unswitchable.
 

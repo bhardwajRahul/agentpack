@@ -67,7 +67,7 @@ agentpack task update \
 agentpack task role scout
 agentpack task role scout --status done \
   --summary "Mapped checkout flow, risks, and relevant source conclusions."
-agentpack task list [--scope <path>]
+agentpack task list [--scope <path>] [--status <status>] [--open]
 agentpack task status
 agentpack task verify --status passed --evidence evt_... --summary "Focused checks passed"
 agentpack task handoff
@@ -75,6 +75,8 @@ agentpack task finalize
 ```
 
 Write scopes are repo-relative paths. `.` means the repository root. A directory entry such as `api` covers every file under `api/`, so a scope can pin a task to one part of the project without enumerating files. `task list` shows each task's scope so short scoped tasks are easy to tell apart, and `task list --scope api` filters the list to tasks whose scope overlaps that path; tasks without a write scope are omitted from filtered output. Repeating `--scope` unions the filters, `--scope .` matches every scoped task, and leading `./` or trailing slashes are normalized on both sides; an empty `--scope` value is rejected.
+
+`task list --open` hides closed history and shows only active, parked, blocked, and verifying tasks. `task list --status <status>` filters to specific statuses; repeating `--status` unions them, unknown values are rejected, and `--open` cannot be combined with `--status`. Status filters combine with `--scope` as AND, so `task list --open --scope api` means open tasks that own `api`. The default output still lists everything: closed passports remain inspectable history.
 
 The common workflow is:
 
