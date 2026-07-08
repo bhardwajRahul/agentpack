@@ -154,8 +154,10 @@ active -> parked            task park
 parked -> active            task switch/resume
 active -> blocked           task block
 blocked -> active           task unblock/resume
-active -> verifying         task verify
-verifying -> active         verification found more work
+active -> verifying         task verify records a final verdict
+verifying -> active         verification found more work (pending verdict)
+blocked -> verifying        task verify records a final verdict
+blocked -> active           task verify records a pending verdict
 verifying -> completed      task finalize
 active -> completed         task finalize --status accepted [--force when next actions remain]
 active -> abandoned         task abandon
@@ -221,7 +223,7 @@ MCP exposes the same start/status/list/switch path for connected agents through 
 
 `task update` patches the current passport without changing lifecycle status. It can add objective, constraints, write scope, next actions, tags, and risk after the task has already started. List fields append and deduplicate; omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
-`task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. `task update-verification` remains available as a compatibility alias.
+`task verify` updates the verification state. Without flags it marks verification as `pending`; with `--status`, `--evidence`, and `--summary` it links verification to recorded evidence so the audit warning can become a reviewed result. A final verdict (`passed`, `failed`, or `accepted`) moves the task lifecycle to `verifying`; recording `pending` (or `unknown`) again — verification found more work — moves it back to `active` so the gate stops treating continued edits as out of lifecycle. `task update-verification` remains available as a compatibility alias.
 
 `task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task finalize --status accepted` also refuses to close a task with remaining next actions unless `--force` is passed; use `task park` for deferred work. `task close` remains available for explicit manual closure.
 

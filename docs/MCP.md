@@ -94,7 +94,7 @@ or verification.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
 
-`task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed.
+`task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed. A final verdict (`passed`, `failed`, or `accepted`) moves the task lifecycle to `verifying`; `pending` or `unknown` returns it to `active` (see docs/TASK-PASSPORT.md).
 
 Repeated identical `task_update_verification` calls are no-ops, so transport retries or accidental duplicate calls do not add duplicate task events.
 

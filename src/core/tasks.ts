@@ -438,7 +438,14 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
         : options.summary.trim()
     };
 
-    if (existing.status === "verifying" && sameVerification(existing.verification, verification)) {
+    // A final verdict (passed/failed/accepted) means implementation is done and
+    // awaiting review, matching the documented "verifying" status. A non-final
+    // verdict (pending/unknown) means verification found more work, so the
+    // lifecycle returns to "active" rather than getting stuck in "verifying"
+    // while the gate keeps warning about legitimate continued edits.
+    const nextStatus: TaskStatus = FINAL_VERIFICATION_STATUSES.has(verification.status) ? "verifying" : "active";
+
+    if (existing.status === nextStatus && sameVerification(existing.verification, verification)) {
       return { passport: existing, changed: false };
     }
 
@@ -446,7 +453,7 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
     const git = getGitInfo(root);
     const passport: TaskPassport = {
       ...existing,
-      status: "verifying",
+      status: nextStatus,
       verification,
       currentHead: git.head,
       updatedAt: now

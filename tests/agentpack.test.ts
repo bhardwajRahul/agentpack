@@ -1993,9 +1993,9 @@ test("manages a current task passport", () => {
   assert.equal(blocked.blockedReason, "Waiting for review");
 
   assert.match(run(dir, ["task", "update-verification"]), /Updated verification for task .* \(pending\)/);
-  const verifying = JSON.parse(run(dir, ["task", "passport"]));
-  assert.equal(verifying.status, "verifying");
-  assert.equal(verifying.verification.status, "pending");
+  const pendingAfterBlocked = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(pendingAfterBlocked.status, "active", "a non-final verdict returns the lifecycle to active, resolving the block");
+  assert.equal(pendingAfterBlocked.verification.status, "pending");
   assert.match(runExpectError(dir, ["task", "finalize"]), /task finalize requires verification status passed, failed, or accepted/);
 
   assert.match(run(dir, [
@@ -2667,6 +2667,35 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   });
   assert.match(status.result.content[0].text, /## Gate Warnings/);
   assert.match(status.result.content[0].text, /Current task is parked/);
+});
+
+test("pending verification returns lifecycle to active instead of getting stuck in verifying", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-verify-lifecycle-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Verify lifecycle task", "--write-scope", "src"]);
+
+  assert.match(run(dir, ["task", "verify", "--status", "passed"]), /Updated verification for task .* \(passed\)/);
+  const passedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(passedPassport.status, "verifying", "a final verdict moves the lifecycle to verifying");
+  const warnOutput = run(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.match(warnOutput, /Gate: warn \(mode: warn\)/, "the gate warns while a final verdict is under review");
+  assert.match(warnOutput, /Current task is verifying\. Finish or record verification before editing code, or park it for unrelated work\./);
+
+  assert.match(run(dir, ["task", "verify"]), /Updated verification for task .* \(pending\)/);
+  const pendingPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(pendingPassport.status, "active", "verification found more work: pending returns the lifecycle to active");
+  assert.equal(
+    run(dir, ["task", "gate", "--file", "src/a.ts"]).trim(),
+    "",
+    "the gate stops warning once the lifecycle is back to active"
+  );
+
+  const eventCountBeforeNoop = taskEventCount(dir, pendingPassport.id);
+  assert.match(run(dir, ["task", "verify"]), /Verification unchanged for task .* \(pending\)/, "repeating the same pending verdict is a no-op");
+  assert.equal(taskEventCount(dir, pendingPassport.id), eventCountBeforeNoop);
 });
 
 test("task gate rejects unknown modes, fail-closes on unreadable passports, and reports unchecked paths", () => {
