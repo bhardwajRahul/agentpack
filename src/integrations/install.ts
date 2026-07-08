@@ -80,6 +80,7 @@ At the start of a task:
 
 Task lifecycle gate:
 - before implementation, confirm the current Task Passport is the right active task for this phase and branch
+- declare a write scope when starting a task (\`task_start\`/\`task start --write-scope <path>\`), so the task gate can protect its boundaries; a repo-wide task can still start without one, but scope should be the default, not an afterthought
 - if the current task is verifying, blocked, closed, or has unexplained branch/head drift, stop and resolve it before editing code
 - treat review mode as a scope check, not an automatic new Task Passport: keep reviews that verify the current active/verifying task inside that task as evidence/checkpoint; park, switch, or start a separate review task only for unrelated reviews
 - park deferred work with \`task_park\`/\`task park\`, or switch/close only when appropriate, before starting unrelated work
