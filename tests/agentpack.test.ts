@@ -2454,6 +2454,8 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /declare a write scope when starting a task/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /finalize after the task's changes are committed/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep next actions current: clear or replace a stale plan/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /verifying, blocked, closed/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep reviews that verify the current active\/verifying task inside that task/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not mutate a review task into implementation work/);
@@ -2708,6 +2710,43 @@ test("pending verification returns lifecycle to active instead of getting stuck 
   const eventCountBeforeNoop = taskEventCount(dir, pendingPassport.id);
   assert.match(run(dir, ["task", "verify"]), /Verification unchanged for task .* \(pending\)/, "repeating the same pending verdict is a no-op");
   assert.equal(taskEventCount(dir, pendingPassport.id), eventCountBeforeNoop);
+});
+
+test("task finalize prints hygiene advisories and stays silent when clean", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-finalize-advisories-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+
+  run(dir, ["task", "start", "Noisy task", "--write-scope", "src", "--next", "Ship it"]);
+  mkdirSync(path.join(dir, "src"), { recursive: true });
+  writeFileSync(path.join(dir, "src", "a.ts"), "export const a = 1;\n", "utf8");
+  run(dir, ["task", "verify", "--status", "passed"]);
+  const noisy = run(dir, ["task", "finalize"]);
+  assert.match(noisy, /Finalized task .* \(passed\)/);
+  assert.match(noisy, /Advisories:/);
+  assert.match(noisy, /Uncommitted changes remain inside the task write scope: src\/a\.ts/);
+  assert.match(noisy, /Closed with 1 remaining next action\(s\)/);
+  assert.match(noisy, /No repo checkpoint since this task started/);
+
+  runGit(dir, ["add", "src"]);
+  runGit(dir, ["commit", "-m", "Add src"]);
+  run(dir, ["task", "start", "Clean task", "--write-scope", "src"]);
+  run(dir, ["checkpoint", "-m", "Clean state", "--status", "Verified", "--next", "Finalize"]);
+  run(dir, ["task", "verify", "--status", "passed"]);
+  const clean = run(dir, ["task", "finalize"]);
+  assert.match(clean, /Finalized task .* \(passed\)/);
+  assert.doesNotMatch(clean, /Advisories:/, "a committed, planless, checkpointed task closes without advisory noise");
+
+  run(dir, ["task", "start", "Stale plan task", "--write-scope", "src", "--next", "Old step"]);
+  run(dir, ["task", "update", "--clear-next-actions"]);
+  run(dir, ["task", "verify", "--status", "passed"]);
+  assert.doesNotMatch(
+    run(dir, ["task", "finalize"]),
+    /remaining next action/,
+    "clearing a stale plan removes the next-actions advisory"
+  );
 });
 
 test("task gate rejects unknown modes, fail-closes on unreadable passports, and reports unchecked paths", () => {
@@ -3760,6 +3799,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     }
   });
   assert.match(taskFinalize.result.content[0].text, /Finalized task .* \(passed\)/);
+  assert.match(taskFinalize.result.content[0].text, /Advisories:/, "MCP finalize appends the same hygiene advisories as the CLI");
   const finalizedPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(finalizedPassport.status, "completed");
   assert.equal(finalizedPassport.verification.status, "passed");

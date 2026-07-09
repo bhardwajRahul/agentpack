@@ -85,6 +85,8 @@ Task lifecycle gate:
 - treat review mode as a scope check, not an automatic new Task Passport: keep reviews that verify the current active/verifying task inside that task as evidence/checkpoint; park, switch, or start a separate review task only for unrelated reviews
 - park deferred work with \`task_park\`/\`task park\`, or switch/close only when appropriate, before starting unrelated work
 - do not finalize a task just to free the current slot; finalization means verification is passed, failed, or explicitly accepted as complete
+- finalize after the task's changes are committed; park a verified task that is still waiting for review or commit instead of closing it
+- keep next actions current: clear or replace a stale plan (\`task update --clear-next-actions\`) before finalizing, so closed passports read as history, not as open work
 - if a task still has next actions and must pause for unrelated work, park it instead of using \`task_finalize\`/\`task finalize --status accepted\`; force accepted finalization only when the remaining next actions are intentionally historical
 - do not mutate a review task into implementation work
 - keep one active task per coherent phase: review, stabilization, rewrite, deployment

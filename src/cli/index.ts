@@ -30,6 +30,7 @@ import {
   auditCurrentTask,
   blockCurrentTask,
   closeCurrentTask,
+  finalizeAdvisories,
   finalizeCurrentTask,
   formatCurrentTaskHandoff,
   formatCurrentTaskStatus,
@@ -514,6 +515,7 @@ Notes:
   task handoff is the compact summary for another chat, client, worktree, or agent.
   task finalize refuses unknown or pending verification by default.
   task finalize --status accepted refuses tasks with remaining next actions unless --force is passed.
+  task finalize prints advisories (uncommitted in-scope changes, remaining next actions, missing checkpoint); they never block.
   task gate checks the current passport lifecycle, write scope, and branch before edits or commits.
   task gate --client adapts native Claude, Codex, or Cursor pre-tool hook JSON on stdin.
   task gate warns by default; set "gateMode": "block" in .agentpack/config.json to enforce (exit code 2).
@@ -907,6 +909,10 @@ function taskCommand(root: string, rest: string[]): void {
       force: parsed.options.force === true
     });
     process.stdout.write(`Finalized task ${passport.id} (${passport.verification.status})\n`);
+    const advisories = finalizeAdvisories(root, passport);
+    if (advisories.length > 0) {
+      process.stdout.write(`Advisories:\n${advisories.map((advisory) => `- ${advisory}`).join("\n")}\n`);
+    }
     return;
   }
 

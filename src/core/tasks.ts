@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getGitInfo } from "./git.js";
+import { getGitInfo, listDirtyFiles } from "./git.js";
 import { normalizePath } from "./hash.js";
 import { createId } from "./ids.js";
 import {
   getPackPath,
+  listCheckpoints,
   PACK_DIR_MODE,
   PACK_FILE_MODE,
   readJson,
@@ -210,6 +211,13 @@ export function normalizeScopePath(path: string): string {
     result = result.slice(2);
   }
   return result.replace(/\/+$/, "") || ".";
+}
+
+export function isInWriteScope(file: string, writeScope: string[]): boolean {
+  return writeScope.some((rawEntry) => {
+    const entry = normalizeScopePath(rawEntry);
+    return entry === "." || file === entry || file.startsWith(`${entry}/`);
+  });
 }
 
 export function getCurrentPassport(root: string): TaskPassport | null {
@@ -511,6 +519,36 @@ export function finalizeCurrentTask(root: string, options: TaskFinalizeOptions =
       }
     };
   });
+}
+
+// Advisory by design: finalize is a ritual, not a gate. These never block and
+// have no config knob; they only surface hygiene gaps at the moment of closure.
+export function finalizeAdvisories(root: string, passport: TaskPassport): string[] {
+  const advisories: string[] = [];
+
+  if (passport.writeScope.length > 0) {
+    const dirtyInScope = listDirtyFiles(root)
+      .map((file) => normalizePath(file))
+      .filter((file) => isInWriteScope(file, passport.writeScope));
+    if (dirtyInScope.length > 0) {
+      const shown = dirtyInScope.slice(0, 5).join(", ");
+      const more = dirtyInScope.length > 5 ? ` (+${dirtyInScope.length - 5} more)` : "";
+      advisories.push(`Uncommitted changes remain inside the task write scope: ${shown}${more}. Commit them first, or park the task until they are committed.`);
+    }
+  }
+
+  if (passport.nextActions.length > 0) {
+    advisories.push(`Closed with ${passport.nextActions.length} remaining next action(s); they will read as historical. Update them with \`task update --clear-next-actions\` first when they are stale.`);
+  }
+
+  const checkpoints = listCheckpoints(root);
+  const latestCheckpoint = checkpoints[checkpoints.length - 1] || "";
+  const createdMarker = passport.createdAt.replace(/[:.]/g, "-");
+  if (latestCheckpoint < createdMarker) {
+    advisories.push("No repo checkpoint since this task started. Record durable findings with `checkpoint` before moving on.");
+  }
+
+  return advisories;
 }
 
 export function auditCurrentTask(root: string, sourceStatuses: TaskAuditSourceStatus[] = []): TaskAuditReport {

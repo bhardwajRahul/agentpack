@@ -86,7 +86,7 @@ The common workflow is:
 4. Optional `task role` calls query or update focused coordination lanes inside the same passport.
 5. `task verify` records the verification result and linked evidence.
 6. `task handoff` prints the compact summary for another chat, client, worktree, or agent.
-7. `task finalize` closes the task after verification is final.
+7. `task finalize` closes the task after verification is final. It prints advisories when hygiene gaps remain — uncommitted changes inside the write scope, remaining next actions, or no checkpoint since the task started; advisories never block.
 
 When work is deferred so another task can become current, use `task park`
 instead of `task finalize`. Finalization is the end-of-task ritual; parking is

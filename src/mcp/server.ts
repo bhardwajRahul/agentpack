@@ -22,6 +22,7 @@ import { evaluateGate } from "../core/gate.js";
 import { redactForRoot } from "../core/redaction.js";
 import {
   auditCurrentTask,
+  finalizeAdvisories,
   finalizeCurrentTask,
   formatCurrentTaskHandoff,
   formatCurrentTaskStatus,
@@ -707,7 +708,11 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       summary: redactForRoot(root, text(args.summary)),
       force: booleanValue(args.force, false)
     });
-    return toolText(`Finalized task ${passport.id} (${passport.verification.status}).`);
+    const advisories = finalizeAdvisories(root, passport);
+    const advisoryText = advisories.length > 0
+      ? `\n\nAdvisories:\n${advisories.map((advisory) => `- ${advisory}`).join("\n")}`
+      : "";
+    return toolText(`Finalized task ${passport.id} (${passport.verification.status}).${advisoryText}`);
   }
 
   if (name === "task_update") {

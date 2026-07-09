@@ -227,6 +227,8 @@ MCP exposes the same start/status/list/switch path for connected agents through 
 
 `task finalize` is the compact end-of-task ritual. It closes the current task only after verification is already `passed`, `failed`, or `accepted`, or when that final status is passed explicitly with `--status`. It refuses to close unknown or pending verification by default. `task finalize --status accepted` also refuses to close a task with remaining next actions unless `--force` is passed; use `task park` for deferred work. `task close` remains available for explicit manual closure.
 
+After closing, `task finalize` prints hygiene advisories when they apply: uncommitted changes still inside the task write scope (commit first, or park until committed), remaining next actions that will now read as historical, and no repo checkpoint recorded since the task started. Advisories never block and have no configuration: finalize is a ritual, not a gate.
+
 ## Monorepo Focus Pattern
 
 In a repository with several parts — for example `api/`, `frontend/`, `cron/`, `service/` — one ledger serves the whole pack root, and short-lived Task Passports carry the folder boundary:

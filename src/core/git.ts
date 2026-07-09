@@ -90,6 +90,23 @@ export function listStagedFiles(root: string): string[] {
     .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
 
+export function listDirtyFiles(root: string): string[] {
+  const topLevel = runGit(root, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel) {
+    return [];
+  }
+  const files = runGit(root, ["status", "--porcelain", "--untracked-files=all"])
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const entry = line.slice(3);
+      return entry.includes(" -> ") ? entry.split(" -> ").pop() || entry : entry;
+    })
+    .map((gitPath) => path.relative(root, path.resolve(topLevel, gitPath)))
+    .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+  return [...new Set(files)];
+}
+
 export function getGitHooksPath(root: string): string | null {
   const hooksPath = runGit(root, ["rev-parse", "--git-path", "hooks"]);
   if (!hooksPath) {
