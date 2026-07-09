@@ -81,3 +81,29 @@ jobs:
       - name: Publish
         if: ${{ inputs.dry-run != true }}
         run: npm publish --access public
+
+      # MCP Registry metadata update. Runs after a successful npm publish so the
+      # registry's package validation can see the new version. GitHub OIDC only,
+      # no stored tokens; server.json version is synced from package.json.
+      - name: Install mcp-publisher
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Sync server.json version
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          node -e "
+            const { readFileSync, writeFileSync } = require('fs');
+            const server = JSON.parse(readFileSync('server.json', 'utf8'));
+            server.version = '$VERSION';
+            for (const pkg of server.packages) pkg.version = '$VERSION';
+            writeFileSync('server.json', JSON.stringify(server, null, 2) + '\n');
+          "
+
+      - name: Publish to MCP Registry
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
