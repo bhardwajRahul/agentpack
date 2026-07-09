@@ -83,6 +83,7 @@ export interface TaskUpdateOptions {
   constraints?: string[];
   writeScope?: string[];
   nextActions?: string[];
+  clearNextActions?: boolean;
   tags?: string[];
   risk?: TaskRisk;
 }
@@ -383,7 +384,7 @@ export function updateCurrentTaskPassport(root: string, options: TaskUpdateOptio
     const nextActions = uniqueStrings(options.nextActions || []);
     const tags = uniqueStrings(options.tags || []);
 
-    if (!hasTaskUpdate({ objective, constraints, writeScope, nextActions, tags }, options.risk)) {
+    if (!options.clearNextActions && !hasTaskUpdate({ objective, constraints, writeScope, nextActions, tags }, options.risk)) {
       throw new Error("task update requires at least one non-empty field");
     }
 
@@ -397,7 +398,9 @@ export function updateCurrentTaskPassport(root: string, options: TaskUpdateOptio
     if (writeScope.length > 0) {
       patch.writeScope = mergeStringLists(existing.writeScope, writeScope);
     }
-    if (nextActions.length > 0) {
+    if (options.clearNextActions) {
+      patch.nextActions = nextActions;
+    } else if (nextActions.length > 0) {
       patch.nextActions = mergeStringLists(existing.nextActions, nextActions);
     }
     if (tags.length > 0) {

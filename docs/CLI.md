@@ -82,7 +82,7 @@ The common workflow is:
 
 1. `task start` declares the work.
 2. `task status` gives a quick current-task view.
-3. `task update` keeps objective, scope, risk, or next actions current.
+3. `task update` keeps objective, scope, risk, or next actions current. List flags append; `--clear-next-actions` replaces the next actions with the provided `--next` items (or empties the list) when the plan went stale.
 4. Optional `task role` calls query or update focused coordination lanes inside the same passport.
 5. `task verify` records the verification result and linked evidence.
 6. `task handoff` prints the compact summary for another chat, client, worktree, or agent.

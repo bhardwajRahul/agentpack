@@ -320,7 +320,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_update",
-    description: "Update the current Task Passport objective, constraints, write scope, next actions, tags, or risk without changing lifecycle status.",
+    description: "Update the current Task Passport objective, constraints, write scope, next actions, tags, or risk without changing lifecycle status. List fields append; clearNextActions replaces the next actions with the provided list instead.",
     inputSchema: {
       type: "object",
       properties: {
@@ -328,6 +328,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         constraints: { type: "array", items: { type: "string" } },
         writeScope: { type: "array", items: { type: "string" } },
         nextActions: { type: "array", items: { type: "string" } },
+        clearNextActions: { type: "boolean" },
         tags: { type: "array", items: { type: "string" } },
         risk: {
           type: "string",
@@ -723,6 +724,9 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
     }
     if (risk) {
       updateOptions.risk = risk;
+    }
+    if (booleanValue(args.clearNextActions, false)) {
+      updateOptions.clearNextActions = true;
     }
     const passport = updateCurrentTaskPassport(root, updateOptions);
     return toolText(`Updated task ${passport.id}.`);

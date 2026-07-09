@@ -92,7 +92,7 @@ or verification.
 
 `task close` intentionally has no MCP equivalent. Closing a task without a verification verdict bypasses the lifecycle discipline that `task_park` and `task_finalize` enforce, so it stays a human CLI operation (`agentpack task close`). The full passport JSON view also stays CLI-only (`agentpack task passport`); `task_status` is the MCP summary equivalent.
 
-`task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. Empty or no-op updates fail, and unknown risk values are rejected.
+`task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. `clearNextActions: true` replaces the next actions with the provided `nextActions` (or clears them) instead of appending, so a stale plan can be corrected before finalize. Empty or no-op updates fail, and unknown risk values are rejected.
 
 `task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed. A final verdict (`passed`, `failed`, or `accepted`) moves the task lifecycle to `verifying`; `pending` or `unknown` returns it to `active` (see docs/TASK-PASSPORT.md).
 

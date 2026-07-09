@@ -1981,6 +1981,18 @@ test("manages a current task passport", () => {
   assert.match(runExpectError(dir, ["task", "update", "--objective", ""]), /task update requires at least one non-empty field/);
   assert.match(runExpectError(dir, ["task", "update", "--risk", "urgent"]), /Unknown task risk: urgent/);
 
+  assert.match(run(dir, ["task", "update", "--clear-next-actions", "--next", "Hand off for review"]), /Updated task .*/);
+  assert.deepEqual(
+    JSON.parse(run(dir, ["task", "passport"])).nextActions,
+    ["Hand off for review"],
+    "--clear-next-actions replaces the next actions instead of appending"
+  );
+  assert.match(run(dir, ["task", "update", "--clear-next-actions"]), /Updated task .*/);
+  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).nextActions, []);
+  assert.match(runExpectError(dir, ["task", "update", "--clear-next-actions"]), /task update did not change the current task/);
+  assert.match(run(dir, ["task", "update", "--clear-next-actions", "--next", "Wire CLI", "--next", "Document task update flow"]), /Updated task .*/);
+  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).nextActions, ["Wire CLI", "Document task update flow"]);
+
   run(dir, ["source", "add", "src/index.ts", "--summary", "Task passport fixture source."]);
   writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 2;\n", "utf8");
   const staleAudit = run(dir, ["task", "audit"]);
@@ -3706,6 +3718,37 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     }
   });
   assert.equal(invalidMcpRisk.error?.message, "Unknown task risk: urgent");
+
+  const clearNextActions = await mcp.send({
+    jsonrpc: "2.0",
+    id: 171,
+    method: "tools/call",
+    params: {
+      name: "task_update",
+      arguments: {
+        clearNextActions: true,
+        nextActions: ["Inspect updated passport"]
+      }
+    }
+  });
+  assert.match(clearNextActions.result.content[0].text, /Updated task .*/);
+  assert.deepEqual(
+    JSON.parse(run(dir, ["task", "passport"])).nextActions,
+    ["Inspect updated passport"],
+    "clearNextActions replaces the next actions instead of appending"
+  );
+  await mcp.send({
+    jsonrpc: "2.0",
+    id: 172,
+    method: "tools/call",
+    params: {
+      name: "task_update",
+      arguments: {
+        clearNextActions: true,
+        nextActions: ["Finish MCP verification", "Inspect updated passport"]
+      }
+    }
+  });
 
   const taskFinalize = await mcp.send({
     jsonrpc: "2.0",
