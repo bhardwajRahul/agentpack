@@ -11,6 +11,12 @@ Repo-native task continuity for AI coding agents.
 
 ![How Agentpack works: an agent records task state into .agentpack/ in the repo, and any next session — same agent, another client, or later — continues from it](assets/continuity.svg)
 
+Here it is live. Session 1: Claude Code investigates a flaky test and records what it learns through the Agentpack MCP tools. Session 2, next day, empty context: the agent loads the task state and picks up exactly where the first session stopped — no re-investigation:
+
+![Live demo: a Claude Code session records its findings through Agentpack MCP tools, and a fresh session the next day continues from the recorded task state](assets/demo.gif)
+
+Prefer to poke at it by hand? The same flow driven from the CLI is in [docs/DEMOS.md](docs/DEMOS.md).
+
 Every session ends the same way: the context window gets compacted, the chat closes, the task waits until tomorrow. The next session starts from zero — re-reading files, rediscovering decisions, retrying approaches that already failed.
 
 Agentpack keeps a small, reviewable task ledger in `.agentpack/` inside your repo. Connected agents record durable state as they work — the goal, decisions, dead ends, verification evidence, checkpoints — and the next session loads it back and continues. That next session can be the same agent after compaction, a different client, or you returning next week.

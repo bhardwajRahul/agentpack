@@ -2,6 +2,10 @@
 
 Use these as short demos for the durable task continuity story. The point is not that Agentpack saves chat history; the point is that the repo keeps enough task state for the next agent or session to continue without rediscovering everything.
 
+The CLI flavor of the continuity story in one take — an agent's session state is recorded, the session dies, `agentpack resume` brings the task back:
+
+![CLI demo: task state is recorded during session 1, and a fresh session restores it with agentpack resume](../assets/demo-cli.gif)
+
 In the normal MCP-connected workflow, this is hybrid: generated project instructions tell the agent when to load context, record durable state, and checkpoint progress. The CLI commands below are the manual equivalent, useful for demos, web-chat fallback, or telling an agent exactly what to do before a large refactor.
 
 ## New Workspace, Same Task State
