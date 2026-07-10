@@ -346,7 +346,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         writeScope: {
           type: "array",
           items: { type: "string" },
-          description: "Repo-relative paths or globs this task is allowed to modify."
+          description: "Repo-relative prefix paths this task is allowed to modify. A directory path includes its children; globs are not supported."
         },
         nextActions: {
           type: "array",
@@ -418,7 +418,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_switch",
-    description: "Make another open Task Passport current by id; a parked target resumes as active. Park or finalize a different active, blocked, or verifying current task first; closed tasks cannot be switched to. Updates the current-task pointer under .agentpack/.",
+    description: "Make another open Task Passport current by id. A parked target with pending or unknown verification resumes as active; a parked target with a final verdict resumes as verifying and stays frozen until verification returns to pending. Park or finalize a different active, blocked, or verifying current task first; closed tasks cannot be switched to. Updates the current-task pointer under .agentpack/.",
     inputSchema: {
       type: "object",
       properties: {
@@ -506,7 +506,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         writeScope: {
           type: "array",
           items: { type: "string" },
-          description: "Repo-relative paths or globs to append to the write scope."
+          description: "Repo-relative prefix paths to append to the write scope. A directory path includes its children; globs are not supported."
         },
         nextActions: {
           type: "array",

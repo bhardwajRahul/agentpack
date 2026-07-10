@@ -75,18 +75,26 @@ That's it. The workflow will:
 4. Run tests (`npm test`).
 5. Verify `package.json` version matches the release tag.
 6. Publish with `npm publish --access public`.
+7. In a separate, retryable job, synchronize `server.json` to that package
+   version and publish MCP Registry metadata through GitHub OIDC.
 
 Watch the run at <https://github.com/ihorponom/agentpack/actions>. When it
 finishes, npm shows the green `Provenance` badge on the package page.
 
 ## Manual fallback
 
-If a release is published while Actions is disabled, or the publish step
-fails, re-run from the Actions tab:
+If the npm publish job fails before npm has accepted the version, re-run from
+the Actions tab:
 
 1. GitHub → Actions → "Publish to npm" → Run workflow.
 2. Pick the tag (or `main`) and choose `dry-run: true` first to verify.
 3. Re-run with `dry-run: false`.
+
+If the separate `Publish MCP Registry metadata` job fails after npm succeeds,
+do **not** start the workflow again: npm versions are immutable. In Actions,
+use **Re-run failed jobs** to retry only that Registry job. The Registry is
+metadata for the already-published package, so its recovery is independent of
+the npm release.
 
 ## Pre-flight checklist
 
@@ -100,6 +108,8 @@ Before `npm version`:
 - `npm pack --dry-run` shows the expected set of files and a reasonable
   tarball size (~150 kB at the time of writing).
 - README and docs reflect the version about to ship.
+- `package.json` `mcpName` and `server.json` name match, and the release
+  workflow can publish the Registry metadata separately from npm.
 - Changes to install flows, MCP launchers, or generated client config are
   dogfooded in at least one non-Agentpack repo before release. Verify generated
   snippets point at stable package entrypoints, not transient shell shims.

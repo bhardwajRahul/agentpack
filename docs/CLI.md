@@ -102,7 +102,7 @@ Use `agentpack task --help` for the task-focused command list.
 
 The gate fails closed where it matters: an unreadable `config.json` blocks instead of throwing a skippable hook error, an unreadable current passport is a violation (exit 2 in block mode), an unrecognized native hook payload produces `hook-input-unreadable` instead of silently skipping path checks, and an unknown `gateMode` value falls back to `warn` with an `invalid-gate-mode` finding instead of silently disabling checks. Paths outside the repository are not judged by this pack's gate but are reported with an advisory `outside-root` finding rather than skipped silently. In block mode, a task without a write scope gets an advisory `no-write-scope` finding, because scope enforcement is opt-in per task.
 
-`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
+`task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport: pending or unknown verification resumes as `active`, while a final verdict resumes as `verifying` and remains frozen until verification returns to pending. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
 
 `task finalize --status accepted` refuses to close a task that still has next
 actions, because that usually means the task should be parked instead. Pass

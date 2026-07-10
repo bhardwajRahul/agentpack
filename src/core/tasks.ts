@@ -356,7 +356,11 @@ export function switchTask(root: string, taskId: string): TaskPassport {
     const passport: TaskPassport = previousStatus === "parked"
       ? {
           ...existing,
-          status: "active",
+          // A parked task can be waiting for an external outcome after a final
+          // verdict. Keep that verdict frozen when it becomes current again;
+          // callers must explicitly return verification to pending before
+          // making further edits. Ordinary parked work resumes as active.
+          status: FINAL_VERIFICATION_STATUSES.has(existing.verification.status) ? "verifying" : "active",
           currentHead: getGitInfo(root).head,
           updatedAt: new Date().toISOString()
         }

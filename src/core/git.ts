@@ -95,16 +95,27 @@ export function listDirtyFiles(root: string): string[] {
   if (!topLevel) {
     return [];
   }
-  const files = runGit(root, ["status", "--porcelain", "--untracked-files=all"])
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const entry = line.slice(3);
-      return entry.includes(" -> ") ? entry.split(" -> ").pop() || entry : entry;
-    })
-    .map((gitPath) => path.relative(root, path.resolve(topLevel, gitPath)))
-    .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
-  return [...new Set(files)];
+  const records = runGit(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    .split("\0");
+  const files: string[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (!record) {
+      continue;
+    }
+    const status = record.slice(0, 2);
+    files.push(record.slice(3));
+    // In -z porcelain v1, rename and copy records have a second NUL-delimited
+    // source path. The first path is the destination we should report.
+    if (status.includes("R") || status.includes("C")) {
+      index += 1;
+    }
+  }
+  return [...new Set(
+    files
+      .map((gitPath) => path.relative(root, path.resolve(topLevel, gitPath)))
+      .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath))
+  )];
 }
 
 export function getGitHooksPath(root: string): string | null {

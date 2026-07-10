@@ -87,7 +87,7 @@ Task lifecycle gate:
 - do not finalize a task just to free the current slot; finalization means verification is passed, failed, or explicitly accepted as complete
 - verification order: iterate checks with verification pending and fix freely; when no edits remain, commit the in-scope changes and confirm the commit changed nothing (clean tree, hooks silent) before recording the final verdict
 - no external wait: end with one \`task_finalize\` call carrying the final status, evidence, and commit hash, so no verifying window opens
-- external wait (review, PR merge, re-score): record \`passed\` via \`task_update_verification\`, then \`task_park\`; after the external result finalize, or return verification to pending if changes are needed
+- external wait (review, PR merge, re-score): record \`passed\` via \`task_update_verification\`, then \`task_park\`; switching back keeps the task verifying while that final verdict is frozen, so finalize after the external result or set verification to pending before making changes
 - a recorded final verdict moves the task to verifying and freezes code changes; to commit already-verified changes from there, set verification back to pending, commit, then re-record the verdict
 - keep next actions current: clear or replace a stale plan (\`task update --clear-next-actions\`) before finalizing, so closed passports read as history, not as open work
 - if a task still has next actions and must pause for unrelated work, park it instead of using \`task_finalize\`/\`task finalize --status accepted\`; force accepted finalization only when the remaining next actions are intentionally historical

@@ -79,6 +79,23 @@ test("--version and --help run without an initialized pack", () => {
   assert.equal(existsSync(path.join(dir, ".agentpack")), false);
 });
 
+test("keeps MCP Registry publication retryable after npm publish", () => {
+  const sourceRoot = path.join(repoRoot, "..");
+  const workflow = readFileSync(path.join(sourceRoot, ".github", "workflows", "publish.yml"), "utf8");
+  const registryJobAt = workflow.indexOf("  publish-mcp-registry:");
+  assert.ok(registryJobAt > 0, "Registry publication must be a distinct workflow job");
+
+  const npmJob = workflow.slice(0, registryJobAt);
+  const registryJob = workflow.slice(registryJobAt);
+  assert.match(registryJob, /needs: publish/);
+  assert.match(registryJob, /mcp-publisher publish/);
+  assert.doesNotMatch(npmJob, /mcp-publisher/, "retrying Registry metadata must not repeat npm publication");
+
+  const releaseDocs = readFileSync(path.join(sourceRoot, "docs", "RELEASING.md"), "utf8");
+  assert.match(releaseDocs, /Re-run failed jobs/);
+  assert.match(releaseDocs, /npm versions are immutable/);
+});
+
 test("creates a pack, records source context, checkpoints, and exports handoff", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('hello agentpack')\n", "utf8");
@@ -211,6 +228,15 @@ test("exposes expected MCP tools", () => {
   const sourceStatusTool = TOOL_DEFINITIONS.find((tool) => tool.name === "source_status");
   assert.match(sourceStatusTool?.description || "", /changed, or missing/);
   assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
+
+  for (const name of ["task_start", "task_update"]) {
+    const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    const properties = tool?.inputSchema.properties as Record<string, { description?: string }>;
+    assert.match(properties.writeScope?.description || "", /prefix paths/);
+    assert.match(properties.writeScope?.description || "", /globs are not supported/);
+  }
+  const taskSwitchTool = TOOL_DEFINITIONS.find((tool) => tool.name === "task_switch");
+  assert.match(taskSwitchTool?.description || "", /final verdict resumes as verifying/);
 
   for (const name of ["load_context", "resume"]) {
     const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
@@ -2700,6 +2726,12 @@ test("pending verification returns lifecycle to active instead of getting stuck 
   assert.match(warnOutput, /Gate: warn \(mode: warn\)/, "the gate warns while a final verdict is under review");
   assert.match(warnOutput, /Current task is verifying: a final verdict is recorded and code changes are frozen\. Finalize the task; to commit already-verified changes, set verification to pending, commit, then re-record the verdict\./);
 
+  run(dir, ["task", "park"]);
+  assert.match(run(dir, ["task", "switch", passedPassport.id]), /Switched to task/);
+  const resumedPassport = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(resumedPassport.status, "verifying", "a parked final verdict remains frozen when it becomes current again");
+  assert.match(run(dir, ["task", "gate", "--file", "src/a.ts"]), /Current task is verifying/);
+
   assert.match(run(dir, ["task", "verify"]), /Updated verification for task .* \(pending\)/);
   const pendingPassport = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(pendingPassport.status, "active", "verification found more work: pending returns the lifecycle to active");
@@ -2719,6 +2751,7 @@ test("task finalize prints hygiene advisories and stays silent when clean", () =
   runGit(dir, ["init"]);
   runGit(dir, ["config", "user.name", "Agentpack Test"]);
   runGit(dir, ["config", "user.email", "test@example.com"]);
+  runGit(dir, ["config", "commit.gpgsign", "false"]);
   run(dir, ["init"]);
 
   run(dir, ["task", "start", "Noisy task", "--write-scope", "src", "--next", "Ship it"]);
@@ -2749,6 +2782,14 @@ test("task finalize prints hygiene advisories and stays silent when clean", () =
     /remaining next action/,
     "clearing a stale plan removes the next-actions advisory"
   );
+
+  run(dir, ["task", "start", "Path-safe advisory task", "--write-scope", "src"]);
+  runGit(dir, ["mv", "src/a.ts", "src/renamed.ts"]);
+  writeFileSync(path.join(dir, "src", "файл.ts"), "export const unicode = true;\n", "utf8");
+  run(dir, ["task", "verify", "--status", "passed"]);
+  const pathSafe = run(dir, ["task", "finalize"]);
+  assert.match(pathSafe, /src\/renamed\.ts/, "rename destinations are reported, not their source paths");
+  assert.match(pathSafe, /src\/файл\.ts/, "Unicode paths remain inside the write-scope advisory");
 });
 
 test("task gate rejects unknown modes, fail-closes on unreadable passports, and reports unchecked paths", () => {

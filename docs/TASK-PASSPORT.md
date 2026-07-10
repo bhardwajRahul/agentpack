@@ -138,7 +138,7 @@ Initial statuses:
 - `active`: current work is in progress in this worktree
 - `parked`: intentionally paused and not the current task
 - `blocked`: waiting on user input, external dependency, or unresolved risk
-- `verifying`: implementation is done, but evidence/review is not complete
+- `verifying`: a final verification verdict is recorded; code is frozen while the task is finalized or awaits an external outcome
 - `completed`: task finished with verification or explicit acceptance
 - `abandoned`: task stopped and should not be resumed without a new decision
 
@@ -151,7 +151,8 @@ Allowed transitions:
 ```text
 none -> active              task start
 active -> parked            task park
-parked -> active            task switch/resume
+parked -> active            task switch/resume with unknown or pending verification
+parked -> verifying         task switch/resume with a final verification verdict
 active -> blocked           task block
 blocked -> active           task unblock/resume
 active -> verifying         task verify records a final verdict
@@ -206,8 +207,9 @@ the commit changed nothing (clean tree, hooks silent) before recording the
 final verdict. From there the task has two endings. With no external wait, end
 with one `task finalize --status passed` call carrying evidence and the commit
 hash, so no `verifying` window opens. With an external wait (review, PR merge,
-re-score), record `passed`, then `task park`; after the external result,
-finalize — or return verification to `pending` if changes are needed. A
+re-score), record `passed`, then `task park`; switching back keeps the task in
+`verifying`, so after the external result finalize — or return verification to
+`pending` before making changes. A
 recorded final verdict moves the task to `verifying` and freezes code changes;
 to commit already-verified changes from there, set verification back to
 `pending`, commit, then re-record the verdict.
@@ -223,7 +225,12 @@ review task only when the review is unrelated to the current task.
 
 `task start` creates a new current passport only when there is no current task, the current task is closed, or the current task is parked. If the current task is active, blocked, or verifying, Agentpack asks you to park or close it first so unrelated work does not silently overwrite the handoff pointer. Invalid risk values are rejected instead of being treated as unknown.
 
-`task switch <id>` resumes a parked passport as `active`. When a different current task is active, blocked, or verifying, park or finalize it before switching; Agentpack does not silently rewrite that task's lifecycle state. Closed target tasks remain unswitchable.
+`task switch <id>` resumes a parked passport as `active` when verification is
+`unknown` or `pending`. A parked passport with `passed`, `failed`, or `accepted`
+verification resumes as `verifying`, preserving the frozen final verdict until
+verification explicitly returns to `pending`. When a different current task is
+active, blocked, or verifying, park or finalize it before switching; closed
+target tasks remain unswitchable.
 
 `task status` prints a short current-task view without scanning source-cache status. Use it for a quick human check before reaching for `task audit`.
 

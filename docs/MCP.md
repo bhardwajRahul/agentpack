@@ -88,7 +88,12 @@ or verification.
 
 `task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for structured output. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
 
-`task_switch` makes another open task current by `id` and resumes a parked target as `active`. It mirrors `agentpack task switch` exactly: park or finalize a different active, blocked, or verifying current task before switching, and closed target tasks remain unswitchable.
+`task_switch` makes another open task current by `id`. A parked task with
+`unknown` or `pending` verification resumes as `active`; a parked task with a
+final verdict resumes as `verifying`, keeping code frozen until verification is
+explicitly returned to `pending`. Park or finalize a different active, blocked,
+or verifying current task before switching; closed target tasks remain
+unswitchable.
 
 `task close` intentionally has no MCP equivalent. Closing a task without a verification verdict bypasses the lifecycle discipline that `task_park` and `task_finalize` enforce, so it stays a human CLI operation (`agentpack task close`). The full passport JSON view also stays CLI-only (`agentpack task passport`); `task_status` is the MCP summary equivalent.
 
