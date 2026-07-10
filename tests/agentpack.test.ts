@@ -2454,7 +2454,9 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Task lifecycle gate/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /declare a write scope when starting a task/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /finalize after the task's changes are committed/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /commit the in-scope changes and confirm the commit changed nothing/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /one `task_finalize` call carrying the final status, evidence, and commit hash/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record `passed` via `task_update_verification`, then `task_park`/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep next actions current: clear or replace a stale plan/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /verifying, blocked, closed/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep reviews that verify the current active\/verifying task inside that task/);
@@ -2696,7 +2698,7 @@ test("pending verification returns lifecycle to active instead of getting stuck 
   assert.equal(passedPassport.status, "verifying", "a final verdict moves the lifecycle to verifying");
   const warnOutput = run(dir, ["task", "gate", "--file", "src/a.ts"]);
   assert.match(warnOutput, /Gate: warn \(mode: warn\)/, "the gate warns while a final verdict is under review");
-  assert.match(warnOutput, /Current task is verifying\. Finish or record verification before editing code, or park it for unrelated work\./);
+  assert.match(warnOutput, /Current task is verifying: a final verdict is recorded and code changes are frozen\. Finalize the task; to commit already-verified changes, set verification to pending, commit, then re-record the verdict\./);
 
   assert.match(run(dir, ["task", "verify"]), /Updated verification for task .* \(pending\)/);
   const pendingPassport = JSON.parse(run(dir, ["task", "passport"]));

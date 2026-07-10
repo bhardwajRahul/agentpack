@@ -200,6 +200,18 @@ historical so they are not mistaken for active instructions.
 
 The normal human-facing sequence is: start the task, keep status/scope/next actions current, record verification with evidence, print a handoff when another agent or chat may continue, then finalize only after verification is final.
 
+The verification order matters: iterate checks while verification is `pending`
+and fix freely; when no edits remain, commit the in-scope changes and confirm
+the commit changed nothing (clean tree, hooks silent) before recording the
+final verdict. From there the task has two endings. With no external wait, end
+with one `task finalize --status passed` call carrying evidence and the commit
+hash, so no `verifying` window opens. With an external wait (review, PR merge,
+re-score), record `passed`, then `task park`; after the external result,
+finalize — or return verification to `pending` if changes are needed. A
+recorded final verdict moves the task to `verifying` and freezes code changes;
+to commit already-verified changes from there, set verification back to
+`pending`, commit, then re-record the verdict.
+
 Temporary work switching uses `task park`, not `task finalize`. Parking keeps a
 passport open and switchable while unrelated work becomes current. Finalization
 means the task is complete, failed, or explicitly accepted as-is.

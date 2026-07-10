@@ -192,7 +192,7 @@ function collectGateFiles(root: string, options: GateOptions): { files: string[]
 
 function taskNotActiveMessage(status: TaskStatus): string {
   if (status === "verifying") {
-    return "Current task is verifying. Finish or record verification before editing code, or park it for unrelated work.";
+    return "Current task is verifying: a final verdict is recorded and code changes are frozen. Finalize the task; to commit already-verified changes, set verification to pending, commit, then re-record the verdict. Park the task for unrelated work.";
   }
   if (status === "parked") {
     return "Current task is parked. Switch to it, or start the task this work belongs to.";
