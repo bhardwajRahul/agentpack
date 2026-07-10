@@ -63,94 +63,161 @@ interface ToolDefinition {
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "load_context",
-    description: "Load compact Agentpack context for the current task.",
+    description: "Load a token-budgeted markdown resume of Agentpack state for the current task: Task Passport status and next actions, git state, query-relevant decisions, dead ends, and source conclusions, plus gate warnings when the task lifecycle needs attention. Call once at the start of a session or task, before reading code; re-call only for a different query or budget. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string" },
-        budget: { type: "number" },
-        preset: { type: "string", enum: BUDGET_PRESET_NAMES }
+        query: {
+          type: "string",
+          description: "Focused free-text query for the current task. Matching source records keep full summaries; unrelated records collapse to compact stubs to save tokens."
+        },
+        budget: {
+          type: "number",
+          description: "Approximate token budget for the resume. Takes precedence over preset. Default 4000."
+        },
+        preset: {
+          type: "string",
+          enum: BUDGET_PRESET_NAMES,
+          description: "Named token budget: quick (1200), chat (4000), agent (8000), or deep (16000). Use quick for task-start orientation."
+        }
       }
     }
   },
   {
     name: "record_decision",
-    description: "Record a decision made during the task.",
+    description: "Append a durable technical or product decision to the Agentpack ledger so future sessions inherit it. Call for decisions that matter beyond this session (architecture, contracts, tradeoffs), not for routine preferences or per-edit narration. Writes one event under .agentpack/; secret-like values are redacted.",
     inputSchema: {
       type: "object",
       properties: {
-        text: { type: "string" },
-        files: { type: "array", items: { type: "string" } },
-        evidence: { type: "array", items: { type: "string" } }
+        text: {
+          type: "string",
+          description: "The decision and its rationale, in one or two sentences."
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative paths the decision applies to."
+        },
+        evidence: {
+          type: "array",
+          items: { type: "string" },
+          description: "Evidence ids (from attach_evidence) supporting the decision."
+        }
       },
       required: ["text"]
     }
   },
   {
     name: "record_dead_end",
-    description: "Record a failed approach so future agents avoid repeating it.",
+    description: "Record an approach that failed so future agents do not repeat it. Call when an attempted direction is abandoned for a durable reason, not for ordinary debugging iterations. Writes one event under .agentpack/; secret-like values are redacted.",
     inputSchema: {
       type: "object",
       properties: {
-        text: { type: "string" },
-        reason: { type: "string" },
-        files: { type: "array", items: { type: "string" } }
+        text: {
+          type: "string",
+          description: "The approach that was tried and abandoned."
+        },
+        reason: {
+          type: "string",
+          description: "Why it failed or must not be retried."
+        },
+        files: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative paths involved in the failed approach."
+        }
       },
       required: ["text"]
     }
   },
   {
     name: "attach_evidence",
-    description: "Attach evidence such as test output, command output, notes, or links.",
+    description: "Store verification output (test results, command output, review findings, notes, or links) as a file under .agentpack/evidence/ plus a ledger event, returning an evidence id to reference from task_update_verification, task_finalize, or record_decision. Call for meaningful verification worth preserving; for small tasks prefer one aggregated evidence item over many per-command items. Provide the body inline via content or from a file via path.",
     inputSchema: {
       type: "object",
       properties: {
-        kind: { type: "string" },
-        content: { type: "string" },
-        path: { type: "string" },
-        command: { type: "string" },
-        exitCode: { type: "number" }
+        kind: {
+          type: "string",
+          description: "Free-form label such as test, command, note, link, or json. Defaults to note; kind json stores the file with a .json extension."
+        },
+        content: {
+          type: "string",
+          description: "Inline evidence body. Ignored when path is set."
+        },
+        path: {
+          type: "string",
+          description: "Repo-relative path to an existing file whose contents become the evidence body (alternative to content)."
+        },
+        command: {
+          type: "string",
+          description: "Command that produced the output, stored as metadata."
+        },
+        exitCode: {
+          type: "number",
+          description: "Exit code of that command, stored as metadata."
+        }
       }
     }
   },
   {
     name: "record_source",
-    description: "Record that a source file was inspected, including its current hash and conclusion.",
+    description: "Record a durable conclusion about a source file in the Source Cache: stores the file's current content hash with your summary so future sessions can reuse the conclusion until the file changes. Call after inspecting an important file when the conclusion is reusable; do not record every file read, and re-record only when the conclusion itself changed. Writes under .agentpack/.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string" },
-        summary: { type: "string" },
-        snippet: { type: "string" }
+        path: {
+          type: "string",
+          description: "Repo-relative path of the inspected file."
+        },
+        summary: {
+          type: "string",
+          description: "Durable conclusion about the file. Always provide one; the fallback is a generic 'Reviewed source.'"
+        },
+        snippet: {
+          type: "string",
+          description: "Optional short excerpt worth keeping with the conclusion."
+        }
       },
       required: ["path"]
     }
   },
   {
     name: "source_status",
-    description: "Check whether recorded source conclusions are unchanged, changed, or missing; use changed/missing filters for stale source-cache triage.",
+    description: "Check whether recorded source conclusions are unchanged, changed, or missing by re-hashing the files; use changed/missing filters for stale source-cache triage. Call when you need a full stale-source check beyond what load_context already showed; do not repeat it when a recent load_context, task_audit, or status check answered the question. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        json: { type: "boolean" },
-        changed: { type: "boolean" },
-        missing: { type: "boolean" }
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        },
+        changed: {
+          type: "boolean",
+          description: "Only report sources whose content hash changed since recorded."
+        },
+        missing: {
+          type: "boolean",
+          description: "Only report recorded sources whose files no longer exist."
+        }
       }
     }
   },
   {
     name: "task_audit",
-    description: "Audit the current Task Passport for continuity risks such as stale sources, drift, missing next actions, and open verification.",
+    description: "Audit the current Task Passport for continuity risks: stale or missing sources, branch/head drift, worktree mismatch, missing next actions or write scope, and open verification. Call before finalizing, after a long gap, or when drift is suspected; skip when a recent audit already answered it. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        json: { type: "boolean" }
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       }
     }
   },
   {
     name: "release_preflight",
-    description: "Run a read-only release preflight report for local release preparation. Does not push, tag, publish, or create GitHub Releases.",
+    description: "Report local release readiness: release metadata, Trusted Publisher wiring, and the manual release-prep commands. Read-only — never pushes, tags, publishes, or creates GitHub Releases. Call when preparing a release, not during routine work.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -158,60 +225,100 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "bundle_export",
-    description: "Export a redacted read-only structured task bundle JSON file.",
+    description: "Export one Task Passport with its decisions, dead ends, source conclusions, and optionally evidence to a redacted agentpack.task-bundle JSON file, for sharing tasks across repos, machines, or agents. Writes only the new bundle file at outputPath; pack state is unchanged.",
     inputSchema: {
       type: "object",
       properties: {
-        taskId: { type: "string" },
-        outputPath: { type: "string" },
-        sources: { type: "array", items: { type: "string" } },
-        includeEvidence: { type: "boolean" }
+        taskId: {
+          type: "string",
+          description: "Task Passport id to export. Defaults to the current task."
+        },
+        outputPath: {
+          type: "string",
+          description: "Destination bundle file: must be a new repo-relative path outside .agentpack/ and .git/; existing files and symlink escapes are rejected."
+        },
+        sources: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative source paths whose Source Cache records to include."
+        },
+        includeEvidence: {
+          type: "boolean",
+          description: "Include referenced evidence file contents. Defaults to true."
+        }
       },
       required: ["outputPath"]
     }
   },
   {
     name: "bundle_inspect",
-    description: "Validate and summarize a structured task bundle without writing pack state.",
+    description: "Validate and summarize an untrusted task bundle file: schema and digest status, origin, included records, and warnings. Read-only — never writes pack state. Call before planning or applying an import of a bundle you did not produce.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string" },
-        json: { type: "boolean" }
+        path: {
+          type: "string",
+          description: "Path to the bundle JSON file to inspect."
+        },
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       },
       required: ["path"]
     }
   },
   {
     name: "bundle_import_plan",
-    description: "Plan a structured task bundle import without writing pack state.",
+    description: "Plan a task bundle import against this pack without writing anything: returns create, idempotent, or conflict actions with an explicit read-only guarantee. Call to preview exactly what bundle_import with write: true would do.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string" },
-        asNew: { type: "boolean" },
-        json: { type: "boolean" }
+        path: {
+          type: "string",
+          description: "Path to the bundle JSON file to plan against this pack."
+        },
+        asNew: {
+          type: "boolean",
+          description: "Preview importing under a deterministic new task id instead of the bundle's original id (resolves id collisions)."
+        },
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       },
       required: ["path"]
     }
   },
   {
     name: "bundle_import",
-    description: "Plan a structured task bundle import by default, or apply it only when write is true.",
+    description: "Import a task bundle into this pack. By default it only returns the read-only import plan; nothing is written unless write is true. A write import runs under a pack lock, creates a parked task with local verification reset to unknown, retains the bundle and an import manifest, and never changes the current-task pointer. Inspect or plan untrusted bundles first.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string" },
-        write: { type: "boolean" },
-        asNew: { type: "boolean" },
-        json: { type: "boolean" }
+        path: {
+          type: "string",
+          description: "Path to the bundle JSON file to import."
+        },
+        write: {
+          type: "boolean",
+          description: "Apply the import. When false or omitted, only the read-only plan is returned."
+        },
+        asNew: {
+          type: "boolean",
+          description: "Resolve a task-id collision by importing under a deterministic new id."
+        },
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       },
       required: ["path"]
     }
   },
   {
     name: "task_handoff",
-    description: "Generate a compact current Task Passport handoff for switching chats, clients, worktrees, or agents.",
+    description: "Generate a compact handoff for the current Task Passport — objective, constraints, write scope, next actions, verification, drift, and audit summary — so another chat, client, worktree, or agent can continue the work. Call before switching contexts. Read-only.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -219,19 +326,42 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_start",
-    description: "Create a new current Task Passport when no active task blocks starting one.",
+    description: "Create a new Task Passport and make it current, persisting it under .agentpack/. Call when starting a coherent phase of work and no task is active; it refuses to replace an active, blocked, or verifying current task — park or finalize that task first. Declare writeScope so the task gate can protect the task's boundaries.",
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string" },
-        objective: { type: "string" },
-        constraints: { type: "array", items: { type: "string" } },
-        writeScope: { type: "array", items: { type: "string" } },
-        nextActions: { type: "array", items: { type: "string" } },
-        tags: { type: "array", items: { type: "string" } },
+        title: {
+          type: "string",
+          description: "Short imperative task title."
+        },
+        objective: {
+          type: "string",
+          description: "What done looks like for this task."
+        },
+        constraints: {
+          type: "array",
+          items: { type: "string" },
+          description: "Rules the work must respect."
+        },
+        writeScope: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative paths or globs this task is allowed to modify."
+        },
+        nextActions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Initial concrete next steps."
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Free-form labels for grouping tasks."
+        },
         risk: {
           type: "string",
-          enum: ["unknown", "low", "medium", "high"]
+          enum: ["unknown", "low", "medium", "high"],
+          description: "Risk level of the task."
         }
       },
       required: ["title"]
@@ -239,7 +369,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_status",
-    description: "Print a quick current Task Passport status without running a source-cache audit.",
+    description: "Print a quick summary of the current Task Passport (status, objective, next actions, verification) plus gate warnings, without scanning the source cache. Call for a fast lifecycle check; use task_audit for the full continuity audit. Read-only.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -247,42 +377,62 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_role",
-    description: "Read focused guidance and current state for a Task Passport role lane, or explicitly update it with both status and summary. Does not start agents or change task lifecycle.",
+    description: "Read focused guidance and current state for one Task Passport role lane, or update the lane by passing both status and summary. Role state is advisory metadata inside the current passport: it does not start agents, grant write authority, or change task lifecycle or verification. Without status and summary the call is read-only; updates write to the passport, and identical retries are no-ops.",
     inputSchema: {
       type: "object",
       properties: {
-        role: { type: "string", enum: TASK_ROLE_NAMES },
-        status: { type: "string", enum: TASK_ROLE_STATUSES },
-        summary: { type: "string" },
-        json: { type: "boolean" }
+        role: {
+          type: "string",
+          enum: TASK_ROLE_NAMES,
+          description: "Role lane to read or update."
+        },
+        status: {
+          type: "string",
+          enum: TASK_ROLE_STATUSES,
+          description: "New lane status; requires summary in the same call."
+        },
+        summary: {
+          type: "string",
+          description: "Durable summary of the lane's state; requires status in the same call."
+        },
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       },
       required: ["role"]
     }
   },
   {
     name: "task_list",
-    description: "List all Task Passports with id, status, title, and branch; the current task is marked with an asterisk.",
+    description: "List all Task Passports with id, status, title, and branch; the current task is marked with an asterisk. Call to find a task id for task_switch or to review open work. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        json: { type: "boolean" }
+        json: {
+          type: "boolean",
+          description: "Return structured JSON instead of formatted text."
+        }
       }
     }
   },
   {
     name: "task_switch",
-    description: "Switch the current Task Passport to another open task by id, for example to resume a parked task. Closed tasks cannot be switched to.",
+    description: "Make another open Task Passport current by id; a parked target resumes as active. Park or finalize a different active, blocked, or verifying current task first; closed tasks cannot be switched to. Updates the current-task pointer under .agentpack/.",
     inputSchema: {
       type: "object",
       properties: {
-        id: { type: "string" }
+        id: {
+          type: "string",
+          description: "Task Passport id to switch to (see task_list)."
+        }
       },
       required: ["id"]
     }
   },
   {
     name: "task_park",
-    description: "Park the current Task Passport so unrelated work can start without finalizing the parked task.",
+    description: "Mark the current Task Passport parked so unrelated work can start without finalizing it. Use for intentionally deferred work: parking preserves verification state and the task can be resumed later with task_switch. Do not park to skip verification of finished work; use task_finalize to close it instead.",
     inputSchema: {
       type: "object",
       properties: {}
@@ -290,96 +440,167 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_update_verification",
-    description: "Update the current Task Passport verification status, summary, and evidence references.",
+    description: "Update the current Task Passport verification state. A final verdict (passed, failed, or accepted) moves the task lifecycle to verifying; pending or unknown returns it to active. Call after attach_evidence so the verdict is evidence-backed; identical repeated calls are no-ops.",
     inputSchema: {
       type: "object",
       properties: {
         status: {
           type: "string",
-          enum: ["unknown", "pending", "passed", "failed", "accepted"]
+          enum: ["unknown", "pending", "passed", "failed", "accepted"],
+          description: "Verification status to set."
         },
-        evidence: { type: "array", items: { type: "string" } },
-        summary: { type: "string" }
+        evidence: {
+          type: "array",
+          items: { type: "string" },
+          description: "Evidence ids from attach_evidence backing this verdict."
+        },
+        summary: {
+          type: "string",
+          description: "Short summary of what was verified and how."
+        }
       }
     }
   },
   {
     name: "task_finalize",
-    description: "Finalize the current Task Passport by requiring or setting a final verification status, then closing the task. Use task_park for deferred work; accepted finalization with remaining next actions requires force.",
+    description: "Close the current Task Passport. Requires verification to already be passed, failed, or accepted, or that final status passed explicitly via status. Use task_park for deferred work instead of closing it; accepted finalization with remaining next actions requires force. Returns non-blocking hygiene advisories (uncommitted in-scope changes, remaining next actions, missing checkpoint).",
     inputSchema: {
       type: "object",
       properties: {
         status: {
           type: "string",
-          enum: ["passed", "failed", "accepted"]
+          enum: ["passed", "failed", "accepted"],
+          description: "Final verification status to set while closing."
         },
-        evidence: { type: "array", items: { type: "string" } },
-        summary: { type: "string" },
-        force: { type: "boolean" }
+        evidence: {
+          type: "array",
+          items: { type: "string" },
+          description: "Evidence ids from attach_evidence backing the final verdict."
+        },
+        summary: {
+          type: "string",
+          description: "Closing summary; mention relevant commit hashes here."
+        },
+        force: {
+          type: "boolean",
+          description: "Allow accepted finalization even though next actions remain."
+        }
       }
     }
   },
   {
     name: "task_update",
-    description: "Update the current Task Passport objective, constraints, write scope, next actions, tags, or risk without changing lifecycle status. List fields append; clearNextActions replaces the next actions with the provided list instead.",
+    description: "Patch the current Task Passport without changing lifecycle status. List fields (constraints, writeScope, nextActions, tags) append and deduplicate; omitted fields are preserved; empty or no-op updates fail. Pass clearNextActions to replace the next-actions list instead of appending, e.g. to clear a stale plan before finalizing.",
     inputSchema: {
       type: "object",
       properties: {
-        objective: { type: "string" },
-        constraints: { type: "array", items: { type: "string" } },
-        writeScope: { type: "array", items: { type: "string" } },
-        nextActions: { type: "array", items: { type: "string" } },
-        clearNextActions: { type: "boolean" },
-        tags: { type: "array", items: { type: "string" } },
+        objective: {
+          type: "string",
+          description: "Replacement objective text."
+        },
+        constraints: {
+          type: "array",
+          items: { type: "string" },
+          description: "Constraints to append."
+        },
+        writeScope: {
+          type: "array",
+          items: { type: "string" },
+          description: "Repo-relative paths or globs to append to the write scope."
+        },
+        nextActions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Next steps to append, or the full replacement list when clearNextActions is true."
+        },
+        clearNextActions: {
+          type: "boolean",
+          description: "Replace the next actions with the provided nextActions (or clear them) instead of appending."
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Free-form labels to append."
+        },
         risk: {
           type: "string",
-          enum: ["unknown", "low", "medium", "high"]
+          enum: ["unknown", "low", "medium", "high"],
+          description: "New risk level for the task."
         }
       }
     }
   },
   {
     name: "checkpoint",
-    description: "Create an Agentpack checkpoint.",
+    description: "Save a durable progress checkpoint under .agentpack/checkpoints, capturing summary and git state (branch, commit, diff) and updating the pack-level status and next actions that seed the next session's load_context. Call after meaningful progress, before ending a session, or before risky changes — not after every small step.",
     inputSchema: {
       type: "object",
       properties: {
-        summary: { type: "string" },
-        status: { type: "string" },
-        nextActions: { type: "array", items: { type: "string" } }
+        summary: {
+          type: "string",
+          description: "What was accomplished and decided since the last checkpoint."
+        },
+        status: {
+          type: "string",
+          description: "Current overall status line, replacing the previous one."
+        },
+        nextActions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Concrete next steps, replacing the previous list when non-empty."
+        }
       }
     }
   },
   {
     name: "resume",
-    description: "Generate a budgeted markdown resume.",
+    description: "Generate the same token-budgeted markdown resume as load_context: Task Passport state, git state, query-relevant records, and gate warnings. Prefer load_context at task start; use resume for ad-hoc re-reads with a different query or budget mid-session. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        budget: { type: "number" },
-        preset: { type: "string", enum: BUDGET_PRESET_NAMES },
-        query: { type: "string" }
+        budget: {
+          type: "number",
+          description: "Approximate token budget for the resume. Takes precedence over preset. Default 4000."
+        },
+        preset: {
+          type: "string",
+          enum: BUDGET_PRESET_NAMES,
+          description: "Named token budget: quick (1200), chat (4000), agent (8000), or deep (16000)."
+        },
+        query: {
+          type: "string",
+          description: "Focused free-text query. Matching source records keep full summaries; unrelated records collapse to compact stubs."
+        }
       }
     }
   },
   {
     name: "diff",
-    description: "Compare checkpoints.",
+    description: "Compare two checkpoints, showing their summaries, status lines, and git refs side by side. Defaults to comparing the previous checkpoint against the latest. Call to see what changed between sessions. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        from: { type: "string" },
-        to: { type: "string" }
+        from: {
+          type: "string",
+          description: "Checkpoint id to compare from. Defaults to the second-most-recent checkpoint."
+        },
+        to: {
+          type: "string",
+          description: "Checkpoint id to compare to. Defaults to the latest checkpoint."
+        }
       }
     }
   },
   {
     name: "replay",
-    description: "Replay the task timeline.",
+    description: "Print a chronological timeline of recent Agentpack ledger events (decisions, dead ends, evidence, source records, checkpoints, task events), one line per event with timestamp and type. Call to audit how the task history unfolded when a resume is not enough; not part of the routine load_context/checkpoint loop. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
-        limit: { type: "number" }
+        limit: {
+          type: "number",
+          description: "Number of most recent events to show. Defaults to 30."
+        }
       }
     }
   }
