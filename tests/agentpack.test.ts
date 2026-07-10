@@ -2831,6 +2831,22 @@ test("task gate rejects unknown modes, fail-closes on unreadable passports, and 
   assert.match(outsideFinding?.message || "", /\.\.\/elsewhere\.txt/);
   assert.match(outsideFinding?.message || "", /\/tmp\/elsewhere\.txt/);
 
+  run(dir, ["task", "park"]);
+  const outsideParked = JSON.parse(run(dir, ["task", "gate", "--file", "/tmp/elsewhere.txt", "--json"])) as {
+    decision: string;
+    findings: Array<{ code: string }>;
+  };
+  assert.equal(outsideParked.decision, "warn", "outside-root-only checks must not block on task lifecycle");
+  assert.ok(outsideParked.findings.some((finding) => finding.code === "outside-root"));
+  assert.ok(
+    !outsideParked.findings.some((finding) => finding.code === "task-not-active"),
+    "lifecycle findings do not apply when the gate judges none of the paths"
+  );
+  const inRepoParked = runWithStatus(dir, ["task", "gate", "--file", "src/a.ts"]);
+  assert.equal(inRepoParked.status, 2, "in-repo paths still enforce lifecycle in block mode");
+  const parkedTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
+  run(dir, ["task", "switch", parkedTaskId]);
+
   const currentTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
   const currentPassportPath = path.join(dir, ".agentpack", "tasks", currentTaskId, "passport.json");
   const currentPassport = JSON.parse(readFileSync(currentPassportPath, "utf8")) as Record<string, unknown>;
