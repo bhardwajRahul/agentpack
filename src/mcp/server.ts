@@ -28,18 +28,13 @@ import {
   formatCurrentTaskStatus,
   formatTaskAuditReport,
   formatTaskList,
-  formatTaskRoleResult,
-  getCurrentTaskRole,
   listTasks,
   parkCurrentTask,
   startTask,
   switchTask,
-  TASK_ROLE_NAMES,
-  TASK_ROLE_STATUSES,
   type TaskStartOptions,
   type TaskUpdateOptions,
   updateCurrentTaskPassport,
-  updateCurrentTaskRole,
   updateCurrentTaskVerification
 } from "../core/tasks.js";
 
@@ -373,34 +368,6 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {}
-    }
-  },
-  {
-    name: "task_role",
-    description: "Read focused guidance and current state for one Task Passport role lane, or update the lane by passing both status and summary. Role state is advisory metadata inside the current passport: it does not start agents, grant write authority, or change task lifecycle or verification. Without status and summary the call is read-only; updates write to the passport, and identical retries are no-ops.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        role: {
-          type: "string",
-          enum: TASK_ROLE_NAMES,
-          description: "Role lane to read or update."
-        },
-        status: {
-          type: "string",
-          enum: TASK_ROLE_STATUSES,
-          description: "New lane status; requires summary in the same call."
-        },
-        summary: {
-          type: "string",
-          description: "Durable summary of the lane's state; requires status in the same call."
-        },
-        json: {
-          type: "boolean",
-          description: "Return structured JSON instead of formatted text."
-        }
-      },
-      required: ["role"]
     }
   },
   {
@@ -866,22 +833,6 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
   if (name === "task_status") {
     return toolText(appendGateWarnings(root, redactForRoot(root, formatCurrentTaskStatus(root))));
-  }
-
-  if (name === "task_role") {
-    const role = text(args.role);
-    const status = text(args.status);
-    const summary = text(args.summary);
-    if (Boolean(status) !== Boolean(summary)) {
-      throw new Error("task_role updates require both status and summary");
-    }
-    const result = status && summary
-      ? updateCurrentTaskRole(root, role, status, redactForRoot(root, summary))
-      : getCurrentTaskRole(root, role);
-    if (booleanValue(args.json, false)) {
-      return toolText(redactForRoot(root, JSON.stringify(result, null, 2)));
-    }
-    return toolText(redactForRoot(root, formatTaskRoleResult(result)));
   }
 
   if (name === "task_list") {

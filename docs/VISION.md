@@ -38,20 +38,13 @@ One active Task Passport should own the work in a repo worktree by default. A re
 
 Workstream support should stay modest: separate passports across branches and worktrees, keep parked work visible, and protect handoff boundaries. It should not turn Agentpack into a backlog manager or code conflict resolver.
 
-Multi-role agents should collaborate inside one Task Passport:
-
-- Scout: inspect sources and record source conclusions
-- Builder: make changes inside the declared write scope
-- Reviewer: check the diff, risks, and verification
-- Archivist: record evidence, checkpoints, and handoff state
-
-Agentpack should support those role lanes as lightweight prompts, metadata, and consistency checks. They are not a runtime, scheduler, or swarm orchestration layer.
+Multi-role agents can collaborate around one Task Passport without the core tracking their roles as passport metadata. A coordinator agent owns the passport lifecycle; specialized subagents (for example the builder subagent `agentpack install claude` writes to `.claude/agents/builder.md`) work inside the declared write scope and hand results back. Agentpack's contribution is the shared write scope, verification, and evidence the passport already carries, not a role registry.
 
 ## Operating Principles
 
 - Execution engines run the work. Agentpack preserves what future agents need to continue it.
 - Continuity should be native to the repo, not reconstructed from chat history.
-- One Task Passport owns the current work; multiple roles can contribute to it.
+- One Task Passport owns the current work; multiple client-side agents can contribute to it.
 - Prefer small, inspectable, local files before hosted sync or hidden databases.
 - Prefer portable MCP, CLI, and file surfaces over framework lock-in.
 - Record durable context, not every action.

@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
 import { resolveMcpStartDir } from "../src/cli/index.js";
 import { buildDoctorReport } from "../src/core/doctor.js";
 import { getGitInfo } from "../src/core/git.js";
+import { sha256 } from "../src/core/hash.js";
 import { buildResume } from "../src/core/resume.js";
 import { writePackTransaction } from "../src/core/store.js";
 import { formatClientGateCommand } from "../src/integrations/install.js";
@@ -217,7 +218,6 @@ test("exposes expected MCP tools", () => {
     "task_handoff",
     "task_list",
     "task_park",
-    "task_role",
     "task_start",
     "task_status",
     "task_switch",
@@ -365,39 +365,6 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     ]);
     const exportedTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
 
-    const noRolesBundlePath = path.join(dir, "checkout-no-roles.agentpack-bundle.json");
-    run(dir, [
-      "bundle",
-      "export",
-      "--task",
-      "current",
-      "--output",
-      "checkout-no-roles.agentpack-bundle.json",
-      "--source",
-      "src/index.ts"
-    ]);
-    const noRolesBundle = JSON.parse(readFileSync(noRolesBundlePath, "utf8"));
-    assert.equal(noRolesBundle.task.roles, undefined);
-
-    run(dir, [
-      "task",
-      "role",
-      "scout",
-      "--status",
-      "done",
-      "--summary",
-      "Inspected the bundle source and portability risks."
-    ]);
-    run(dir, [
-      "task",
-      "role",
-      "builder",
-      "--status",
-      "done",
-      "--summary",
-      "Prepared the task-scoped bundle payload."
-    ]);
-
     const bundlePath = path.join(dir, "checkout.agentpack-bundle.json");
     const exported = run(dir, [
       "bundle",
@@ -419,8 +386,6 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(bundle.schemaVersion, 1);
     assert.equal(bundle.sources[0].path, "src/index.ts");
     assert.equal(bundle.evidence[0].originId, evidenceId);
-    assert.equal(bundle.task.roles.scout.status, "done");
-    assert.equal(bundle.task.roles.builder.summary, "Prepared the task-scoped bundle payload.");
     assert.equal(bundle.origin.repository, "https://example.com/org/example.git");
     assert.equal(bundleText.includes(secret), false);
     assert.equal(bundleText.includes(destinationSecret), true);
@@ -455,21 +420,6 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(existsSync(path.join(dir, "symlink-evidence.agentpack-bundle.json")), false);
     unlinkSync(sourceEvidencePath);
     writeFileSync(sourceEvidencePath, sourceEvidenceContent, "utf8");
-
-    for (const [name, summary] of [["empty", ""], ["whitespace", "   "]] as const) {
-      const invalidRoleBundle = JSON.parse(bundleText);
-      invalidRoleBundle.task.roles.scout.summary = summary;
-      const invalidRoleBundlePath = path.join(dir, `${name}-role-summary.agentpack-bundle.json`);
-      writeFileSync(invalidRoleBundlePath, `${JSON.stringify(invalidRoleBundle, null, 2)}\n`, "utf8");
-      assert.match(runExpectError(noPackDir, ["bundle", "inspect", invalidRoleBundlePath]), /Bundle task is invalid/);
-      assert.match(runExpectError(noPackDir, ["bundle", "import-plan", invalidRoleBundlePath]), /Bundle task is invalid/);
-    }
-
-    const noRolesInspect = JSON.parse(run(noPackDir, ["bundle", "inspect", noRolesBundlePath, "--json"]));
-    assert.equal(noRolesInspect.valid, true);
-    const noRolesPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", noRolesBundlePath, "--json"]));
-    assert.equal(noRolesPlan.action.outcome, "create");
-    assert.equal(existsSync(path.join(noPackDir, ".agentpack")), false);
 
     const noPackPlan = JSON.parse(run(noPackDir, ["bundle", "import-plan", bundlePath, "--json"]));
     assert.equal(noPackPlan.readOnly, true);
@@ -528,8 +478,6 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
     assert.equal(importedPassport.status, "parked");
     assert.equal(importedPassport.verification.status, "unknown");
     assert.deepEqual(importedPassport.verification.evidence, []);
-    assert.equal(importedPassport.roles.scout.status, "done");
-    assert.equal(importedPassport.roles.builder.status, "done");
     assert.equal(importedPassport.worktree, realpathSync(writeDestinationDir));
     const portableBundleStorageId = bundle.bundleId.replace(":", "-");
     const importedBundleDir = path.join(writeDestinationDir, ".agentpack", "tasks", exportedTaskId, "imports");
@@ -1041,6 +989,51 @@ test("exports, inspects, and plans read-only structured bundle imports", async (
       process.env.AGENTPACK_DESTINATION_BUNDLE_TOKEN = priorDestinationEnv;
     }
   }
+});
+
+test("imports a bundle carrying a legacy task.roles field without migrating it", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-legacy-roles-"));
+  const destinationDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-bundle-legacy-roles-dest-"));
+  mkdirSync(path.join(dir, "src"), { recursive: true });
+  writeFileSync(path.join(dir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  run(dir, [
+    "task",
+    "start",
+    "Legacy roles bundle",
+    "--objective",
+    "Confirm bundles with a legacy roles field still import.",
+    "--write-scope",
+    "src/index.ts",
+    "--next",
+    "Import elsewhere"
+  ]);
+  const exportedTaskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
+  const bundlePath = path.join(dir, "legacy-roles.agentpack-bundle.json");
+  run(dir, ["bundle", "export", "--task", "current", "--output", "legacy-roles.agentpack-bundle.json"]);
+  const bundle = JSON.parse(readFileSync(bundlePath, "utf8"));
+  bundle.task.roles = {
+    scout: { status: "done", summary: "Legacy scout summary." }
+  };
+  const { bundleId: _bundleId, exportedAt: _exportedAt, ...payload } = bundle;
+  bundle.bundleId = `sha256:${sha256(stableStringifyForTest(payload))}`;
+  writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`, "utf8");
+
+  const inspected = JSON.parse(run(dir, ["bundle", "inspect", bundlePath, "--json"]));
+  assert.equal(inspected.valid, true);
+
+  mkdirSync(path.join(destinationDir, "src"), { recursive: true });
+  writeFileSync(path.join(destinationDir, "src", "index.ts"), "export const value = 1;\n", "utf8");
+  run(destinationDir, ["init"]);
+
+  const imported = JSON.parse(run(destinationDir, ["bundle", "import", bundlePath, "--write", "--json"]));
+  assert.equal(imported.applied, true);
+  const importedPassport = JSON.parse(readFileSync(
+    path.join(destinationDir, ".agentpack", "tasks", exportedTaskId, "passport.json"),
+    "utf8"
+  ));
+  assert.equal(importedPassport.roles, undefined);
 });
 
 test("rolls back a pack transaction after a mid-install failure", () => {
@@ -1721,152 +1714,37 @@ test("filters MCP source_status to changed and missing records", async () => {
   assert.equal(parsed[0]?.status, "missing");
 });
 
-test("manages Task Passport role lanes through CLI and MCP", async () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-roles-test-"));
+test("tolerates a legacy roles field in passport.json without migrating it", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-task-legacy-roles-test-"));
   runGit(dir, ["init"]);
   run(dir, ["init"]);
   run(dir, [
     "task",
     "start",
-    "Coordinate role lanes",
+    "Legacy roles passport",
     "--objective",
-    "Keep role coordination inside one passport.",
+    "Confirm a legacy roles field does not break passport reads.",
     "--next",
-    "Assign focused lanes"
+    "Confirm task status still works"
   ]);
   const taskId = readFileSync(path.join(dir, ".agentpack", "tasks", "current"), "utf8").trim();
-  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).roles, {});
   const passportPath = path.join(dir, ".agentpack", "tasks", taskId, "passport.json");
   const legacyPassport = JSON.parse(readFileSync(passportPath, "utf8"));
-  delete legacyPassport.roles;
+  legacyPassport.roles = {
+    scout: { status: "done", summary: "Legacy scout summary." }
+  };
   writeFileSync(passportPath, `${JSON.stringify(legacyPassport, null, 2)}\n`, "utf8");
-  run(dir, ["task", "role", "scout", "--json"]);
-  assert.deepEqual(JSON.parse(run(dir, ["task", "passport"])).roles, {});
-
-  const eventCountBeforeRead = taskEventCount(dir, taskId);
-  const scoutRead = run(dir, ["task", "role", "scout"]);
-  assert.match(scoutRead, /Task role Scout \[not set\]/);
-  assert.match(scoutRead, /Mode: read-only/);
-  assert.match(scoutRead, /Do not modify project files in this lane/);
-  assert.equal(taskEventCount(dir, taskId), eventCountBeforeRead);
-  assert.match(runExpectError(dir, ["task", "role", "operator"]), /Unknown task role: operator/);
-  assert.match(
-    runExpectError(dir, ["task", "role", "scout", "--status", "active"]),
-    /updates require both --status and --summary/
-  );
-  assert.match(
-    runExpectError(dir, ["task", "role", "scout", "--status", "waiting", "--summary", "Wait"]),
-    /Unknown task role status: waiting/
-  );
-
-  const builderUpdate = run(dir, [
-    "task",
-    "role",
-    "builder",
-    "--status",
-    "active",
-    "--summary",
-    "Implement only inside the declared write scope."
-  ]);
-  assert.match(builderUpdate, /Task role Builder \[active\]/);
-  assert.match(builderUpdate, /Update: applied/);
-  run(dir, [
-    "task",
-    "role",
-    "scout",
-    "--status",
-    "done",
-    "--summary",
-    "Mapped the relevant source and risks."
-  ]);
-  run(dir, [
-    "task",
-    "role",
-    "reviewer",
-    "--status",
-    "blocked",
-    "--summary",
-    "Waiting for focused test output."
-  ]);
-  const eventCountBeforeNoop = taskEventCount(dir, taskId);
-  assert.match(run(dir, [
-    "task",
-    "role",
-    "scout",
-    "--status",
-    "done",
-    "--summary",
-    "Mapped the relevant source and risks."
-  ]), /Update: unchanged \(idempotent\)/);
-  assert.equal(taskEventCount(dir, taskId), eventCountBeforeNoop);
 
   const status = run(dir, ["task", "status"]);
-  assert.match(status, /Roles: scout done, builder active, reviewer blocked/);
-  const audit = run(dir, ["task", "audit"]);
-  assert.match(audit, /Role reviewer is blocked: Waiting for focused test output\./);
-  assert.match(audit, /Builder role is active, but the task has no write scope\./);
-  const handoff = run(dir, ["task", "handoff"]);
-  assert.match(handoff, /Role lanes:\n- scout \[done\]: Mapped the relevant source and risks\./);
-  assert.ok(handoff.indexOf("- scout [done]") < handoff.indexOf("- builder [active]"));
-  assert.ok(handoff.indexOf("- builder [active]") < handoff.indexOf("- reviewer [blocked]"));
-  const resume = run(dir, ["resume", "--preset", "agent"]);
-  assert.match(resume, /Role lanes:\n  - scout \[done\]: Mapped the relevant source and risks\./);
-  assert.ok(resume.indexOf("Task next actions:") < resume.indexOf("Role lanes:"));
+  assert.match(status, /Legacy roles passport \[active\]/);
+  assert.doesNotMatch(status, /Roles:/);
 
-  const mcp = createMcpHarness(dir);
-  const tools = await mcp.send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
-  const roleTool = tools.result.tools.find((tool: { name: string }) => tool.name === "task_role");
-  assert.deepEqual(roleTool.inputSchema.properties.role.enum, ["scout", "builder", "reviewer", "archivist"]);
-  assert.deepEqual(roleTool.inputSchema.properties.status.enum, ["pending", "active", "done", "blocked"]);
+  const passportJson = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(passportJson.roles, undefined);
 
-  const archivistRead = await mcp.send({
-    jsonrpc: "2.0",
-    id: 2,
-    method: "tools/call",
-    params: {
-      name: "task_role",
-      arguments: { role: "archivist", json: true }
-    }
-  });
-  const archivistReadJson = JSON.parse(archivistRead.result.content[0].text);
-  assert.equal(archivistReadJson.taskId, taskId);
-  assert.equal(archivistReadJson.passport, undefined);
-  assert.equal(archivistReadJson.mode, "read");
-  assert.equal(archivistReadJson.state, null);
-  assert.match(archivistReadJson.guidance, /without turning the ledger into an activity log/);
-
-  const incompleteUpdate = await mcp.send({
-    jsonrpc: "2.0",
-    id: 3,
-    method: "tools/call",
-    params: {
-      name: "task_role",
-      arguments: { role: "archivist", status: "done" }
-    }
-  });
-  assert.equal(incompleteUpdate.error?.message, "task_role updates require both status and summary");
-
-  const archivistUpdate = await mcp.send({
-    jsonrpc: "2.0",
-    id: 4,
-    method: "tools/call",
-    params: {
-      name: "task_role",
-      arguments: {
-        role: "archivist",
-        status: "done",
-        summary: "Recorded token=role-secret-value in evidence and the handoff checkpoint.",
-        json: true
-      }
-    }
-  });
-  const archivistUpdateJson = JSON.parse(archivistUpdate.result.content[0].text);
-  assert.equal(archivistUpdateJson.mode, "update");
-  assert.equal(archivistUpdateJson.changed, true);
-  assert.equal(archivistUpdateJson.state.status, "done");
-  assert.equal(archivistUpdate.result.content[0].text.includes("role-secret-value"), false);
-  assert.match(archivistUpdateJson.state.summary, /token=\[REDACTED\]/);
-  assert.equal(JSON.parse(run(dir, ["task", "passport"])).roles.archivist.status, "done");
+  run(dir, ["task", "update", "--next", "Confirm the field is dropped on write"]);
+  const rewrittenPassport = JSON.parse(readFileSync(passportPath, "utf8"));
+  assert.equal(rewrittenPassport.roles, undefined);
 });
 
 test("manages a current task passport", () => {
@@ -4145,4 +4023,19 @@ function expectedMcpServerName(root: string): string {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Mirrors bundles.ts's canonical stringify so tests can recompute a bundle
+// digest after mutating a payload (e.g. injecting a legacy field to test).
+function stableStringifyForTest(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringifyForTest(item)).join(",")}]`;
+  }
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, item]) => item !== undefined)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableStringifyForTest(item)}`).join(",")}}`;
 }

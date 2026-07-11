@@ -29,7 +29,7 @@ try {
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
-  for (const expected of ["bundle_export", "bundle_import", "bundle_import_plan", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_role", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
+  for (const expected of ["bundle_export", "bundle_import", "bundle_import_plan", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
   }
   for (const name of ["load_context", "resume"]) {
@@ -122,24 +122,6 @@ try {
     arguments: {}
   });
   assertMatch(activeTaskStatus.result?.content?.[0]?.text || "", /MCP smoke verification \[active\]/, "task_status reports the active task");
-
-  const scoutRoleRead = await client.request("tools/call", {
-    name: "task_role",
-    arguments: { role: "scout" }
-  });
-  assertMatch(scoutRoleRead.result?.content?.[0]?.text || "", /Task role Scout \[not set\]/, "task_role reads an unset lane");
-  assertMatch(scoutRoleRead.result?.content?.[0]?.text || "", /Mode: read-only/, "task_role read does not mutate the passport");
-
-  const scoutRoleUpdate = await client.request("tools/call", {
-    name: "task_role",
-    arguments: {
-      role: "scout",
-      status: "done",
-      summary: "Mapped the MCP smoke source and risks."
-    }
-  });
-  assertMatch(scoutRoleUpdate.result?.content?.[0]?.text || "", /Task role Scout \[done\]/, "task_role updates a lane");
-  assertMatch(scoutRoleUpdate.result?.content?.[0]?.text || "", /Update: applied/, "task_role reports an applied update");
 
   const taskList = await client.request("tools/call", {
     name: "task_list",
@@ -264,7 +246,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_role -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
+  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));

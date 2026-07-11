@@ -69,24 +69,6 @@ Target local layout:
     "docs/checkout.md"
   ],
   "risk": "low",
-  "roles": {
-    "scout": {
-      "status": "done",
-      "summary": "Inspected source add/status flow and tests."
-    },
-    "builder": {
-      "status": "done",
-      "summary": "Implemented remove/prune commands inside declared write scope."
-    },
-    "reviewer": {
-      "status": "done",
-      "summary": "Verified focused tests and checkout smoke coverage."
-    },
-    "archivist": {
-      "status": "done",
-      "summary": "Recorded source conclusions, evidence, and checkpoint."
-    }
-  },
   "verification": {
     "status": "passed",
     "evidence": [
@@ -126,7 +108,6 @@ Optional but recommended:
 - `constraints`
 - `currentHead`
 - `risk`
-- `roles`
 - `verification`
 - `tags`
 - `closedAt`
@@ -319,8 +300,7 @@ duplicate detection deterministic even when two exports have different
 timestamps.
 
 The portable task payload includes the title, objective, constraints, write
-scope, risk, tags, next actions, optional role lanes, original status, and
-original verification.
+scope, risk, tags, next actions, original status, and original verification.
 Absolute worktree paths and the source pack's `tasks/current` pointer are never
 portable fields. Origin branch, head, task id, and verification remain
 provenance; importing them does not claim that the destination workspace has
@@ -407,38 +387,6 @@ Required verification for the complete write-enabled implementation:
 - a clean-repo dogfood smoke exports from one workspace, inspects without a
   pack, imports into another workspace, and resumes the parked task explicitly
 
-## Role Lanes
-
-Roles are coordination lanes inside one passport, not separate tasks or runtime workers.
-
-- Scout: read-oriented; records source conclusions, risks, and known unknowns
-- Builder: write-oriented; works inside the declared write scope
-- Reviewer: read-oriented; checks diff, tests, risks, and regression surface
-- Archivist: state-oriented; records evidence, checkpoints, and handoff notes
-
-Each configured lane stores only a status (`pending`, `active`, `done`, or
-`blocked`) and a durable summary. Use the same safe surface from CLI or MCP:
-
-```bash
-agentpack task role reviewer
-agentpack task role reviewer --status done \
-  --summary "Reviewed the diff and focused regression coverage; no blockers."
-```
-
-The query form is read-only and returns focused guidance. Updates require both
-status and summary, are idempotent, and append one task event only when state
-changes. Configured lanes appear in task status, handoff, and resume in the
-fixed order Scout, Builder, Reviewer, Archivist. A blocked lane is an audit
-warning; it does not automatically block the whole task. Builder without a
-declared write scope is also an audit warning.
-
-Roles are metadata and just-in-time prompts, not a multi-agent runtime,
-scheduler, owner registry, authorization layer, or orchestration system. They
-never change task lifecycle or verification automatically. External
-orchestrators can map their own workers onto these lanes without Agentpack
-becoming the runtime. Structured bundles carry configured lanes; older
-passports and bundles with no `roles` field load as an empty role map.
-
 ## Consistency Rules
 
 Agentpack should warn before work continues when:
@@ -448,8 +396,6 @@ Agentpack should warn before work continues when:
 - the current worktree path does not match the passport worktree
 - a source conclusion in the current context is changed or missing
 - a new active passport would overlap another open passport's write scope
-- a non-pending Builder role has no declared write scope
-- a configured role lane is blocked
 - a task is marked completed without evidence or an explicit acceptance note
 
 Agentpack should not try to resolve code conflicts. It should point the user toward one of three safe paths:

@@ -36,9 +36,7 @@ import {
   formatCurrentTaskStatus,
   formatTaskAuditReport,
   formatTaskList,
-  formatTaskRoleResult,
   getCurrentPassport,
-  getCurrentTaskRole,
   listTasks,
   parkCurrentTask,
   readPassport,
@@ -47,7 +45,6 @@ import {
   switchTask,
   type TaskUpdateOptions,
   updateCurrentTaskPassport,
-  updateCurrentTaskRole,
   updateCurrentTaskVerification
 } from "../core/tasks.js";
 import type { TaskStatus } from "../core/types.js";
@@ -491,7 +488,6 @@ Common workflow:
   agentpack task start <title> [--objective <text>] [--write-scope <path>] [--next <item>] [--risk low|medium|high]
   agentpack task status
   agentpack task update [--objective <text>] [--write-scope <path>] [--next <item>] [--clear-next-actions] [--risk low|medium|high]
-  agentpack task role <scout|builder|reviewer|archivist> [--status pending|active|done|blocked --summary <text>] [--json]
   agentpack task verify [--status pending|passed|failed|accepted] [--evidence <id>] [--summary <text>]
   agentpack task handoff
   agentpack task finalize [--status passed|failed|accepted] [--evidence <id>] [--summary <text>] [--force]
@@ -510,8 +506,6 @@ Notes:
   Write scopes are repo-relative paths; . means the repository root.
   task status is the quick current-task view.
   task audit is the diagnostic continuity check.
-  task role without update flags is read-only and returns focused lane guidance.
-  role updates require both --status and a durable --summary; they do not start agents or change task lifecycle.
   task handoff is the compact summary for another chat, client, worktree, or agent.
   task finalize refuses unknown or pending verification by default.
   task finalize --status accepted refuses tasks with remaining next actions unless --force is passed.
@@ -792,28 +786,6 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  if (subcommand === "role") {
-    const parsed = parseArgs(args);
-    const role = parsed.positionals[0] || "";
-    if (!role) {
-      throw new Error("task role requires scout, builder, reviewer, or archivist");
-    }
-    const status = stringOption(parsed.options.status);
-    const summary = stringOption(parsed.options.summary);
-    if (Boolean(status) !== Boolean(summary)) {
-      throw new Error("task role updates require both --status and --summary");
-    }
-    const result = status && summary
-      ? updateCurrentTaskRole(root, role, status, redactForRoot(root, summary))
-      : getCurrentTaskRole(root, role);
-    if (parsed.options.json) {
-      process.stdout.write(`${redactForRoot(root, JSON.stringify(result, null, 2))}\n`);
-      return;
-    }
-    process.stdout.write(`${redactForRoot(root, formatTaskRoleResult(result))}\n`);
-    return;
-  }
-
   if (subcommand === "handoff") {
     process.stdout.write(`${redactForRoot(root, formatCurrentTaskHandoff(root, getSourceStatuses(root)))}\n`);
     return;
@@ -922,7 +894,7 @@ function taskCommand(root: string, rest: string[]): void {
     return;
   }
 
-  throw new Error("task command supports start, update, role, list, status, handoff, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
+  throw new Error("task command supports start, update, list, status, handoff, passport, switch, audit, park, block, verify, update-verification, finalize, and close");
 }
 
 function printBundleHelp(): void {

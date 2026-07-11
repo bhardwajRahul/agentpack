@@ -9,9 +9,7 @@ import { getPackPath, PACK_FILE_MODE, readEvents, readJson, readSources, SCHEMA_
 import {
   formatTaskPassportHandoff,
   getCurrentPassport,
-  readPassport,
-  TASK_ROLE_NAMES,
-  TASK_ROLE_STATUSES
+  readPassport
 } from "./tasks.js";
 import type {
   AgentpackConfig,
@@ -76,7 +74,6 @@ export function exportTaskBundle(root: string, options: BundleExportOptions): Bu
       risk: passport.risk,
       tags: passport.tags,
       nextActions: passport.nextActions,
-      roles: Object.keys(passport.roles || {}).length > 0 ? passport.roles : undefined,
       originalStatus: passport.status,
       originVerification: passport.verification
     },
@@ -350,7 +347,6 @@ export function importTaskBundle(root: string, filePath: string, options: Bundle
       worktree: realpathSync(root),
       writeScope: [...bundle.task.writeScope],
       risk: bundle.task.risk,
-      roles: { ...(bundle.task.roles || {}) },
       verification: {
         status: "unknown",
         evidence: [],
@@ -1156,7 +1152,6 @@ function assertBundleShape(value: unknown): TaskBundle {
     !taskRiskValue(value.task.risk) ||
     !stringArrayValue(value.task.tags) ||
     !stringArrayValue(value.task.nextActions) ||
-    (value.task.roles !== undefined && !taskRolesValue(value.task.roles)) ||
     !taskStatusValue(value.task.originalStatus) ||
     !isRecord(value.task.originVerification) ||
     !verificationStatusValue(value.task.originVerification.status) ||
@@ -1320,19 +1315,6 @@ function taskStatusValue(value: unknown): boolean {
     value === "verifying" ||
     value === "completed" ||
     value === "abandoned";
-}
-
-function taskRolesValue(value: unknown): boolean {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.entries(value).every(([role, state]) =>
-    (TASK_ROLE_NAMES as readonly string[]).includes(role) &&
-    isRecord(state) &&
-    (TASK_ROLE_STATUSES as readonly string[]).includes(String(state.status)) &&
-    typeof state.summary === "string" &&
-    state.summary.trim().length > 0
-  );
 }
 
 function bundleOriginValue(value: unknown): boolean {

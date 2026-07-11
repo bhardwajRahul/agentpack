@@ -41,7 +41,6 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `task_handoff`
 - `task_list`
 - `task_park`
-- `task_role`
 - `task_start`
 - `task_status`
 - `task_switch`
@@ -74,15 +73,6 @@ push, tag, publish, or create GitHub Releases.
 `task_status` prints the same quick current-task view as `agentpack task status`. It does not scan the source cache and should not be used as a substitute for `task_audit`.
 
 `load_context`, `resume`, and `task_status` append a `Gate Warnings` section when the current passport has gate findings (no active task; task parked, blocked, verifying, or closed; branch drift). This is the client-neutral warn layer of the task gate: any MCP client sees lifecycle warnings without needing hook support. Enforcement modes and the full check live in `agentpack task gate` (see docs/CLI.md).
-
-`task_role` reads or updates one optional role lane inside the current Task
-Passport. `role` is one of `scout`, `builder`, `reviewer`, or `archivist`.
-Without `status` and `summary`, the call is read-only and returns focused lane
-guidance. Updates require both a status (`pending`, `active`, `done`, or
-`blocked`) and a non-empty durable summary; identical retries are no-ops. Pass
-`json: true` for the structured result. Role state does not start agents,
-identify owners, grant write authority, schedule work, or change task lifecycle
-or verification.
 
 `task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
 
@@ -130,9 +120,8 @@ bundle id plus a structured inclusion summary; import planning also reports
 destination status, task/bundle reuse actions, conflicts, and warnings. Inspect
 and default import planning do not change pack state. A write import creates a
 parked task with local verification `unknown`, retains the bundle and import
-manifest, restores optional role-lane metadata, and never changes the
-current-task pointer. Bundles produced before role lanes remain valid and
-import with an empty role map.
+manifest, and never changes the current-task pointer. A legacy `roles` field
+on an imported task, if present, is ignored rather than migrated.
 
 The server validates bundle size, schema, digest, and relative paths before
 applying data. Bundle text remains untrusted data, not instructions for the

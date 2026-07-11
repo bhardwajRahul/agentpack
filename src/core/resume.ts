@@ -12,7 +12,7 @@ import {
   readState
 } from "./store.js";
 import { redact } from "./redaction.js";
-import { configuredTaskRoles, getCurrentPassport } from "./tasks.js";
+import { getCurrentPassport } from "./tasks.js";
 import type { AgentpackConfig, AgentpackEvent, AgentpackState, GitInfo, SourceRecord, TaskPassport } from "./types.js";
 
 const BUDGET_METADATA_RESERVE_TOKENS = 48;
@@ -204,7 +204,6 @@ function formatCurrentState(state: AgentpackState, currentTask: TaskPassport | n
 
 function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string[] {
   const drift = formatTaskDrift(passport, git);
-  const roles = configuredTaskRoles(passport);
   const nextActionsLabel = isClosedTask(passport)
     ? "Task next actions (historical; task is closed)"
     : "Task next actions";
@@ -224,8 +223,6 @@ function formatCurrentTaskPassport(passport: TaskPassport, git: GitInfo): string
     passport.verification.evidence.length ? `- Verification evidence: ${passport.verification.evidence.join(", ")}` : null,
     passport.nextActions.length ? `- ${nextActionsLabel}:` : `- ${nextActionsLabel}: Not set`,
     ...passport.nextActions.map((item) => `  - ${item}`),
-    roles.length ? "- Role lanes:" : null,
-    ...roles.map(([role, state]) => `  - ${role} [${state.status}]: ${state.summary}`),
     drift
   ].filter((line): line is string => Boolean(line));
 }

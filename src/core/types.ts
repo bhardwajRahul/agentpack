@@ -35,14 +35,7 @@ export interface SourcesFile {
 }
 
 export type TaskStatus = "active" | "parked" | "blocked" | "verifying" | "completed" | "abandoned";
-export type TaskRoleName = "scout" | "builder" | "reviewer" | "archivist";
-export type TaskRoleStatus = "pending" | "active" | "done" | "blocked";
 export type TaskRisk = "low" | "medium" | "high" | "unknown";
-
-export interface TaskRoleState {
-  status: TaskRoleStatus;
-  summary: string;
-}
 
 export interface TaskVerification {
   status: "unknown" | "pending" | "passed" | "failed" | "accepted";
@@ -66,7 +59,6 @@ export interface TaskPassport {
   worktree: string;
   writeScope: string[];
   risk: TaskRisk;
-  roles: Partial<Record<TaskRoleName, TaskRoleState>>;
   verification: TaskVerification;
   nextActions: string[];
   tags: string[];
@@ -115,7 +107,6 @@ export interface TaskBundleTask {
   risk: TaskRisk;
   tags: string[];
   nextActions: string[];
-  roles?: Partial<Record<TaskRoleName, TaskRoleState>>;
   originalStatus: TaskStatus;
   originVerification: TaskVerification;
 }
