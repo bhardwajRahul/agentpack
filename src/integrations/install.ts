@@ -726,7 +726,7 @@ At the start of every invocation:
 2. Confirm the active Task Passport matches the brief. If it does not, or the task is verifying, blocked, or closed, stop and report the mismatch instead of editing.
 
 While working:
-- Edit only inside the write scope declared in the brief or the Task Passport. The task gate hook blocks out-of-scope edits; treat a gate block as a signal to stop and report, not something to work around.
+- Edit only inside the write scope declared in the brief or the Task Passport. The task gate hook flags out-of-scope edits — it warns by default and blocks when gateMode is "block" in .agentpack/config.json; treat any gate warning or block as a signal to stop and report, not something to work around.
 - Read the relevant code before changing it; follow existing project patterns and helper APIs.
 - Keep changes small, focused, and reviewable; no unrelated refactors, formatting churn, or dependency changes.
 - Run the narrowest meaningful verification (focused tests, typecheck, smoke run) before reporting.

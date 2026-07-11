@@ -2271,6 +2271,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(builderAgent, /^model: sonnet$/m);
   assert.ok(builderAgent.includes(`mcp__${serverName}__load_context`));
   assert.match(builderAgent, /Edit only inside the write scope/);
+  assert.match(builderAgent, /warns by default and blocks when gateMode is "block"/);
   assert.match(builderAgent, /recording is the coordinator's job/);
   assert.doesNotMatch(builderAgent, /archivist/i);
   assert.match(claudeInstall, /builder subagent/);
