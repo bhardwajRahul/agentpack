@@ -2364,6 +2364,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(claudePreview, /agentpack install claude --write/);
   assert.equal(existsSync(path.join(dir, "CLAUDE.md")), false);
   assert.equal(existsSync(path.join(dir, ".mcp.json")), false);
+  assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), false);
 
   const claudeInstall = run(dir, ["install", "claude", "--write"]);
   assert.match(claudeInstall, /Installed Agentpack claude integration/);
@@ -2387,6 +2388,14 @@ test("previews and writes project-local MCP client install files", () => {
     args: ["mcp"]
   });
   assert.equal(claudeMcp.mcpServers.agentpack, undefined);
+  const builderAgent = readFileSync(path.join(dir, ".claude", "agents", "builder.md"), "utf8");
+  assert.match(builderAgent, /^name: builder$/m);
+  assert.match(builderAgent, /^model: sonnet$/m);
+  assert.ok(builderAgent.includes(`mcp__${serverName}__load_context`));
+  assert.match(builderAgent, /Edit only inside the write scope/);
+  assert.match(builderAgent, /recording is the coordinator's job/);
+  assert.doesNotMatch(builderAgent, /archivist/i);
+  assert.match(claudeInstall, /builder subagent/);
 
   const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
   assert.match(claudeDesktopPreview, /claude-desktop install plan/);

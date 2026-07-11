@@ -197,12 +197,14 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
         writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", INSTRUCTIONS),
         managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", INSTRUCTIONS),
         jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
+        writeFilePlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName)),
         claudeHooksMergePlan(root)
       ],
       notes: [
         "Only project-local files are modified.",
         `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json.",
+        "The builder subagent (.claude/agents/builder.md) implements scoped task slices on a cheaper model when invoked explicitly; delete the file to opt out.",
         "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json.",
         "The hook launches the gate through the current Node executable and Agentpack entrypoint, not the shell PATH; re-run this install after switching Node versions."
       ]
@@ -708,6 +710,35 @@ function claudeMcpServer(): Record<string, unknown> {
     command: "agentpack",
     args: ["mcp"]
   };
+}
+
+function claudeBuilderAgent(serverName: string): string {
+  return `---
+name: builder
+description: Implementation subagent for scoped coding slices in this repo. Invoke explicitly with a brief that names the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
+model: sonnet
+---
+
+You are the builder subagent for this repo. You implement one scoped slice of the active Task Passport and report back. The coordinator owns the task lifecycle and all Agentpack records.
+
+At the start of every invocation:
+1. Call mcp__${serverName}__load_context with preset "quick" and a query focused on the brief you were given.
+2. Confirm the active Task Passport matches the brief. If it does not, or the task is verifying, blocked, or closed, stop and report the mismatch instead of editing.
+
+While working:
+- Edit only inside the write scope declared in the brief or the Task Passport. The task gate hook blocks out-of-scope edits; treat a gate block as a signal to stop and report, not something to work around.
+- Read the relevant code before changing it; follow existing project patterns and helper APIs.
+- Keep changes small, focused, and reviewable; no unrelated refactors, formatting churn, or dependency changes.
+- Run the narrowest meaningful verification (focused tests, typecheck, smoke run) before reporting.
+
+Do not:
+- call Agentpack state-changing tools (checkpoint, record_source, record_decision, record_dead_end, attach_evidence, task_update, task_update_verification, task_start, task_park, task_switch, task_finalize) — recording is the coordinator's job, on coordinator-confirmed facts only
+- commit or push unless the brief explicitly says to
+- widen scope, add features, or fix things outside the brief
+
+If verification fails twice on the same slice, or you are stalled, stop and report what you tried and why it failed; the coordinator escalates to a stronger model instead of looping you.
+
+Your final message is the handoff. Report: what changed (files plus a summary), how it was verified (commands and results), any deviations from the brief, and durable conclusions worth recording, clearly labeled as candidate facts for the coordinator.`;
 }
 
 function claudeDesktopMcpServer(root: string): Record<string, unknown> {

@@ -111,11 +111,14 @@ This writes:
 - `CLAUDE.md`
 - `.mcp.json`
 - `.claude/settings.json`
+- `.claude/agents/builder.md`
 - `.agentpack/instructions/claude.md`
 
 The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP config as shareable project config and prompts before using project-scoped servers. Agentpack names the server after the repo, for example `agentpack-example-app`, so it does not shadow a global `agentpack` server.
 
 The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client claude`, launched through the current Node executable and Agentpack entrypoint rather than the shell `PATH`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved; re-running the installer does not duplicate the hook and upgrades older PATH-based hook entries in place. Because the launcher path pins the Node install, re-run `agentpack install claude --write` after switching Node versions.
+
+`.claude/agents/builder.md` defines an optional builder subagent: a Sonnet-tier implementer the coordinating session invokes explicitly with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. This keeps large implementation context out of the main session on a cheaper model. Delete the file to opt out.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
