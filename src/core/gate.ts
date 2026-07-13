@@ -102,10 +102,11 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
   const { files, outsideRoot } = collectGateFiles(root, options);
 
   // The gate protects repo code: when every checked path resolves outside the
-  // repository, lifecycle findings must not escalate and the outside-root
-  // advisory is the whole verdict. Invocations with no paths at all keep
-  // lifecycle checks; they back the MCP gate-warnings layer.
-  const outsideRootOnly = files.length === 0 && outsideRoot.length > 0;
+  // repository, or a --staged run stages nothing under this pack root (the
+  // commit does not touch this pack), lifecycle findings must not escalate.
+  // Invocations with no paths at all keep lifecycle checks; they back the MCP
+  // gate-warnings layer.
+  const packUntouched = files.length === 0 && (outsideRoot.length > 0 || options.staged === true);
 
   if (outsideRoot.length > 0) {
     findings.push({
@@ -119,7 +120,7 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
     taskId = passport.id;
     taskStatus = passport.status;
 
-    if (passport.status !== "active" && !outsideRootOnly) {
+    if (passport.status !== "active" && !packUntouched) {
       findings.push(violation("task-not-active", taskNotActiveMessage(passport.status)));
     }
 
@@ -151,7 +152,7 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
         });
       }
     }
-  } else if (!passportUnreadable && !outsideRootOnly) {
+  } else if (!passportUnreadable && !packUntouched) {
     findings.push(violation(
       "no-active-task",
       "No current task passport. Start one with `agentpack task start <title>` before editing code."

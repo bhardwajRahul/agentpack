@@ -227,6 +227,8 @@ If a foreign `pre-commit` hook already exists, the installer leaves it untouched
 
 Packs that live in a subdirectory of the repository are supported: the hook is installed at the repository's own hooks directory and changes into the pack directory before running the gate. A repository with several packs gets one shared hook that gates each pack — running the installer from another pack adds it to the list, and a pack whose directory disappears is skipped. The commit is blocked when any gated pack blocks.
 
+Gating is bounded by staged-file ownership: a `--staged` gate run only enforces task lifecycle for packs that own at least one staged file. A pack the commit does not touch — for example an unrelated pack whose current task is closed or parked — never blocks the commit. An unreadable `.agentpack/config.json` still fails closed for every listed pack.
+
 MCP remains the client-neutral warning layer: `load_context` and `task_status` responses append a `Gate Warnings` section whenever the current passport has lifecycle or drift findings, independently of native hook installation.
 
 ## Verify

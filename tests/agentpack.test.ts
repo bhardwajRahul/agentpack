@@ -2763,6 +2763,50 @@ test("task gate rejects unknown modes, fail-closes on unreadable passports, and 
   assert.match(unreadable.stderr, /Cannot read current task passport/);
 });
 
+test("task gate --staged skips lifecycle for packs the commit does not touch", () => {
+  const repo = mkdtempSync(path.join(os.tmpdir(), "agentpack-multipack-gate-test-"));
+  runGit(repo, ["init"]);
+  runGit(repo, ["config", "user.name", "Agentpack Test"]);
+  runGit(repo, ["config", "user.email", "test@example.com"]);
+
+  const packA = path.join(repo, "packA");
+  const packB = path.join(repo, "packB");
+  mkdirSync(packA);
+  mkdirSync(packB);
+
+  run(packA, ["init"]);
+  run(packA, ["task", "start", "Valid work", "--write-scope", "src"]);
+  run(packB, ["init"]);
+  run(packB, ["task", "start", "Old work"]);
+  run(packB, ["task", "finalize", "--status", "accepted", "--summary", "done"]);
+  for (const pack of [packA, packB]) {
+    const configPath = path.join(pack, ".agentpack", "config.json");
+    const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }, null, 2), "utf8");
+  }
+
+  mkdirSync(path.join(packA, "src"));
+  writeFileSync(path.join(packA, "src", "a.txt"), "ok\n", "utf8");
+  runGit(repo, ["add", "packA/src/a.txt"]);
+
+  assert.equal(runWithStatus(packA, ["task", "gate", "--staged"]).status, 0);
+
+  const untouched = runWithStatus(packB, ["task", "gate", "--staged"]);
+  assert.equal(untouched.status, 0, "a pack with no staged files must not block the commit on its task lifecycle");
+  assert.doesNotMatch(untouched.stdout + untouched.stderr, /Current task is closed/);
+
+  const noFiles = runWithStatus(packB, ["task", "gate", "--json"]);
+  assert.equal(noFiles.status, 2, "no-path invocations must keep lifecycle checks for the MCP gate-warnings layer");
+  const noFilesReport = JSON.parse(noFiles.stdout) as { findings: Array<{ code: string }> };
+  assert.ok(noFilesReport.findings.some((finding) => finding.code === "task-not-active"));
+
+  writeFileSync(path.join(packB, "b.txt"), "touch\n", "utf8");
+  runGit(repo, ["add", "packB/b.txt"]);
+  const touched = runWithStatus(packB, ["task", "gate", "--staged"]);
+  assert.equal(touched.status, 2, "staging files under the pack root must still enforce lifecycle in block mode");
+  assert.match(touched.stderr, /Current task is closed/);
+});
+
 test("installs the git-hooks gate and preserves foreign pre-commit hooks", { skip: process.platform === "win32" }, () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-githooks-test-"));
   runGit(dir, ["init"]);
