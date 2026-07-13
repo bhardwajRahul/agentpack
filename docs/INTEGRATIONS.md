@@ -120,6 +120,8 @@ The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client 
 
 `.claude/agents/builder.md` defines an optional builder subagent: a Sonnet-tier implementer the coordinating session invokes explicitly with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. This keeps large implementation context out of the main session on a cheaper model. Delete the file to opt out.
 
+`CLAUDE.md` and `.agentpack/instructions/claude.md` also carry a delegation default: as a rough heuristic, slices needing more than 10-20 tool calls or touching several files are a good fit for the builder subagent, while small focused edits stay inline with the coordinator. This guidance is Claude-only for now; other client integrations do not ship it.
+
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
 ## Claude Desktop

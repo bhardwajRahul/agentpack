@@ -2259,6 +2259,16 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /avoid branch names with AI or agent-style prefixes/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /load_context.*preset: "quick".*focused query/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Delegation default \(builder subagent\)/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /more than roughly 10-20 tool calls/);
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude.md"), "utf8"),
+    /Delegation default \(builder subagent\)/
+  );
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "claude.md"), "utf8"),
+    /more than roughly 10-20 tool calls/
+  );
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
   assert.deepEqual(claudeMcp.mcpServers[serverName], {
     type: "stdio",
@@ -2275,6 +2285,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(builderAgent, /recording is the coordinator's job/);
   assert.doesNotMatch(builderAgent, /archivist/i);
   assert.match(claudeInstall, /builder subagent/);
+  assert.match(builderAgent, /roughly 10-20 tool calls or multi-file changes/);
 
   const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
   assert.match(claudeDesktopPreview, /claude-desktop install plan/);
@@ -2382,6 +2393,8 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /prefer one aggregated verification evidence and one checkpoint/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /sequence state-changing Agentpack calls/);
   assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` before re-reading/);
+  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /builder subagent/);
+  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default/);
   const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
   assert.match(codexConfig, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.doesNotMatch(codexConfig, /\[mcp_servers\.agentpack\]/);

@@ -125,6 +125,17 @@ After meaningful progress, call \`checkpoint\` with:
 - next actions
 `;
 
+const CLAUDE_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
+- when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.claude/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
+- the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
+- small, focused edits stay inline in the coordinator session
+- this is a default heuristic, not a hard rule; it keeps large implementation context off the coordinator and runs the work on a cheaper model
+`;
+
+function claudeInstructions(): string {
+  return `${INSTRUCTIONS.trimEnd()}\n\n${CLAUDE_DELEGATION_GUIDANCE.trim()}\n`;
+}
+
 type InstallTarget = typeof INSTALL_TARGETS[number];
 
 interface InstallOptions {
@@ -194,8 +205,8 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", INSTRUCTIONS),
-        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", INSTRUCTIONS),
+        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions()),
+        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions()),
         jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
         writeFilePlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName)),
         claudeHooksMergePlan(root)
@@ -715,7 +726,7 @@ function claudeMcpServer(): Record<string, unknown> {
 function claudeBuilderAgent(serverName: string): string {
   return `---
 name: builder
-description: Implementation subagent for scoped coding slices in this repo. Invoke explicitly with a brief that names the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
+description: Implementation subagent for scoped coding slices in this repo. Use for implementation slices above roughly 10-20 tool calls or multi-file changes; small focused edits stay with the coordinator. Invoke explicitly with a brief that names the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
 model: sonnet
 ---
 
