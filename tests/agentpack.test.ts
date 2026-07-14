@@ -1912,6 +1912,7 @@ test("manages a current task passport", () => {
   const pendingAfterBlocked = JSON.parse(run(dir, ["task", "passport"]));
   assert.equal(pendingAfterBlocked.status, "active", "a non-final verdict returns the lifecycle to active, resolving the block");
   assert.equal(pendingAfterBlocked.verification.status, "pending");
+  assert.equal(pendingAfterBlocked.blockedReason, undefined, "a verify-driven unblock clears the stale blockedReason");
   assert.match(runExpectError(dir, ["task", "finalize"]), /task finalize requires verification status passed, failed, or accepted/);
 
   assert.match(run(dir, [
@@ -2612,6 +2613,43 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   assert.match(status.result.content[0].text, /Current task is parked/);
 });
 
+test("task gate --staged handles non-ASCII staged file names", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-gate-nonascii-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Non-ASCII gate task", "--write-scope", "docs"]);
+
+  const configPath = path.join(dir, ".agentpack", "config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }, null, 2), "utf8");
+
+  mkdirSync(path.join(dir, "docs"));
+  writeFileSync(path.join(dir, "docs", "файл.md"), "in scope\n", "utf8");
+  runGit(dir, ["add", "docs/файл.md"]);
+
+  const inScope = runWithStatus(dir, ["task", "gate", "--staged"]);
+  assert.equal(inScope.status, 0, "a non-ASCII staged path inside the write scope must not be falsely blocked");
+  assert.doesNotMatch(inScope.stdout + inScope.stderr, /Outside the task write scope/);
+
+  writeFileSync(path.join(dir, "other-файл.md"), "out of scope\n", "utf8");
+  runGit(dir, ["add", "other-файл.md"]);
+
+  const outOfScope = runWithStatus(dir, ["task", "gate", "--staged"]);
+  assert.equal(outOfScope.status, 2);
+  assert.match(
+    outOfScope.stdout + outOfScope.stderr,
+    /Outside the task write scope: .*other-файл\.md/,
+    "the reported path must be the readable, unquoted form"
+  );
+  assert.doesNotMatch(
+    outOfScope.stdout + outOfScope.stderr,
+    /\\\d{3}/,
+    "the path must not be C-quoted octal escapes"
+  );
+});
+
 test("pending verification returns lifecycle to active instead of getting stuck in verifying", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-verify-lifecycle-test-"));
   runGit(dir, ["init"]);
@@ -2645,6 +2683,27 @@ test("pending verification returns lifecycle to active instead of getting stuck 
   const eventCountBeforeNoop = taskEventCount(dir, pendingPassport.id);
   assert.match(run(dir, ["task", "verify"]), /Verification unchanged for task .* \(pending\)/, "repeating the same pending verdict is a no-op");
   assert.equal(taskEventCount(dir, pendingPassport.id), eventCountBeforeNoop);
+});
+
+test("task verify is rejected while the current task is parked", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-verify-parked-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Parked verify task", "--write-scope", "src"]);
+  const passportId = JSON.parse(run(dir, ["task", "passport"])).id;
+
+  run(dir, ["task", "park"]);
+  const parked = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(parked.status, "parked");
+
+  assert.match(
+    runExpectError(dir, ["task", "verify", "--status", "passed"]),
+    new RegExp(`Current task is parked; resume it first with \`agentpack task switch ${passportId}\` before updating verification\\.`)
+  );
+  const stillParked = JSON.parse(run(dir, ["task", "passport"]));
+  assert.equal(stillParked.status, "parked", "a rejected verify must not re-activate the parked task");
 });
 
 test("task finalize prints hygiene advisories and stays silent when clean", () => {
@@ -2785,6 +2844,10 @@ test("task gate --staged skips lifecycle for packs the commit does not touch", (
     writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }, null, 2), "utf8");
   }
 
+  // Switch branches after both tasks recorded their start branch, so an
+  // untouched pack also has a genuine branch-drift condition to suppress.
+  runGit(repo, ["checkout", "-b", "other-branch"]);
+
   mkdirSync(path.join(packA, "src"));
   writeFileSync(path.join(packA, "src", "a.txt"), "ok\n", "utf8");
   runGit(repo, ["add", "packA/src/a.txt"]);
@@ -2795,10 +2858,27 @@ test("task gate --staged skips lifecycle for packs the commit does not touch", (
   assert.equal(untouched.status, 0, "a pack with no staged files must not block the commit on its task lifecycle");
   assert.doesNotMatch(untouched.stdout + untouched.stderr, /Current task is closed/);
 
+  const untouchedReport = JSON.parse(runWithStatus(packB, ["task", "gate", "--staged", "--json"]).stdout) as {
+    findings: Array<{ code: string }>;
+  };
+  assert.deepEqual(
+    untouchedReport.findings,
+    [],
+    "an untouched pack (no write scope, real branch drift) must report no findings at all, not even the no-write-scope or branch-drift advisories"
+  );
+
   const noFiles = runWithStatus(packB, ["task", "gate", "--json"]);
   assert.equal(noFiles.status, 2, "no-path invocations must keep lifecycle checks for the MCP gate-warnings layer");
   const noFilesReport = JSON.parse(noFiles.stdout) as { findings: Array<{ code: string }> };
   assert.ok(noFilesReport.findings.some((finding) => finding.code === "task-not-active"));
+  assert.ok(
+    noFilesReport.findings.some((finding) => finding.code === "no-write-scope"),
+    "no-path invocations must keep the no-write-scope advisory too"
+  );
+  assert.ok(
+    noFilesReport.findings.some((finding) => finding.code === "branch-drift"),
+    "no-path invocations must keep the branch-drift advisory too"
+  );
 
   writeFileSync(path.join(packB, "b.txt"), "touch\n", "utf8");
   runGit(repo, ["add", "packB/b.txt"]);
@@ -3249,12 +3329,78 @@ test("formats native gate commands for POSIX and Windows shells", () => {
   );
 });
 
+test("task list survives a corrupt background passport and reports a warning", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-tasklist-corrupt-test-"));
+  runGit(dir, ["init"]);
+  runGit(dir, ["config", "user.name", "Agentpack Test"]);
+  runGit(dir, ["config", "user.email", "test@example.com"]);
+  run(dir, ["init"]);
+
+  run(dir, ["task", "start", "Good background task"]);
+  const goodId = JSON.parse(run(dir, ["task", "passport"])).id;
+  run(dir, ["task", "park"]);
+
+  run(dir, ["task", "start", "Current task"]);
+  const currentId = JSON.parse(run(dir, ["task", "passport"])).id;
+
+  const corruptPassportPath = path.join(dir, ".agentpack", "tasks", goodId, "passport.json");
+  writeFileSync(corruptPassportPath, "{ invalid json", "utf8");
+
+  const listing = runWithStatus(dir, ["task", "list"]);
+  assert.equal(listing.status, 0, "a corrupt background passport must not crash task list");
+  assert.match(listing.stdout, new RegExp(`\\[warn\\] Unreadable task passport ${goodId}:`));
+  assert.match(listing.stdout, new RegExp(`\\* ${currentId} \\[active\\] Current task`));
+  assert.doesNotMatch(listing.stdout, /Good background task/);
+
+  const mcp = createMcpHarness(dir);
+  const mcpListing = await mcp.send({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: { name: "task_list", arguments: {} }
+  });
+  const mcpText = mcpListing.result.content[0].text;
+  assert.match(mcpText, new RegExp(`\\[warn\\] Unreadable task passport ${goodId}:`));
+  assert.match(mcpText, new RegExp(`\\* ${currentId} \\[active\\] Current task`));
+
+  const mcpListingJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 2,
+    method: "tools/call",
+    params: { name: "task_list", arguments: { json: true } }
+  });
+  const parsed: { tasks: Array<{ id: string }>; warnings: string[] } = JSON.parse(mcpListingJson.result.content[0].text);
+  assert.equal(parsed.tasks.length, 1);
+  assert.equal(parsed.tasks[0]?.id, currentId);
+  assert.equal(parsed.warnings.length, 1);
+  assert.match(parsed.warnings[0] || "", new RegExp(`Unreadable task passport ${goodId}:`));
+
+  writeFileSync(path.join(dir, ".agentpack", "tasks", currentId, "passport.json"), "{ invalid json", "utf8");
+  const mcpAllCorruptJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { name: "task_list", arguments: { json: true } }
+  });
+  const allCorrupt: { tasks: unknown[]; warnings: string[] } = JSON.parse(mcpAllCorruptJson.result.content[0].text);
+  assert.deepEqual(allCorrupt.tasks, []);
+  assert.equal(allCorrupt.warnings.length, 2);
+});
+
 test("parks current task over MCP so a new task can start", async () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-park-test-"));
   writeFileSync(path.join(dir, "index.js"), "console.log('park')\n", "utf8");
   run(dir, ["init"]);
 
   const mcp = createMcpHarness(dir);
+
+  const emptyListJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 90,
+    method: "tools/call",
+    params: { name: "task_list", arguments: { json: true } }
+  });
+  assert.deepEqual(JSON.parse(emptyListJson.result.content[0].text), { tasks: [], warnings: [] });
 
   const taskStart = await mcp.send({
     jsonrpc: "2.0",
@@ -3400,9 +3546,10 @@ test("parks current task over MCP so a new task can start", async () => {
       arguments: { json: true }
     }
   });
-  const parsedList: Array<{ id: string; title: string; status: string; current: boolean }> = JSON.parse(mcpListJson.result.content[0].text);
-  const parkedEntry = parsedList.find((task) => task.title === "Parkable MCP task");
-  const replacementEntry = parsedList.find((task) => task.title === "Replacement MCP task");
+  const parsedList: { tasks: Array<{ id: string; title: string; status: string; current: boolean }>; warnings: string[] } = JSON.parse(mcpListJson.result.content[0].text);
+  assert.deepEqual(parsedList.warnings, []);
+  const parkedEntry = parsedList.tasks.find((task) => task.title === "Parkable MCP task");
+  const replacementEntry = parsedList.tasks.find((task) => task.title === "Replacement MCP task");
   assert.ok(parkedEntry);
   assert.ok(replacementEntry);
   assert.equal(parkedEntry.status, "parked");

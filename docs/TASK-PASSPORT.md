@@ -149,6 +149,8 @@ blocked -> abandoned        blocked task is discarded
 
 Closed statuses are `completed` and `abandoned`. Closed passports remain inspectable history but should not appear in the default resume unless they are query-relevant.
 
+`task verify` (`task_update_verification`) is rejected while the current task is `parked`, since `parked -> active`/`parked -> verifying` only happen via `task switch`/resume, as shown above.
+
 ## CLI Shape
 
 Current CLI surface:

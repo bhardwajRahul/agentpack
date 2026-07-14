@@ -141,10 +141,25 @@ export function startTask(root: string, options: TaskStartOptions): TaskPassport
   });
 }
 
-export function listTasks(root: string): TaskListItem[] {
+export interface TaskListResult {
+  tasks: TaskListItem[];
+  warnings: string[];
+}
+
+export function listTasks(root: string): TaskListResult {
   const current = readCurrentTaskId(root);
-  return listTaskIds(root)
-    .map((id) => readPassport(root, id))
+  const warnings: string[] = [];
+  const passports: TaskPassport[] = [];
+
+  for (const id of listTaskIds(root)) {
+    try {
+      passports.push(readPassport(root, id));
+    } catch (error) {
+      warnings.push(`Unreadable task passport ${id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  const tasks = passports
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .map((passport) => ({
       id: passport.id,
@@ -155,6 +170,8 @@ export function listTasks(root: string): TaskListItem[] {
       updatedAt: passport.updatedAt,
       writeScope: passport.writeScope
     }));
+
+  return { tasks, warnings };
 }
 
 export function formatTaskList(tasks: TaskListItem[]): string {
@@ -318,6 +335,11 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
     if (CLOSED_STATUSES.has(existing.status)) {
       throw new Error(`Cannot update closed task ${current}`);
     }
+    if (existing.status === "parked") {
+      throw new Error(
+        `Current task is parked; resume it first with \`agentpack task switch ${current}\` before updating verification.`
+      );
+    }
 
     const verification: TaskVerification = {
       status: parseVerificationStatus(options.status),
@@ -350,6 +372,11 @@ export function updateCurrentTaskVerification(root: string, options: TaskVerific
       currentHead: git.head,
       updatedAt: now
     };
+    // A verify-driven unblock (blocked -> active/verifying) resolves the block,
+    // so the stale reason must not linger in the passport or leak into events.
+    if (existing.status === "blocked") {
+      delete passport.blockedReason;
+    }
 
     writePassport(root, passport);
     appendTaskEvent(root, passport.id, "task-verify", {

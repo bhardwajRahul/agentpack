@@ -756,9 +756,10 @@ function taskCommand(root: string, rest: string[]): void {
       throw new Error("task list --scope requires a path");
     }
     const statusFilters = taskListStatusFilters(parsed.options);
-    const all = listTasks(root);
+    const { tasks: all, warnings } = listTasks(root);
+    const warningOutput = warnings.map((warning) => `[warn] ${warning}\n`).join("");
     if (all.length === 0) {
-      process.stdout.write("No task passports yet. Run `agentpack task start <title>`.\n");
+      process.stdout.write(`${warningOutput}No task passports yet. Run \`agentpack task start <title>\`.\n`);
       return;
     }
 
@@ -773,11 +774,11 @@ function taskCommand(root: string, rest: string[]): void {
         scopeFilters.length > 0 ? `scope ${scopeFilters.join(", ")}` : "",
         statusFilters.length > 0 ? `status ${statusFilters.join(", ")}` : ""
       ].filter(Boolean).join(" and ");
-      process.stdout.write(redactForRoot(root, `No task passports match ${applied}.\n`));
+      process.stdout.write(redactForRoot(root, `${warningOutput}No task passports match ${applied}.\n`));
       return;
     }
 
-    process.stdout.write(`${redactForRoot(root, formatTaskList(tasks))}\n`);
+    process.stdout.write(redactForRoot(root, `${warningOutput}${formatTaskList(tasks)}\n`));
     return;
   }
 

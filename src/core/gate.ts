@@ -103,9 +103,11 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
 
   // The gate protects repo code: when every checked path resolves outside the
   // repository, or a --staged run stages nothing under this pack root (the
-  // commit does not touch this pack), lifecycle findings must not escalate.
-  // Invocations with no paths at all keep lifecycle checks; they back the MCP
-  // gate-warnings layer.
+  // commit does not touch this pack), lifecycle findings must not escalate,
+  // and the no-write-scope/branch-drift advisories must not fire either, or
+  // every unrelated commit in a multi-pack repo would get spammed with them.
+  // Invocations with no paths at all keep lifecycle checks and advisories;
+  // they back the MCP gate-warnings layer.
   const packUntouched = files.length === 0 && (outsideRoot.length > 0 || options.staged === true);
 
   if (outsideRoot.length > 0) {
@@ -132,7 +134,7 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
           `Outside the task write scope: ${outOfScope.join(", ")}. Extend the scope with \`agentpack task update --write-scope <path>\`, switch tasks, or start the right task.`
         ));
       }
-    } else if (passport.writeScope.length === 0 && mode === "block") {
+    } else if (passport.writeScope.length === 0 && mode === "block" && !packUntouched) {
       findings.push({
         code: "no-write-scope",
         level: "warn",
@@ -140,7 +142,7 @@ export function evaluateGate(root: string, options: GateOptions = {}): GateRepor
       });
     }
 
-    if (passport.branch) {
+    if (passport.branch && !packUntouched) {
       const git = getGitBranchState(root);
       if (git.available && git.branch && git.branch !== passport.branch) {
         // Branch drift stays advisory even in block mode; head drift is left to `task audit` because

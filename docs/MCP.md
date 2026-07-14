@@ -76,7 +76,7 @@ push, tag, publish, or create GitHub Releases.
 
 `task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
 
-`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for structured output. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
+`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for structured output: a single JSON object `{ "tasks": [...], "warnings": [...] }`, where `warnings` names any unreadable passport files that were skipped instead of failing the listing. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
 
 `task_switch` makes another open task current by `id`. A parked task with
 `unknown` or `pending` verification resumes as `active`; a parked task with a
@@ -89,7 +89,7 @@ unswitchable.
 
 `task_update` patches the current Task Passport without changing lifecycle status. It accepts `objective`, `constraints`, `writeScope`, `nextActions`, `tags`, and `risk`; list fields append and deduplicate, and omitted fields are preserved. `clearNextActions: true` replaces the next actions with the provided `nextActions` (or clears them) instead of appending, so a stale plan can be corrected before finalize. Empty or no-op updates fail, and unknown risk values are rejected.
 
-`task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed. A final verdict (`passed`, `failed`, or `accepted`) moves the task lifecycle to `verifying`; `pending` or `unknown` returns it to `active` (see docs/TASK-PASSPORT.md).
+`task_update_verification` updates the current Task Passport verification state. It accepts `status` (`unknown`, `pending`, `passed`, `failed`, or `accepted`), `evidence` IDs, and a short `summary`. Use it after `attach_evidence` to make verification evidence-backed. A final verdict (`passed`, `failed`, or `accepted`) moves the task lifecycle to `verifying`; `pending` or `unknown` returns it to `active`, and resolves a `blocked` task by clearing its `blockedReason` (see docs/TASK-PASSPORT.md). It is rejected while the current task is `parked`; resume it with `task_switch` first.
 
 Repeated identical `task_update_verification` calls are no-ops, so transport retries or accidental duplicate calls do not add duplicate task events.
 

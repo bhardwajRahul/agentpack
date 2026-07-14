@@ -836,14 +836,18 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "task_list") {
-    const tasks = listTasks(root);
-    if (tasks.length === 0) {
-      return toolText("No task passports yet. Call `task_start` first.");
-    }
+    const { tasks, warnings } = listTasks(root);
     if (booleanValue(args.json, false)) {
-      return toolText(redactForRoot(root, JSON.stringify(tasks, null, 2)));
+      // The json contract promises parseable output for every case, including
+      // an empty pack and all-passports-unreadable: warnings ride inside the
+      // JSON value instead of being prefixed as prose.
+      return toolText(redactForRoot(root, JSON.stringify({ tasks, warnings }, null, 2)));
     }
-    return toolText(redactForRoot(root, formatTaskList(tasks)));
+    const warningOutput = warnings.map((warning) => `[warn] ${warning}\n`).join("");
+    if (tasks.length === 0) {
+      return toolText(`${warningOutput}No task passports yet. Call \`task_start\` first.`);
+    }
+    return toolText(redactForRoot(root, `${warningOutput}${formatTaskList(tasks)}`));
   }
 
   if (name === "task_switch") {

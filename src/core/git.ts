@@ -83,8 +83,10 @@ export function listStagedFiles(root: string): string[] {
   if (!topLevel) {
     return [];
   }
-  return runGit(root, ["diff", "--cached", "--name-only"])
-    .split("\n")
+  // -z disables core.quotePath C-quoting of non-ASCII paths, matching the
+  // NUL-delimited parsing used by listDirtyFiles below.
+  return runGit(root, ["diff", "--cached", "--name-only", "-z"])
+    .split("\0")
     .filter(Boolean)
     .map((gitPath) => path.relative(root, path.resolve(topLevel, gitPath)))
     .filter((relativePath) => relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath));
