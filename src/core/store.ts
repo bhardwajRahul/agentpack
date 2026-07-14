@@ -4,6 +4,9 @@ import { createId } from "./ids.js";
 import type { AgentpackEvent, AgentpackState, SourcesFile } from "./types.js";
 
 export const PACK_DIR = ".agentpack";
+// Bumping this without shipping a passport/state migration in the same release
+// bricks every existing pack: validateTaskPassport hard-fails on any schemaVersion
+// mismatch, and the gate then fails closed on the unreadable passport.
 export const SCHEMA_VERSION = 1;
 // Ledger content can carry command output and code snippets; keep it owner-only on multi-user machines.
 export const PACK_FILE_MODE = 0o600;

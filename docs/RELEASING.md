@@ -123,6 +123,10 @@ Before `npm version`:
 - Do not cut a release while basic install, doctor, MCP startup, or resume flows
   are suspect. Prefer fixing and shipping one follow-up patch over rushing
   multiple releases that churn the same core workflow.
+- Never bump `SCHEMA_VERSION` in `src/core/store.ts` without shipping a
+  passport/state migration in the same release: `validateTaskPassport` hard-fails
+  on any schemaVersion mismatch, and the gate then fails closed for every
+  existing pack on the old schema.
 
 ## Rollback
 

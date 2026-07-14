@@ -561,6 +561,9 @@ function preCommitGateScript(roots: string[]): string {
     "}",
     "if command -v agentpack >/dev/null 2>&1; then",
     ...gateLines,
+    "else",
+    "  # Deliberate fail-open for machines without agentpack; say so at the actual commit moment.",
+    "  echo \"agentpack not on PATH; Agentpack task gate skipped\"",
     "fi",
     "exit $overall",
     ""

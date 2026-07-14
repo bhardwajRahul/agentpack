@@ -220,7 +220,7 @@ This installs a `pre-commit` hook that runs `agentpack task gate --staged` again
 
 - In the default `warn` mode, findings are printed and the commit proceeds.
 - With `"gateMode": "block"` in `.agentpack/config.json`, lifecycle and write-scope violations fail the commit (exit code 2); branch drift stays advisory.
-- The hook is skipped silently when `agentpack` is not on `PATH`, and `task gate` exits 0 quietly in repos without `.agentpack/`, so the hook never breaks unrelated workflows.
+- The hook is skipped when `agentpack` is not on `PATH` — the commit proceeds and the hook prints `agentpack not on PATH; Agentpack task gate skipped`, so a silently vanished gate is visible at the actual commit moment. `task gate` itself exits 0 quietly in repos without `.agentpack/`, so the hook never breaks unrelated workflows.
 - The hook fails the commit only on gate exit code 2 (block mode). Any other gate error — for example an outdated `agentpack` binary — prints a notice and lets the commit through.
 
 If a foreign `pre-commit` hook already exists, the installer leaves it untouched and writes `.agentpack/instructions/pre-commit-gate.example.sh` for a manual merge instead. If `core.hooksPath` points outside the repository (for example a shared global hooks directory), the installer refuses to write there and only generates the snippet.

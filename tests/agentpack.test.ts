@@ -2906,6 +2906,17 @@ test("installs the git-hooks gate and preserves foreign pre-commit hooks", { ski
   assert.match(hook, /agentpack task gate --staged/);
   assert.match(hook, /-eq 2/, "hook must fail the commit only on gate exit code 2");
   assert.match(hook, /commit allowed \(gate skipped\)/, "hook must degrade gracefully on gate errors");
+  assert.match(hook, /agentpack not on PATH; Agentpack task gate skipped/, "hook must say so when agentpack is missing from PATH");
+  // The skip branch only uses shell builtins, so an empty PATH directory makes
+  // this hermetic: agentpack can never resolve, wherever the host installed it.
+  const emptyPathDir = path.join(dir, "empty-path");
+  mkdirSync(emptyPathDir);
+  const strippedPathRun = execFileSync("/bin/sh", [preCommitPath], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, PATH: emptyPathDir }
+  });
+  assert.match(strippedPathRun, /agentpack not on PATH; Agentpack task gate skipped/, "hook must print the skip notice and allow the commit without agentpack on PATH");
   assert.ok(statSync(preCommitPath).mode & 0o100, "pre-commit hook must be executable");
   assert.match(readFileSync(path.join(dir, ".agentpack", "instructions", "pre-commit-gate.example.sh"), "utf8"), /task gate --staged/);
 
