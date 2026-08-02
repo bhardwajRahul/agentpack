@@ -6,6 +6,16 @@ The MCP stdio transport uses newline-delimited JSON-RPC messages over stdin/stdo
 
 Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/docs/concepts/transports).
 
+## Protocol Compatibility
+
+The stdio server accepts both MCP protocol eras on the same process:
+
+- Legacy clients use the `initialize` handshake and receive the existing `2025-06-18` response shape.
+- MCP `2026-07-28` clients call `server/discover` or send a request directly with the required protocol version and client capabilities in `params._meta`. Modern responses include `resultType: "complete"` and identify Agentpack through `io.modelcontextprotocol/serverInfo` result metadata.
+- Unsupported modern protocol versions receive the structured `-32022` error with the requested and supported versions. Missing required modern metadata is rejected as invalid params.
+
+This is protocol-level statelessness, not application-level amnesia: every tool call remains self-contained at the MCP layer, while durable task state stays in the repo's `.agentpack/` files. Agentpack does not map Task Passports to the MCP Tasks extension. MCP Apps, Tasks, remote HTTP, OAuth/OIDC, tunnels, and hosted sync remain separate product decisions rather than requirements for the local stdio server.
+
 ## Default Client Loop
 
 Generated Codex, Claude Code, and Cursor instructions tell connected agents to use the MCP tools as a small hybrid continuity loop:

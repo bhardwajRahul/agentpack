@@ -47,6 +47,20 @@ interface JsonRpcRequest {
 interface JsonRpcError {
   code: number;
   message: string;
+  data?: unknown;
+}
+
+const LEGACY_PROTOCOL_VERSION = "2025-06-18";
+const MODERN_PROTOCOL_VERSION = "2026-07-28";
+const PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion";
+const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
+const CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities";
+const SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo";
+
+class McpProtocolError extends Error {
+  constructor(readonly code: number, message: string, readonly data?: unknown) {
+    super(message);
+  }
 }
 
 interface ToolDefinition {
@@ -606,26 +620,34 @@ function handleMessage(root: string, line: string, output: Writable): void {
   }
 
   try {
-    const result = route(root, request.method, request.params || {});
-    send(output, request.id, result);
+    const params = request.params || {};
+    const modern = validateModernRequest(params);
+    const result = route(root, request.method, params, modern);
+    send(output, request.id, modern ? modernResult(result) : result);
   } catch (error) {
-    send(output, request.id, null, { code: -32000, message: errorMessage(error) });
+    send(output, request.id, null, error instanceof McpProtocolError
+      ? { code: error.code, message: error.message, data: error.data }
+      : { code: -32000, message: errorMessage(error) });
   }
 }
 
-function route(root: string, method: string | undefined, params: Record<string, unknown>): unknown {
-  if (method === "initialize") {
+function route(root: string, method: string | undefined, params: Record<string, unknown>, modern: boolean): unknown {
+  if (method === "server/discover" && modern) {
     return {
-      protocolVersion: "2025-06-18",
-      capabilities: {
-        tools: {},
-        resources: {},
-        prompts: {}
-      },
-      serverInfo: {
-        name: "agentpack",
-        version: readPackageVersion()
-      }
+      supportedVersions: [MODERN_PROTOCOL_VERSION],
+      capabilities: serverCapabilities(),
+      instructions: "Agentpack provides repo-local task continuity, evidence, source conclusions, and release/readiness tools for coding agents."
+    };
+  }
+
+  if (method === "initialize") {
+    if (modern) {
+      throw new McpProtocolError(-32601, "Method not found: initialize");
+    }
+    return {
+      protocolVersion: LEGACY_PROTOCOL_VERSION,
+      capabilities: serverCapabilities(),
+      serverInfo: serverInfo()
     };
   }
 
@@ -692,7 +714,69 @@ function route(root: string, method: string | undefined, params: Record<string, 
     };
   }
 
+  if (modern) {
+    throw new McpProtocolError(-32601, `Method not found: ${method}`);
+  }
   throw new Error(`Unsupported MCP method: ${method}`);
+}
+
+function validateModernRequest(params: Record<string, unknown>): boolean {
+  const meta = objectValue(params._meta);
+  const requested = meta[PROTOCOL_VERSION_META_KEY];
+  if (requested === undefined) {
+    return false;
+  }
+  if (typeof requested !== "string") {
+    throw new McpProtocolError(-32602, `Invalid ${PROTOCOL_VERSION_META_KEY} metadata`);
+  }
+  if (requested !== MODERN_PROTOCOL_VERSION) {
+    throw new McpProtocolError(-32022, `Unsupported MCP protocol version: ${requested}`, {
+      supported: [MODERN_PROTOCOL_VERSION],
+      requested
+    });
+  }
+  if (!isObject(meta[CLIENT_CAPABILITIES_META_KEY])) {
+    throw new McpProtocolError(-32602, `Missing or invalid ${CLIENT_CAPABILITIES_META_KEY} metadata`);
+  }
+  if (meta[CLIENT_INFO_META_KEY] !== undefined && !isImplementation(meta[CLIENT_INFO_META_KEY])) {
+    throw new McpProtocolError(-32602, `Invalid ${CLIENT_INFO_META_KEY} metadata`);
+  }
+  return true;
+}
+
+function modernResult(result: unknown): Record<string, unknown> {
+  const value = objectValue(result);
+  return {
+    ...value,
+    resultType: "complete",
+    _meta: {
+      ...objectValue(value._meta),
+      [SERVER_INFO_META_KEY]: serverInfo()
+    }
+  };
+}
+
+function serverCapabilities(): Record<string, unknown> {
+  return {
+    tools: {},
+    resources: {},
+    prompts: {}
+  };
+}
+
+function serverInfo(): Record<string, string> {
+  return {
+    name: "agentpack",
+    version: readPackageVersion()
+  };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isImplementation(value: unknown): boolean {
+  return isObject(value) && typeof value.name === "string" && typeof value.version === "string";
 }
 
 function callTool(root: string, name: string, args: Record<string, unknown>): unknown {

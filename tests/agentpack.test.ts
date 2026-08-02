@@ -3711,6 +3711,7 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   assert.equal(initialize.result.serverInfo.name, "agentpack");
   const pkg = JSON.parse(readFileSync(path.join(repoRoot, "..", "package.json"), "utf8")) as { version: string };
   assert.equal(initialize.result.serverInfo.version, pkg.version);
+  assert.equal(initialize.result.resultType, undefined, "legacy initialize responses must stay unchanged");
 
   const beforeNotification = mcp.messages.length;
   mcp.input.write(`${JSON.stringify({
@@ -3728,6 +3729,71 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     params: {}
   });
   assert.ok(tools.result.tools.some((tool: { name: string }) => tool.name === "record_decision"));
+  assert.equal(tools.result.resultType, undefined, "legacy tool responses must not gain modern envelope fields");
+
+  const modernMeta = {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": { name: "agentpack-test", version: "1.0.0" },
+    "io.modelcontextprotocol/clientCapabilities": {}
+  };
+  const discover = await mcp.send({
+    jsonrpc: "2.0",
+    id: 200,
+    method: "server/discover",
+    params: { _meta: modernMeta }
+  });
+  assert.deepEqual(discover.result.supportedVersions, ["2026-07-28"]);
+  assert.equal(discover.result.resultType, "complete");
+  assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].name, "agentpack");
+  assert.equal(discover.result.serverInfo, undefined, "modern server identity belongs in result metadata");
+
+  const modernTools = await mcp.send({
+    jsonrpc: "2.0",
+    id: 201,
+    method: "tools/list",
+    params: { _meta: modernMeta }
+  });
+  assert.equal(modernTools.result.resultType, "complete");
+  assert.ok(modernTools.result.tools.some((tool: { name: string }) => tool.name === "load_context"));
+
+  const modernCall = await mcp.send({
+    jsonrpc: "2.0",
+    id: 202,
+    method: "tools/call",
+    params: { _meta: modernMeta, name: "task_status", arguments: {} }
+  });
+  assert.equal(modernCall.result.resultType, "complete");
+  assert.match(modernCall.result.content[0].text, /No current task passport/);
+
+  const unsupportedVersion = await mcp.send({
+    jsonrpc: "2.0",
+    id: 203,
+    method: "tools/list",
+    params: {
+      _meta: {
+        ...modernMeta,
+        "io.modelcontextprotocol/protocolVersion": "2027-01-01"
+      }
+    }
+  });
+  assert.equal(unsupportedVersion.error.code, -32022);
+  assert.deepEqual(unsupportedVersion.error.data, {
+    supported: ["2026-07-28"],
+    requested: "2027-01-01"
+  });
+
+  const missingCapabilities = await mcp.send({
+    jsonrpc: "2.0",
+    id: 204,
+    method: "tools/list",
+    params: {
+      _meta: {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28"
+      }
+    }
+  });
+  assert.equal(missingCapabilities.error.code, -32602);
+  assert.match(missingCapabilities.error.message, /clientCapabilities/);
 
   const decision = await mcp.send({
     jsonrpc: "2.0",

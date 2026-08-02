@@ -24,8 +24,23 @@ try {
 
   const client = createJsonRpcClient(server);
 
+  const modernMeta = {
+    "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+    "io.modelcontextprotocol/clientInfo": { name: "agentpack-smoke", version: "1.0.0" },
+    "io.modelcontextprotocol/clientCapabilities": {}
+  };
+  const discover = await client.request("server/discover", { _meta: modernMeta });
+  assertIncludes(discover.result?.supportedVersions || [], "2026-07-28", "server/discover advertises MCP 2026-07-28");
+  assertEqual(discover.result?.resultType, "complete", "server/discover returns a modern complete result");
+  assertEqual(discover.result?._meta?.["io.modelcontextprotocol/serverInfo"]?.name, "agentpack", "modern responses identify the Agentpack server");
+
+  const modernToolsResponse = await client.request("tools/list", { _meta: modernMeta });
+  assertEqual(modernToolsResponse.result?.resultType, "complete", "modern tools/list returns a complete result");
+  assertIncludes(modernToolsResponse.result?.tools?.map((tool) => tool.name) || [], "load_context", "modern tools/list exposes Agentpack tools");
+
   const initialize = await client.request("initialize", {});
   assertEqual(initialize.result?.serverInfo?.name, "agentpack", "initialize returned the Agentpack server name");
+  assertEqual(initialize.result?.resultType, undefined, "legacy initialize response stays unchanged");
 
   const toolsResponse = await client.request("tools/list", {});
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
@@ -246,7 +261,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
+  console.log("Flow: modern server/discover -> modern tools/list -> legacy initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));
