@@ -2477,6 +2477,8 @@ test("previews and writes project-local MCP client install files", () => {
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
   assert.match(codexInstall, /project-local \.codex\/config\.toml/);
+  assert.match(codexInstall, /gpt-5\.6-terra at medium reasoning/);
+  assert.match(codexInstall, /sees only Agentpack load_context/);
   assert.match(codexInstall, /Remove any old ~\/\.codex\/config\.toml agentpack server/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /preserve existing functionality/);
@@ -2503,8 +2505,13 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /prefer one aggregated verification evidence and one checkpoint/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /sequence state-changing Agentpack calls/);
   assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` before re-reading/);
-  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /builder subagent/);
-  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default \(builder subagent\)/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /one writer per slice/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /gpt-5\.6-terra at medium reasoning/);
+  assert.match(
+    readFileSync(path.join(dir, ".agentpack", "instructions", "codex.md"), "utf8"),
+    /Delegation default \(builder subagent\)/
+  );
   const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
   assert.match(codexConfig, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
   assert.doesNotMatch(codexConfig, /\[mcp_servers\.agentpack\]/);
@@ -2523,6 +2530,62 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexSnippet, /args = \["mcp"\]/);
   assert.doesNotMatch(codexSnippet, /args = \["mcp", "--root"/);
   assert.doesNotMatch(codexSnippet, /cwd =/);
+
+  const codexBuilderPath = path.join(dir, ".codex", "agents", "builder.toml");
+  const codexBuilder = readFileSync(codexBuilderPath, "utf8");
+  assert.match(codexBuilder, /^model = "gpt-5\.6-terra"$/m);
+  assert.match(codexBuilder, /^model_reasoning_effort = "medium"$/m);
+  assert.match(codexBuilder, /^# agentpack:builder:start$/m);
+  assert.match(codexBuilder, /^name = "builder"$/m);
+  assert.match(codexBuilder, /one bounded, coordinator-defined coding slice/);
+  assert.ok(codexBuilder.includes(`mcp__${serverName}__load_context`));
+  assert.match(codexBuilder, new RegExp(`^\\[mcp_servers\\.${escapeRegExp(serverName)}\\]$`, "m"));
+  assert.match(codexBuilder, /^command = "agentpack"$/m);
+  assert.match(codexBuilder, /^args = \["mcp"\]$/m);
+  assert.match(codexBuilder, /^enabled_tools = \["load_context"\]$/m);
+  assert.match(codexBuilder, new RegExp(`^\\[mcp_servers\\.${escapeRegExp(serverName)}\\.tools\\.load_context\\]$`, "m"));
+  assert.match(codexBuilder, /^approval_mode = "approve"$/m);
+  assert.doesNotMatch(codexBuilder, /record_decision|task_finalize|attach_evidence/);
+  assert.match(codexBuilder, /^# agentpack:builder:end$/m);
+
+  writeFileSync(
+    codexBuilderPath,
+    codexBuilder
+      .replace('model = "gpt-5.6-terra"', 'model = "gpt-5.6-sol"')
+      .replace('model_reasoning_effort = "medium"', 'model_reasoning_effort = "high"')
+      .replace("# agentpack:builder:start", 'sandbox_mode = "workspace-write"\n\n# agentpack:builder:start')
+      .replace("You are the builder for one scoped implementation slice.", "Stale managed builder instructions."),
+    "utf8"
+  );
+  run(dir, ["install", "codex", "--write"]);
+  const reinstalledCodexBuilder = readFileSync(codexBuilderPath, "utf8");
+  assert.match(reinstalledCodexBuilder, /^model = "gpt-5\.6-sol"$/m);
+  assert.match(reinstalledCodexBuilder, /^model_reasoning_effort = "high"$/m);
+  assert.match(reinstalledCodexBuilder, /^sandbox_mode = "workspace-write"$/m);
+  assert.match(reinstalledCodexBuilder, /You are the builder for one scoped implementation slice/);
+  assert.doesNotMatch(reinstalledCodexBuilder, /Stale managed builder instructions/);
+  assert.equal((reinstalledCodexBuilder.match(/# agentpack:builder:start/g) || []).length, 1);
+  assert.equal((reinstalledCodexBuilder.match(/enabled_tools = \["load_context"\]/g) || []).length, 1);
+  assert.equal((reinstalledCodexBuilder.match(/approval_mode = "approve"/g) || []).length, 1);
+});
+
+test("preserves an existing unmarked Codex builder agent", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-codex-builder-test-"));
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+  const builderPath = path.join(dir, ".codex", "agents", "builder.toml");
+  const existingBuilder = `name = "builder"
+description = "User-owned builder"
+developer_instructions = "Do the user's custom workflow."
+model = "custom-model"
+`;
+  mkdirSync(path.dirname(builderPath), { recursive: true });
+  writeFileSync(builderPath, existingBuilder, "utf8");
+
+  const install = run(dir, ["install", "codex", "--write"]);
+
+  assert.match(install, /existing unmarked \.codex\/agents\/builder\.toml was left untouched/);
+  assert.equal(readFileSync(builderPath, "utf8"), existingBuilder);
 });
 
 test("writes a schema-complete fresh Cursor CLI permission config", () => {

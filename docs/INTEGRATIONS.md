@@ -6,7 +6,7 @@ Agentpack integrates through local project files, CLI, and MCP. It does not writ
 
 | Client | Instruction file | MCP config surface | Native task gate | Status |
 | --- | --- | --- | --- | --- |
-| Codex | `AGENTS.md` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | `.codex/hooks.json` `PreToolUse` | Tested |
+| Codex | `AGENTS.md` plus `.codex/agents/builder.toml` | Project-local `.codex/config.toml`, plus a generated `.agentpack/instructions/codex-mcp.example.toml` review snippet | `.codex/hooks.json` `PreToolUse` | Tested |
 | Claude Code | `CLAUDE.md` | Project-local `.mcp.json` in the repo root | `.claude/settings.json` `PreToolUse` | Tested |
 | Claude Desktop | None automatically read from the repo | User-local Claude Desktop config, copied from generated `.agentpack/instructions/claude-desktop-mcp.example.json` | None | Tested |
 | Cursor | `.cursor/rules/agentpack.mdc` | Project-local `.cursor/mcp.json` | `.cursor/hooks.json` `preToolUse` | Tested |
@@ -27,6 +27,7 @@ In a local project setup:
 - `.mcp.json`: repo-root project MCP config for Claude Code.
 - `AGENTS.md`: repo-root project instructions for Codex.
 - `.codex/config.toml`: repo-local Codex MCP config created by `agentpack install codex --write`.
+- `.codex/agents/builder.toml`: optional project-scoped Codex builder optimized for bounded implementation slices.
 - `.codex/hooks.json`: repo-local Codex task-gate hook created or merged by `agentpack install codex --write`.
 - `.cursor/hooks.json`: repo-local Cursor task-gate hook created or merged by `agentpack install cursor --write`.
 - `.cursor/agents/builder.md`: Cursor-specific builder that inherits the parent model, including Auto on Free plans.
@@ -80,6 +81,7 @@ This writes:
 
 - `AGENTS.md`
 - `.codex/config.toml`
+- `.codex/agents/builder.toml`
 - `.codex/hooks.json`
 - `.agentpack/instructions/codex.md`
 - `.agentpack/instructions/codex-mcp.example.toml`
@@ -96,11 +98,17 @@ Do not keep an older global `~/.codex/config.toml` entry with `args = ["mcp", "-
 
 If Agentpack still reports the wrong Pack root in Codex, remove the stale global `mcp_servers.agentpack` block, keep the project-local `.codex/config.toml`, then restart or reconnect the MCP server.
 
+`.codex/agents/builder.toml` defines an optional implementation-focused custom agent. Agentpack defaults it to `gpt-5.6-terra` with medium reasoning: the current Codex guidance recommends Terra for faster, lower-cost supporting agents, while the coordinator keeps ambiguous architecture, security-sensitive decisions, final verification, commits, and release actions. The builder is most useful for one coherent slice likely to need more than roughly 10-20 tool calls or several files. Keep small edits in the coordinator, and run multiple builders only when their write scopes do not overlap.
+
+The builder receives a brief containing the active Task Passport objective, constraints, write scope, acceptance criteria, and narrow verification command. Its Agentpack MCP view is restricted to `load_context`; the quick resume already carries lifecycle and write-scope state, so a second status call would only duplicate context. The custom-agent config explicitly approves that one known read-only tool so non-interactive builder runs do not cancel it while every mutable Agentpack tool remains unavailable. Ledger mutation stays with the coordinator. The generated instructions also tell the builder to stop after repeated verification failure or when the slice needs a product, architecture, security, or scope decision instead of looping on a cheaper model.
+
+Runtime settings before `# agentpack:builder:start` are user-owned. Re-running the installer refreshes the managed role and instructions while preserving changes such as `model`, `model_reasoning_effort`, and `sandbox_mode`, plus configuration outside the managed block. Delete the model lines to inherit the configured subagent or parent defaults. If `.codex/agents/builder.toml` already exists without Agentpack markers, the installer leaves it untouched rather than overwriting a user-defined agent.
+
 The `.codex/hooks.json` merge adds one `PreToolUse` hook on `apply_patch`. It runs the shared gate through the current Node executable and Agentpack entrypoint, with a separate `commandWindows` launcher for Windows. Codex sends the patch text to the adapter, which checks every add, update, delete, and move path against the current Task Passport. Block mode returns a deny decision; warn mode adds model-visible context. Existing hooks are preserved and re-running the installer replaces the Agentpack entry instead of duplicating it.
 
 Codex requires project-local command hooks to be reviewed and trusted before they run. Open `/hooks` after install and approve the Agentpack definition. Codex documents `PreToolUse` as a guardrail rather than a complete enforcement boundary, so keep the git pre-commit gate when commit-time enforcement matters. Because the generated command pins the current Node installation, rerun the installer after switching Node versions.
 
-Official references: [Codex configuration reference](https://developers.openai.com/codex/config-reference) and [Codex hooks](https://developers.openai.com/codex/hooks).
+Official references: [Codex subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Codex configuration reference](https://developers.openai.com/codex/config-reference), and [Codex hooks](https://developers.openai.com/codex/hooks).
 
 ## Claude Code
 
@@ -124,7 +132,7 @@ The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client 
 
 The builder frontmatter's `model:` line is user-owned. You can keep the generated `model: sonnet` alias or replace it with a full model ID supported by your Claude Code version. Re-running `agentpack install claude --write` preserves that line while refreshing the rest of the generated builder definition, so later template fixes still apply.
 
-`CLAUDE.md` and `.agentpack/instructions/claude.md` also carry a delegation default: as a rough heuristic, slices needing more than 10-20 tool calls or touching several files are a good fit for the builder subagent, while small focused edits stay inline with the coordinator. Cursor ships equivalent guidance pointing at its own builder definition.
+`CLAUDE.md` and `.agentpack/instructions/claude.md` also carry a delegation default: as a rough heuristic, slices needing more than 10-20 tool calls or touching several files are a good fit for the builder subagent, while small focused edits stay inline with the coordinator. Codex and Cursor ship equivalent client-specific guidance pointing at their own builder definitions.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 

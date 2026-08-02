@@ -10,6 +10,8 @@ const GATE_ROOT_MARKER = "# agentpack:root-base64 ";
 const CLAUDE_GATE_MARKER = "task gate --client claude";
 const CODEX_GATE_MARKER = "task gate --client codex";
 const CURSOR_GATE_MARKER = "task gate --client cursor";
+const CODEX_BUILDER_START_MARKER = "# agentpack:builder:start";
+const CODEX_BUILDER_END_MARKER = "# agentpack:builder:end";
 const CURSOR_READ_ONLY_MCP_TOOLS = [
   "bundle_import_plan",
   "bundle_inspect",
@@ -146,12 +148,24 @@ const CLAUDE_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
 - this is a default heuristic, not a hard rule; it keeps large implementation context off the coordinator and runs the work on a cheaper model
 `;
 
+const CODEX_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
+- delegate one coherent implementation slice to the builder custom agent (\`.codex/agents/builder.toml\`) when it is likely to need more than roughly 10-20 tool calls or spans several files; keep small focused edits inline
+- give the builder a brief with the active Task Passport objective, constraints, write scope, acceptance criteria, and the narrow verification command
+- use one writer per slice; only run builders in parallel when their write scopes do not overlap
+- keep architecture, security-sensitive decisions, Agentpack records, final verification, commits, and release actions with the coordinator
+- the generated builder defaults to gpt-5.6-terra at medium reasoning for efficient everyday implementation; use the coordinator for ambiguous or high-risk work, and tune the user-owned model settings when the slice needs a different tradeoff
+`;
+
 const CURSOR_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
 - when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.cursor/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
 - the Cursor builder inherits the parent model so Free-plan sessions can use Auto instead of a pinned named model
 - the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
 - small, focused edits stay inline in the coordinator session
 `;
+
+function codexInstructions(): string {
+  return `${INSTRUCTIONS.trimEnd()}\n\n${CODEX_DELEGATION_GUIDANCE.trim()}\n`;
+}
 
 function claudeInstructions(): string {
   return `${INSTRUCTIONS.trimEnd()}\n\n${CLAUDE_DELEGATION_GUIDANCE.trim()}\n`;
@@ -203,18 +217,23 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
 
   if (target === "codex") {
     const codexSnippetPath = getPackPath(root, "instructions", "codex-mcp.example.toml");
+    const codexBuilder = codexBuilderAgentPlan(root, serverName);
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", INSTRUCTIONS),
-        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", INSTRUCTIONS),
+        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", codexInstructions()),
+        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", codexInstructions()),
         tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", `mcp_servers.${serverName}`, codexMcpTomlTable(serverName), "mcp_servers.agentpack"),
+        codexBuilder.file,
         codexHooksMergePlan(root),
         writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(serverName))
       ],
       notes: [
         "No global Codex config is modified.",
         `Codex should use the project-local .codex/config.toml entry named ${serverName} for this repo.`,
+        codexBuilder.managed
+          ? "The project builder uses gpt-5.6-terra at medium reasoning by default, sees only Agentpack load_context, and preserves user-owned config outside its managed block."
+          : "An existing unmarked .codex/agents/builder.toml was left untouched; rename or remove it before reinstalling to opt into Agentpack's builder template.",
         "The project PreToolUse hook runs `agentpack task gate` before apply_patch edits; Codex requires the hook definition to be reviewed and trusted before it runs.",
         "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
         `For manual review, see ${relativePath(root, codexSnippetPath)}.`
@@ -750,6 +769,79 @@ function codexMcpTomlTable(serverName: string): string {
     "tool_timeout_sec = 60",
     ""
   ].join("\n");
+}
+
+function codexBuilderAgentPlan(root: string, serverName: string): { file: InstallFile; managed: boolean } {
+  const filePath = path.join(root, ".codex", "agents", "builder.toml");
+  const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const hasStart = existing.includes(CODEX_BUILDER_START_MARKER);
+  const hasEnd = existing.includes(CODEX_BUILDER_END_MARKER);
+
+  if (existing && (!hasStart || !hasEnd)) {
+    return {
+      managed: false,
+      file: {
+        filePath,
+        description: "Preserve the existing user-owned Codex builder agent.",
+        content: existing
+      }
+    };
+  }
+
+  const managedBlock = `${CODEX_BUILDER_START_MARKER}\n${codexBuilderManagedBlock(serverName).trim()}\n${CODEX_BUILDER_END_MARKER}\n`;
+  const content = hasStart && hasEnd
+    ? existing.replace(
+      new RegExp(`${escapeRegExp(CODEX_BUILDER_START_MARKER)}[\\s\\S]*?${escapeRegExp(CODEX_BUILDER_END_MARKER)}\\n?`),
+      managedBlock
+    )
+    : `${codexBuilderRuntimeDefaults()}\n\n${managedBlock}`;
+
+  return {
+    managed: true,
+    file: {
+      filePath,
+      description: "Write the efficient scoped builder custom agent for Codex.",
+      content: ensureTrailingNewline(content)
+    }
+  };
+}
+
+function codexBuilderRuntimeDefaults(): string {
+  return `# Runtime tuning is user-owned and preserved across Agentpack reinstalls.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"`;
+}
+
+function codexBuilderManagedBlock(serverName: string): string {
+  return `name = "builder"
+description = "Efficient implementation agent for one bounded, coordinator-defined coding slice. Use for multi-file or tool-heavy edits with a non-overlapping write scope; keep small, ambiguous, security-sensitive, and release work with the coordinator."
+developer_instructions = """
+You are the builder for one scoped implementation slice. The coordinator owns requirements, architecture, the Task Passport lifecycle, durable Agentpack records, final verification, commits, and release actions.
+
+At the start:
+1. Call mcp__${serverName}__load_context with preset \"quick\" and a query focused on the brief.
+2. Confirm from that resume that the active Task Passport, lifecycle, and write scope match the brief. If they do not, stop without editing.
+3. Treat the coordinator brief as the acceptance contract. Read only the code and recorded context needed for this slice.
+
+While working:
+- Edit only inside the declared write scope. Treat any Agentpack gate warning or denial as a stop signal, never something to work around.
+- Follow existing project patterns, keep the diff narrow, and avoid dependency or formatting churn.
+- Prefer targeted searches and the narrowest meaningful test first. Run broader checks only when the brief or risk requires them.
+- Work through one implementation-and-verification loop. If the same check fails twice, or the slice needs an architectural, security, scope, or product decision, stop and escalate to the coordinator.
+- Do not call Agentpack state-changing tools, commit, push, publish, or start unrelated work.
+
+Return a concise handoff: files changed and why, verification commands and results, deviations or blockers, and candidate durable conclusions for the coordinator. Do not dump routine logs or restate the full loaded context.
+"""
+
+[mcp_servers.${serverName}]
+command = "agentpack"
+args = ["mcp"]
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+enabled_tools = ["load_context"]
+
+[mcp_servers.${serverName}.tools.load_context]
+approval_mode = "approve"`;
 }
 
 function claudeMcpServer(): Record<string, unknown> {
