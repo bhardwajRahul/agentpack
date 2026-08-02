@@ -61,6 +61,17 @@ The CLI exposes the same operations for setup, inspection, debugging, demos, and
 - `diff`
 - `replay`
 
+### Tool Safety Annotations
+
+Every tool advertises standard MCP `annotations` so clients can distinguish read-only operations from local state changes before asking for approval:
+
+- read-only context, status, audit, planning, handoff, release preflight, diff, and replay tools set `readOnlyHint: true`
+- append-only tools such as decisions, evidence, task start, bundle export, and conflict-safe bundle import set `readOnlyHint: false` and `destructiveHint: false`
+- tools that replace a pointer, lifecycle state, checkpoint state, verification, or a Source Cache conclusion conservatively set `destructiveHint: true`
+- all tools set `openWorldHint: false` because the stdio server operates on the repo-local pack and does not contact external services
+
+These annotations are client-facing hints, not authorization or sandbox enforcement. A client must still honor its own trust and approval policy, and a write-capable tool remains write-capable even when a particular invocation only plans a change (for example, `bundle_import` without `write: true`).
+
 `load_context` and `resume` accept `query`, `budget`, and `preset`. Supported presets are `quick`, `chat`, `agent`, and `deep`; unknown MCP preset values are rejected instead of falling back silently. When `query` is present, Agentpack filters Source Cache locally: matched sources keep full summaries/snippets, and query-unrelated sources remain visible as compact path/status/topic/guidance stubs. Changed or missing query-unrelated sources are warning stubs, not trusted conclusions; call `source_status` for full stale details. If nothing matches, Agentpack keeps compact stubs for all recorded sources and tells the caller to rerun without `query` when the full Source Cache is needed. This saves tokens without hiding which recorded files exist.
 
 When a current Task Passport exists, its status and next actions are

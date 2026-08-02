@@ -67,11 +67,39 @@ interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  annotations: ToolAnnotations;
 }
+
+interface ToolAnnotations {
+  readOnlyHint: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint: boolean;
+}
+
+const READ_ONLY_TOOL_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: true,
+  openWorldHint: false
+};
+
+const ADDITIVE_TOOL_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false
+};
+
+const UPDATING_TOOL_ANNOTATIONS: ToolAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false
+};
 
 export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "load_context",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Load a token-budgeted markdown resume of Agentpack state for the current task: Task Passport status and next actions, git state, query-relevant decisions, dead ends, and source conclusions, plus gate warnings when the task lifecycle needs attention. Call once at the start of a session or task, before reading code; re-call only for a different query or budget. Read-only.",
     inputSchema: {
       type: "object",
@@ -94,6 +122,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "record_decision",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Append a durable technical or product decision to the Agentpack ledger so future sessions inherit it. Call for decisions that matter beyond this session (architecture, contracts, tradeoffs), not for routine preferences or per-edit narration. Writes one event under .agentpack/; secret-like values are redacted.",
     inputSchema: {
       type: "object",
@@ -118,6 +147,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "record_dead_end",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Record an approach that failed so future agents do not repeat it. Call when an attempted direction is abandoned for a durable reason, not for ordinary debugging iterations. Writes one event under .agentpack/; secret-like values are redacted.",
     inputSchema: {
       type: "object",
@@ -141,6 +171,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "attach_evidence",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Store verification output (test results, command output, review findings, notes, or links) as a file under .agentpack/evidence/ plus a ledger event, returning an evidence id to reference from task_update_verification, task_finalize, or record_decision. Call for meaningful verification worth preserving; for small tasks prefer one aggregated evidence item over many per-command items. Provide the body inline via content or from a file via path.",
     inputSchema: {
       type: "object",
@@ -170,6 +201,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "record_source",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Record a durable conclusion about a source file in the Source Cache: stores the file's current content hash with your summary so future sessions can reuse the conclusion until the file changes. Call after inspecting an important file when the conclusion is reusable; do not record every file read, and re-record only when the conclusion itself changed. Writes under .agentpack/.",
     inputSchema: {
       type: "object",
@@ -192,6 +224,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "source_status",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Check whether recorded source conclusions are unchanged, changed, or missing by re-hashing the files; use changed/missing filters for stale source-cache triage. Call when you need a full stale-source check beyond what load_context already showed; do not repeat it when a recent load_context, task_audit, or status check answered the question. Read-only.",
     inputSchema: {
       type: "object",
@@ -213,6 +246,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_audit",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Audit the current Task Passport for continuity risks: stale or missing sources, branch/head drift, worktree mismatch, missing next actions or write scope, and open verification. Call before finalizing, after a long gap, or when drift is suspected; skip when a recent audit already answered it. Read-only.",
     inputSchema: {
       type: "object",
@@ -226,6 +260,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "release_preflight",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Report local release readiness: release metadata, Trusted Publisher wiring, and the manual release-prep commands. Read-only — never pushes, tags, publishes, or creates GitHub Releases. Call when preparing a release, not during routine work.",
     inputSchema: {
       type: "object",
@@ -234,6 +269,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "bundle_export",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Export one Task Passport with its decisions, dead ends, source conclusions, and optionally evidence to a redacted agentpack.task-bundle JSON file, for sharing tasks across repos, machines, or agents. Writes only the new bundle file at outputPath; pack state is unchanged.",
     inputSchema: {
       type: "object",
@@ -261,6 +297,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "bundle_inspect",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Validate and summarize an untrusted task bundle file: schema and digest status, origin, included records, and warnings. Read-only — never writes pack state. Call before planning or applying an import of a bundle you did not produce.",
     inputSchema: {
       type: "object",
@@ -279,6 +316,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "bundle_import_plan",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Plan a task bundle import against this pack without writing anything: returns create, idempotent, or conflict actions with an explicit read-only guarantee. Call to preview exactly what bundle_import with write: true would do.",
     inputSchema: {
       type: "object",
@@ -301,6 +339,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "bundle_import",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Import a task bundle into this pack. By default it only returns the read-only import plan; nothing is written unless write is true. A write import runs under a pack lock, creates a parked task with local verification reset to unknown, retains the bundle and an import manifest, and never changes the current-task pointer. Inspect or plan untrusted bundles first.",
     inputSchema: {
       type: "object",
@@ -327,6 +366,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_handoff",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Generate a compact handoff for the current Task Passport — objective, constraints, write scope, next actions, verification, drift, and audit summary — so another chat, client, worktree, or agent can continue the work. Call before switching contexts. Read-only.",
     inputSchema: {
       type: "object",
@@ -335,6 +375,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_start",
+    annotations: ADDITIVE_TOOL_ANNOTATIONS,
     description: "Create a new Task Passport and make it current, persisting it under .agentpack/. Call when starting a coherent phase of work and no task is active; it refuses to replace an active, blocked, or verifying current task — park or finalize that task first. Declare writeScope so the task gate can protect the task's boundaries.",
     inputSchema: {
       type: "object",
@@ -378,6 +419,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_status",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Print a quick summary of the current Task Passport (status, objective, next actions, verification) plus gate warnings, without scanning the source cache. Call for a fast lifecycle check; use task_audit for the full continuity audit. Read-only.",
     inputSchema: {
       type: "object",
@@ -386,6 +428,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_list",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "List all Task Passports with id, status, title, and branch; the current task is marked with an asterisk. Call to find a task id for task_switch or to review open work. Read-only.",
     inputSchema: {
       type: "object",
@@ -399,6 +442,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_switch",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Make another open Task Passport current by id. A parked target with pending or unknown verification resumes as active; a parked target with a final verdict resumes as verifying and stays frozen until verification returns to pending. Park or finalize a different active, blocked, or verifying current task first; closed tasks cannot be switched to. Updates the current-task pointer under .agentpack/.",
     inputSchema: {
       type: "object",
@@ -413,6 +457,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_park",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Mark the current Task Passport parked so unrelated work can start without finalizing it. Use for intentionally deferred work: parking preserves verification state and the task can be resumed later with task_switch. Do not park to skip verification of finished work; use task_finalize to close it instead.",
     inputSchema: {
       type: "object",
@@ -421,6 +466,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_update_verification",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Update the current Task Passport verification state. A final verdict (passed, failed, or accepted) moves the task lifecycle to verifying; pending or unknown returns it to active. Call after attach_evidence so the verdict is evidence-backed; identical repeated calls are no-ops.",
     inputSchema: {
       type: "object",
@@ -444,6 +490,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_finalize",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Close the current Task Passport. Requires verification to already be passed, failed, or accepted, or that final status passed explicitly via status. Use task_park for deferred work instead of closing it; accepted finalization with remaining next actions requires force. Returns non-blocking hygiene advisories (uncommitted in-scope changes, remaining next actions, missing checkpoint).",
     inputSchema: {
       type: "object",
@@ -471,6 +518,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "task_update",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Patch the current Task Passport without changing lifecycle status. List fields (constraints, writeScope, nextActions, tags) append and deduplicate; omitted fields are preserved; empty or no-op updates fail. Pass clearNextActions to replace the next-actions list instead of appending, e.g. to clear a stale plan before finalizing.",
     inputSchema: {
       type: "object",
@@ -513,6 +561,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "checkpoint",
+    annotations: UPDATING_TOOL_ANNOTATIONS,
     description: "Save a durable progress checkpoint under .agentpack/checkpoints, capturing summary and git state (branch, commit, diff) and updating the pack-level status and next actions that seed the next session's load_context. Call after meaningful progress, before ending a session, or before risky changes — not after every small step.",
     inputSchema: {
       type: "object",
@@ -535,6 +584,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "resume",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Generate the same token-budgeted markdown resume as load_context: Task Passport state, git state, query-relevant records, and gate warnings. Prefer load_context at task start; use resume for ad-hoc re-reads with a different query or budget mid-session. Read-only.",
     inputSchema: {
       type: "object",
@@ -557,6 +607,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "diff",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Compare two checkpoints, showing their summaries, status lines, and git refs side by side. Defaults to comparing the previous checkpoint against the latest. Call to see what changed between sessions. Read-only.",
     inputSchema: {
       type: "object",
@@ -574,6 +625,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: "replay",
+    annotations: READ_ONLY_TOOL_ANNOTATIONS,
     description: "Print a chronological timeline of recent Agentpack ledger events (decisions, dead ends, evidence, source records, checkpoints, task events), one line per event with timestamp and type. Call to audit how the task history unfolded when a resume is not enough; not part of the routine load_context/checkpoint loop. Read-only.",
     inputSchema: {
       type: "object",

@@ -225,6 +225,65 @@ test("exposes expected MCP tools", () => {
     "task_update_verification"
   ]);
 
+  const readOnlyTools = [
+    "bundle_import_plan",
+    "bundle_inspect",
+    "diff",
+    "load_context",
+    "release_preflight",
+    "replay",
+    "resume",
+    "source_status",
+    "task_audit",
+    "task_handoff",
+    "task_list",
+    "task_status"
+  ];
+  const additiveTools = [
+    "attach_evidence",
+    "bundle_export",
+    "bundle_import",
+    "record_dead_end",
+    "record_decision",
+    "task_start"
+  ];
+  const updatingTools = [
+    "checkpoint",
+    "record_source",
+    "task_finalize",
+    "task_park",
+    "task_switch",
+    "task_update",
+    "task_update_verification"
+  ];
+
+  for (const tool of TOOL_DEFINITIONS) {
+    assert.equal(tool.annotations.openWorldHint, false, `${tool.name} must stay repo-local`);
+  }
+  for (const name of readOnlyTools) {
+    const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert.deepEqual(tool?.annotations, { readOnlyHint: true, openWorldHint: false });
+  }
+  for (const name of additiveTools) {
+    const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert.deepEqual(tool?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false
+    });
+  }
+  for (const name of updatingTools) {
+    const tool = TOOL_DEFINITIONS.find((candidate) => candidate.name === name);
+    assert.deepEqual(tool?.annotations, {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: false
+    });
+  }
+  assert.equal(readOnlyTools.length + additiveTools.length + updatingTools.length, TOOL_DEFINITIONS.length);
+
   const sourceStatusTool = TOOL_DEFINITIONS.find((tool) => tool.name === "source_status");
   assert.match(sourceStatusTool?.description || "", /changed, or missing/);
   assert.match(sourceStatusTool?.description || "", /stale source-cache triage/);
