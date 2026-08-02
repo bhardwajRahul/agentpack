@@ -403,6 +403,7 @@ function assertEqual(actual, expected, message) {
 }
 
 function assertModernCachePolicy(response, method) {
+  assertEqual(response.result?.resultType, "complete", `modern ${method} returns a complete result`);
   assertEqual(response.result?.ttlMs, 0, `modern ${method} uses a conservative cache TTL`);
   assertEqual(response.result?.cacheScope, "private", `modern ${method} uses a private cache scope`);
 }

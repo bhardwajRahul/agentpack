@@ -3610,6 +3610,25 @@ test("task list survives a corrupt background passport and reports a warning", a
   assert.equal(warnings.length, 1);
   assert.match(warnings[0] || "", new RegExp(`Unreadable task passport ${goodId}:`));
 
+  const modernListingJson = await mcp.send({
+    jsonrpc: "2.0",
+    id: 20,
+    method: "tools/call",
+    params: {
+      _meta: {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientInfo": { name: "agentpack-test", version: "1.0.0" },
+        "io.modelcontextprotocol/clientCapabilities": {}
+      },
+      name: "task_list",
+      arguments: { json: true }
+    }
+  });
+  assert.deepEqual(JSON.parse(modernListingJson.result.content[0].text), parsed);
+  assert.deepEqual(modernListingJson.result._meta["io.agentpack/taskListWarnings"], warnings);
+  assert.equal(modernListingJson.result._meta["io.modelcontextprotocol/serverInfo"].name, "agentpack");
+  assert.equal(modernListingJson.result.resultType, "complete");
+
   writeFileSync(path.join(dir, ".agentpack", "tasks", currentId, "passport.json"), "{ invalid json", "utf8");
   const mcpAllCorruptJson = await mcp.send({
     jsonrpc: "2.0",
