@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -3256,6 +3256,40 @@ test("installs the git-hooks gate for a pack in a repository subdirectory", { sk
 
   const rerun = run(secondPack, ["install", "git-hooks", "--write"]);
   assert.match(rerun, /UNCHANGED/i, "re-installing from either pack must be idempotent");
+
+  const binDir = path.join(repo, "test-bin");
+  mkdirSync(binDir);
+  const agentpackShim = path.join(binDir, "agentpack");
+  writeFileSync(agentpackShim, [
+    "#!/usr/bin/env node",
+    "const { spawnSync } = require('node:child_process');",
+    `const result = spawnSync(process.execPath, [${JSON.stringify(cli)}, ...process.argv.slice(2)], { stdio: 'inherit' });`,
+    "process.exit(result.status ?? 1);",
+    ""
+  ].join("\n"), "utf8");
+  chmodSync(agentpackShim, 0o755);
+  const hookEnv = { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH || ""}` };
+
+  run(packDir, ["task", "start", "Pack one hook coverage", "--write-scope", "allowed.txt"]);
+  run(secondPack, ["task", "start", "Pack two hook coverage", "--write-scope", "allowed.txt"]);
+  const secondConfigPath = path.join(secondPack, ".agentpack", "config.json");
+  const secondConfig = JSON.parse(readFileSync(secondConfigPath, "utf8")) as Record<string, unknown>;
+  writeFileSync(secondConfigPath, JSON.stringify({ ...secondConfig, gateMode: "block" }, null, 2), "utf8");
+
+  writeFileSync(path.join(packDir, "allowed.txt"), "clean\n", "utf8");
+  runGit(repo, ["add", "services/ledger/allowed.txt"]);
+  const clean = spawnSync("/bin/sh", [hookPath], { cwd: repo, encoding: "utf8", env: hookEnv });
+  assert.equal(clean.status, 0);
+  assert.equal(`${clean.stdout}${clean.stderr}`.trim(), "", "clean and untouched packs must not print labels");
+
+  writeFileSync(path.join(packDir, "unexpected.txt"), "warn\n", "utf8");
+  writeFileSync(path.join(secondPack, "unexpected.txt"), "block\n", "utf8");
+  runGit(repo, ["add", "services/ledger/unexpected.txt", "tools/ops/unexpected.txt"]);
+  const mixed = spawnSync("/bin/sh", [hookPath], { cwd: repo, encoding: "utf8", env: hookEnv });
+  const mixedOutput = `${mixed.stdout}${mixed.stderr}`;
+  assert.equal(mixed.status, 2, "one blocking pack must still block the shared hook");
+  assert.match(mixedOutput, /Agentpack gate \[services\/ledger\][\s\S]*Gate: warn/);
+  assert.match(mixedOutput, /Agentpack gate \[tools\/ops\][\s\S]*Gate: block/);
 });
 
 test("claude install registers the gate PreToolUse hook idempotently", () => {

@@ -540,7 +540,7 @@ function preCommitGateScript(roots: string[]): string {
   // and one repository can hold several packs — the hook gates each listed pack.
   const gateLines = [...roots].sort().flatMap((root) => [
     `  ${GATE_ROOT_MARKER}${Buffer.from(root, "utf8").toString("base64")}`,
-    `  run_gate ${shellQuote(root)}`
+    `  run_gate ${shellQuote(root)} ${shellQuote(gateRootLabel(root))}`
   ]);
   return [
     "#!/bin/sh",
@@ -550,12 +550,15 @@ function preCommitGateScript(roots: string[]): string {
     "overall=0",
     "run_gate() {",
     "  if [ -d \"$1\" ]; then",
-    "    (cd \"$1\" && agentpack task gate --staged)",
+    "    gate_output=$(cd \"$1\" && agentpack task gate --staged 2>&1)",
     "    gate_status=$?",
+    "    if [ -n \"$gate_output\" ]; then",
+    "      printf '%s\\n' \"Agentpack gate [$2]\" \"$gate_output\"",
+    "    fi",
     "    if [ \"$gate_status\" -eq 2 ]; then",
     "      overall=2",
     "    elif [ \"$gate_status\" -ne 0 ]; then",
-    "      echo \"agentpack task gate exited with $gate_status for $1; commit allowed (gate skipped)\"",
+    "      echo \"Agentpack gate [$2]: task gate exited with $gate_status; commit allowed (gate skipped)\"",
     "    fi",
     "  fi",
     "}",
@@ -568,6 +571,12 @@ function preCommitGateScript(roots: string[]): string {
     "exit $overall",
     ""
   ].join("\n");
+}
+
+function gateRootLabel(root: string): string {
+  const topLevel = getGitRepoBounds(root)?.topLevel;
+  const relative = topLevel ? path.relative(topLevel, root) : path.basename(root);
+  return relative || ".";
 }
 
 function validateInstallPlan(root: string, plan: InstallPlan): void {

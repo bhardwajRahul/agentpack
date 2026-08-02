@@ -227,7 +227,7 @@ This installs a `pre-commit` hook that runs `agentpack task gate --staged` again
 
 If a foreign `pre-commit` hook already exists, the installer leaves it untouched and writes `.agentpack/instructions/pre-commit-gate.example.sh` for a manual merge instead. If `core.hooksPath` points outside the repository (for example a shared global hooks directory), the installer refuses to write there and only generates the snippet.
 
-Packs that live in a subdirectory of the repository are supported: the hook is installed at the repository's own hooks directory and changes into the pack directory before running the gate. A repository with several packs gets one shared hook that gates each pack — running the installer from another pack adds it to the list, and a pack whose directory disappears is skipped. The commit is blocked when any gated pack blocks.
+Packs that live in a subdirectory of the repository are supported: the hook is installed at the repository's own hooks directory and changes into the pack directory before running the gate. A repository with several packs gets one shared hook that gates each pack — running the installer from another pack adds it to the list, and a pack whose directory disappears is skipped. Non-clean output is introduced by a repo-relative label such as `Agentpack gate [services/ledger]`; clean packs stay silent. The commit is blocked when any gated pack blocks.
 
 Gating is bounded by staged-file ownership: a `--staged` gate run only enforces task lifecycle for packs that own at least one staged file. A pack the commit does not touch — for example an unrelated pack whose current task is closed or parked — never blocks the commit. An unreadable `.agentpack/config.json` still fails closed for every listed pack.
 
