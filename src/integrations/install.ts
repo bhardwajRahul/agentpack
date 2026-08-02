@@ -208,7 +208,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
         writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions()),
         managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions()),
         jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
-        writeFilePlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName)),
+        writeFilePlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName, existingClaudeBuilderModelLine(root))),
         claudeHooksMergePlan(root)
       ],
       notes: [
@@ -726,11 +726,11 @@ function claudeMcpServer(): Record<string, unknown> {
   };
 }
 
-function claudeBuilderAgent(serverName: string): string {
+function claudeBuilderAgent(serverName: string, modelLine = "model: sonnet"): string {
   return `---
 name: builder
 description: Implementation subagent for scoped coding slices in this repo. Use for implementation slices above roughly 10-20 tool calls or multi-file changes; small focused edits stay with the coordinator. Invoke explicitly with a brief that names the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
-model: sonnet
+${modelLine}
 ---
 
 You are the builder subagent for this repo. You implement one scoped slice of the active Task Passport and report back. The coordinator owns the task lifecycle and all Agentpack records.
@@ -753,6 +753,17 @@ Do not:
 If verification fails twice on the same slice, or you are stalled, stop and report what you tried and why it failed; the coordinator escalates to a stronger model instead of looping you.
 
 Your final message is the handoff. Report: what changed (files plus a summary), how it was verified (commands and results), any deviations from the brief, and durable conclusions worth recording, clearly labeled as candidate facts for the coordinator.`;
+}
+
+function existingClaudeBuilderModelLine(root: string): string {
+  const builderPath = path.join(root, ".claude", "agents", "builder.md");
+  if (!existsSync(builderPath)) {
+    return "model: sonnet";
+  }
+
+  const existing = readFileSync(builderPath, "utf8");
+  const frontmatter = existing.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
+  return frontmatter.match(/^model:\s*\S.*$/m)?.[0] || "model: sonnet";
 }
 
 function claudeDesktopMcpServer(root: string): Record<string, unknown> {

@@ -2288,6 +2288,18 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(claudeInstall, /builder subagent/);
   assert.match(builderAgent, /roughly 10-20 tool calls or multi-file changes/);
 
+  writeFileSync(
+    path.join(dir, ".claude", "agents", "builder.md"),
+    builderAgent.replace("model: sonnet", "model: claude-sonnet-custom-id") + "\nStale user-edited template content.\n",
+    "utf8"
+  );
+  const claudeReinstall = run(dir, ["install", "claude", "--write"]);
+  assert.match(claudeReinstall, /Installed Agentpack claude integration/);
+  const reinstalledBuilder = readFileSync(path.join(dir, ".claude", "agents", "builder.md"), "utf8");
+  assert.match(reinstalledBuilder, /^model: claude-sonnet-custom-id$/m);
+  assert.match(reinstalledBuilder, /recording is the coordinator's job/);
+  assert.doesNotMatch(reinstalledBuilder, /Stale user-edited template content/);
+
   const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
   assert.match(claudeDesktopPreview, /claude-desktop install plan/);
   assert.match(claudeDesktopPreview, /No Claude Desktop global config is modified/);
