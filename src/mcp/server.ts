@@ -56,6 +56,14 @@ const PROTOCOL_VERSION_META_KEY = "io.modelcontextprotocol/protocolVersion";
 const CLIENT_INFO_META_KEY = "io.modelcontextprotocol/clientInfo";
 const CLIENT_CAPABILITIES_META_KEY = "io.modelcontextprotocol/clientCapabilities";
 const SERVER_INFO_META_KEY = "io.modelcontextprotocol/serverInfo";
+const TASK_LIST_WARNINGS_META_KEY = "io.agentpack/taskListWarnings";
+const MODERN_CACHEABLE_METHODS = new Set([
+  "server/discover",
+  "tools/list",
+  "prompts/list",
+  "resources/list",
+  "resources/read"
+]);
 
 class McpProtocolError extends Error {
   constructor(readonly code: number, message: string, readonly data?: unknown) {
@@ -675,7 +683,7 @@ function handleMessage(root: string, line: string, output: Writable): void {
     const params = request.params || {};
     const modern = validateModernRequest(params);
     const result = route(root, request.method, params, modern);
-    send(output, request.id, modern ? modernResult(result) : result);
+    send(output, request.id, modern ? modernResult(request.method, result) : result);
   } catch (error) {
     send(output, request.id, null, error instanceof McpProtocolError
       ? { code: error.code, message: error.message, data: error.data }
@@ -796,9 +804,12 @@ function validateModernRequest(params: Record<string, unknown>): boolean {
   return true;
 }
 
-function modernResult(result: unknown): Record<string, unknown> {
+function modernResult(method: string | undefined, result: unknown): Record<string, unknown> {
   const value = objectValue(result);
   return {
+    ...(MODERN_CACHEABLE_METHODS.has(method || "")
+      ? { ttlMs: 0, cacheScope: "private" }
+      : {}),
     ...value,
     resultType: "complete",
     _meta: {
@@ -974,10 +985,12 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   if (name === "task_list") {
     const { tasks, warnings } = listTasks(root);
     if (booleanValue(args.json, false)) {
-      // The json contract promises parseable output for every case, including
-      // an empty pack and all-passports-unreadable: warnings ride inside the
-      // JSON value instead of being prefixed as prose.
-      return toolText(redactForRoot(root, JSON.stringify({ tasks, warnings }, null, 2)));
+      return toolText(
+        redactForRoot(root, JSON.stringify(tasks, null, 2)),
+        warnings.length > 0
+          ? { [TASK_LIST_WARNINGS_META_KEY]: warnings.map((warning) => redactForRoot(root, warning)) }
+          : undefined
+      );
     }
     const warningOutput = warnings.map((warning) => `[warn] ${warning}\n`).join("");
     if (tasks.length === 0) {
@@ -1086,14 +1099,18 @@ function appendGateWarnings(root: string, body: string): string {
   }
 }
 
-function toolText(textValue: string): { content: Array<{ type: "text"; text: string }> } {
+function toolText(
+  textValue: string,
+  meta?: Record<string, unknown>
+): { content: Array<{ type: "text"; text: string }>; _meta?: Record<string, unknown> } {
   return {
     content: [
       {
         type: "text",
         text: textValue
       }
-    ]
+    ],
+    ...(meta ? { _meta: meta } : {})
   };
 }
 

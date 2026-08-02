@@ -33,16 +33,32 @@ try {
   assertIncludes(discover.result?.supportedVersions || [], "2026-07-28", "server/discover advertises MCP 2026-07-28");
   assertEqual(discover.result?.resultType, "complete", "server/discover returns a modern complete result");
   assertEqual(discover.result?._meta?.["io.modelcontextprotocol/serverInfo"]?.name, "agentpack", "modern responses identify the Agentpack server");
+  assertModernCachePolicy(discover, "server/discover");
 
   const modernToolsResponse = await client.request("tools/list", { _meta: modernMeta });
   assertEqual(modernToolsResponse.result?.resultType, "complete", "modern tools/list returns a complete result");
   assertIncludes(modernToolsResponse.result?.tools?.map((tool) => tool.name) || [], "load_context", "modern tools/list exposes Agentpack tools");
+  assertModernCachePolicy(modernToolsResponse, "tools/list");
+
+  const modernPromptsResponse = await client.request("prompts/list", { _meta: modernMeta });
+  assertModernCachePolicy(modernPromptsResponse, "prompts/list");
+
+  const modernResourcesResponse = await client.request("resources/list", { _meta: modernMeta });
+  assertModernCachePolicy(modernResourcesResponse, "resources/list");
+
+  const modernResourceResponse = await client.request("resources/read", {
+    _meta: modernMeta,
+    uri: "agentpack://resume/latest"
+  });
+  assertModernCachePolicy(modernResourceResponse, "resources/read");
 
   const initialize = await client.request("initialize", {});
   assertEqual(initialize.result?.serverInfo?.name, "agentpack", "initialize returned the Agentpack server name");
   assertEqual(initialize.result?.resultType, undefined, "legacy initialize response stays unchanged");
 
   const toolsResponse = await client.request("tools/list", {});
+  assertEqual(toolsResponse.result?.ttlMs, undefined, "legacy tools/list omits ttlMs");
+  assertEqual(toolsResponse.result?.cacheScope, undefined, "legacy tools/list omits cacheScope");
   const toolNames = toolsResponse.result?.tools?.map((tool) => tool.name).sort() || [];
   for (const expected of ["bundle_export", "bundle_import", "bundle_import_plan", "bundle_inspect", "load_context", "record_decision", "record_source", "release_preflight", "resume", "source_status", "task_audit", "task_finalize", "task_handoff", "task_list", "task_park", "task_start", "task_status", "task_switch", "task_update", "task_update_verification"]) {
     assertIncludes(toolNames, expected, `tools/list includes ${expected}`);
@@ -145,6 +161,14 @@ try {
   const taskListText = taskList.result?.content?.[0]?.text || "";
   assertMatch(taskListText, /- task_.* \[parked\] MCP smoke parked task/, "task_list shows the parked task");
   assertMatch(taskListText, /\* task_.* \[active\] MCP smoke verification/, "task_list marks the current task");
+
+  const taskListJson = await client.request("tools/call", {
+    name: "task_list",
+    arguments: { json: true }
+  });
+  const taskListEntries = JSON.parse(taskListJson.result?.content?.[0]?.text || "null");
+  assertEqual(Array.isArray(taskListEntries), true, "task_list json preserves the array contract");
+  assertEqual(taskListEntries.length, 2, "task_list json returns both smoke tasks");
 
   const parkedTaskId = taskListText.match(/- (task_\S+) \[parked\]/)?.[1] || "";
   const activeTaskId = taskListText.match(/\* (task_\S+) \[active\]/)?.[1] || "";
@@ -261,7 +285,7 @@ try {
 
   console.log("MCP server OK");
   console.log(`Tools: ${toolNames.join(", ")}`);
-  console.log("Flow: modern server/discover -> modern tools/list -> legacy initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
+  console.log("Flow: modern cacheable methods -> legacy initialize -> tools/list -> record_decision -> record_source -> source_status -> task_audit -> release_preflight -> task_status -> task_start -> task_park -> task_start -> task_list -> task_switch -> task_handoff -> task_update_verification -> bundle_export -> bundle_inspect -> bundle_import_plan -> bundle_import (read-only default) -> task_update -> task_finalize -> resume");
 } catch (error) {
   console.error("MCP smoke failed");
   console.error(error instanceof Error ? error.message : String(error));
@@ -376,6 +400,11 @@ function assertEqual(actual, expected, message) {
   if (actual !== expected) {
     throw new Error(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
   }
+}
+
+function assertModernCachePolicy(response, method) {
+  assertEqual(response.result?.ttlMs, 0, `modern ${method} uses a conservative cache TTL`);
+  assertEqual(response.result?.cacheScope, "private", `modern ${method} uses a private cache scope`);
 }
 
 function assertIncludes(values, expected, message) {

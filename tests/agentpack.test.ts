@@ -3603,11 +3603,12 @@ test("task list survives a corrupt background passport and reports a warning", a
     method: "tools/call",
     params: { name: "task_list", arguments: { json: true } }
   });
-  const parsed: { tasks: Array<{ id: string }>; warnings: string[] } = JSON.parse(mcpListingJson.result.content[0].text);
-  assert.equal(parsed.tasks.length, 1);
-  assert.equal(parsed.tasks[0]?.id, currentId);
-  assert.equal(parsed.warnings.length, 1);
-  assert.match(parsed.warnings[0] || "", new RegExp(`Unreadable task passport ${goodId}:`));
+  const parsed: Array<{ id: string }> = JSON.parse(mcpListingJson.result.content[0].text);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0]?.id, currentId);
+  const warnings = mcpListingJson.result._meta?.["io.agentpack/taskListWarnings"] as string[];
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] || "", new RegExp(`Unreadable task passport ${goodId}:`));
 
   writeFileSync(path.join(dir, ".agentpack", "tasks", currentId, "passport.json"), "{ invalid json", "utf8");
   const mcpAllCorruptJson = await mcp.send({
@@ -3616,9 +3617,8 @@ test("task list survives a corrupt background passport and reports a warning", a
     method: "tools/call",
     params: { name: "task_list", arguments: { json: true } }
   });
-  const allCorrupt: { tasks: unknown[]; warnings: string[] } = JSON.parse(mcpAllCorruptJson.result.content[0].text);
-  assert.deepEqual(allCorrupt.tasks, []);
-  assert.equal(allCorrupt.warnings.length, 2);
+  assert.deepEqual(JSON.parse(mcpAllCorruptJson.result.content[0].text), []);
+  assert.equal(mcpAllCorruptJson.result._meta?.["io.agentpack/taskListWarnings"]?.length, 2);
 });
 
 test("parks current task over MCP so a new task can start", async () => {
@@ -3634,7 +3634,8 @@ test("parks current task over MCP so a new task can start", async () => {
     method: "tools/call",
     params: { name: "task_list", arguments: { json: true } }
   });
-  assert.deepEqual(JSON.parse(emptyListJson.result.content[0].text), { tasks: [], warnings: [] });
+  assert.deepEqual(JSON.parse(emptyListJson.result.content[0].text), []);
+  assert.equal(emptyListJson.result._meta, undefined);
 
   const taskStart = await mcp.send({
     jsonrpc: "2.0",
@@ -3780,10 +3781,10 @@ test("parks current task over MCP so a new task can start", async () => {
       arguments: { json: true }
     }
   });
-  const parsedList: { tasks: Array<{ id: string; title: string; status: string; current: boolean }>; warnings: string[] } = JSON.parse(mcpListJson.result.content[0].text);
-  assert.deepEqual(parsedList.warnings, []);
-  const parkedEntry = parsedList.tasks.find((task) => task.title === "Parkable MCP task");
-  const replacementEntry = parsedList.tasks.find((task) => task.title === "Replacement MCP task");
+  const parsedList: Array<{ id: string; title: string; status: string; current: boolean }> = JSON.parse(mcpListJson.result.content[0].text);
+  assert.equal(mcpListJson.result._meta, undefined);
+  const parkedEntry = parsedList.find((task) => task.title === "Parkable MCP task");
+  const replacementEntry = parsedList.find((task) => task.title === "Replacement MCP task");
   assert.ok(parkedEntry);
   assert.ok(replacementEntry);
   assert.equal(parkedEntry.status, "parked");
@@ -3907,6 +3908,8 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.ok(tools.result.tools.some((tool: { name: string }) => tool.name === "record_decision"));
   assert.equal(tools.result.resultType, undefined, "legacy tool responses must not gain modern envelope fields");
+  assert.equal(tools.result.ttlMs, undefined, "legacy tool responses must not gain modern cache fields");
+  assert.equal(tools.result.cacheScope, undefined, "legacy tool responses must not gain modern cache fields");
 
   const modernMeta = {
     "io.modelcontextprotocol/protocolVersion": "2026-07-28",
@@ -3921,6 +3924,8 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
   });
   assert.deepEqual(discover.result.supportedVersions, ["2026-07-28"]);
   assert.equal(discover.result.resultType, "complete");
+  assert.equal(discover.result.ttlMs, 0);
+  assert.equal(discover.result.cacheScope, "private");
   assert.equal(discover.result._meta["io.modelcontextprotocol/serverInfo"].name, "agentpack");
   assert.equal(discover.result.serverInfo, undefined, "modern server identity belongs in result metadata");
 
@@ -3931,7 +3936,25 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     params: { _meta: modernMeta }
   });
   assert.equal(modernTools.result.resultType, "complete");
+  assert.equal(modernTools.result.ttlMs, 0);
+  assert.equal(modernTools.result.cacheScope, "private");
   assert.ok(modernTools.result.tools.some((tool: { name: string }) => tool.name === "load_context"));
+
+  for (const [id, method, params] of [
+    [205, "prompts/list", {}],
+    [206, "resources/list", {}],
+    [207, "resources/read", { uri: "agentpack://resume/latest" }]
+  ] as const) {
+    const response = await mcp.send({
+      jsonrpc: "2.0",
+      id,
+      method,
+      params: { ...params, _meta: modernMeta }
+    });
+    assert.equal(response.result.resultType, "complete", `${method} returns a modern complete result`);
+    assert.equal(response.result.ttlMs, 0, `${method} uses a conservative cache TTL`);
+    assert.equal(response.result.cacheScope, "private", `${method} uses a private cache scope`);
+  }
 
   const modernCall = await mcp.send({
     jsonrpc: "2.0",
@@ -3940,6 +3963,8 @@ test("serves MCP JSON-RPC tools over newline-delimited stdio", async () => {
     params: { _meta: modernMeta, name: "task_status", arguments: {} }
   });
   assert.equal(modernCall.result.resultType, "complete");
+  assert.equal(modernCall.result.ttlMs, undefined, "non-cacheable tools/call omits ttlMs");
+  assert.equal(modernCall.result.cacheScope, undefined, "non-cacheable tools/call omits cacheScope");
   assert.match(modernCall.result.content[0].text, /No current task passport/);
 
   const unsupportedVersion = await mcp.send({

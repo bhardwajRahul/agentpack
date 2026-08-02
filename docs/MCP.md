@@ -11,7 +11,7 @@ Reference: [Model Context Protocol transports](https://modelcontextprotocol.io/d
 The stdio server accepts both MCP protocol eras on the same process:
 
 - Legacy clients use the `initialize` handshake and receive the existing `2025-06-18` response shape.
-- MCP `2026-07-28` clients call `server/discover` or send a request directly with the required protocol version and client capabilities in `params._meta`. Modern responses include `resultType: "complete"` and identify Agentpack through `io.modelcontextprotocol/serverInfo` result metadata.
+- MCP `2026-07-28` clients call `server/discover` or send a request directly with the required protocol version and client capabilities in `params._meta`. Modern responses include `resultType: "complete"` and identify Agentpack through `io.modelcontextprotocol/serverInfo` result metadata. Cacheable `server/discover`, `tools/list`, `prompts/list`, `resources/list`, and `resources/read` results use the conservative `ttlMs: 0` and `cacheScope: "private"` defaults; legacy responses do not include these fields.
 - Unsupported modern protocol versions receive the structured `-32022` error with the requested and supported versions. Missing required modern metadata is rejected as invalid params.
 
 This is protocol-level statelessness, not application-level amnesia: every tool call remains self-contained at the MCP layer, while durable task state stays in the repo's `.agentpack/` files. Agentpack does not map Task Passports to the MCP Tasks extension. MCP Apps, Tasks, remote HTTP, OAuth/OIDC, tunnels, and hosted sync remain separate product decisions rather than requirements for the local stdio server.
@@ -97,7 +97,7 @@ push, tag, publish, or create GitHub Releases.
 
 `task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
 
-`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for structured output: a single JSON object `{ "tasks": [...], "warnings": [...] }`, where `warnings` names any unreadable passport files that were skipped instead of failing the listing. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
+`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for a JSON array, including `[]` when the pack has no tasks. Unreadable passport files are skipped without changing that array contract; their diagnostics are returned in MCP result metadata under `io.agentpack/taskListWarnings`. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
 
 `task_switch` makes another open task current by `id`. A parked task with
 `unknown` or `pending` verification resumes as `active`; a parked task with a
