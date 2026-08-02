@@ -29,6 +29,8 @@ In a local project setup:
 - `.codex/config.toml`: repo-local Codex MCP config created by `agentpack install codex --write`.
 - `.codex/hooks.json`: repo-local Codex task-gate hook created or merged by `agentpack install codex --write`.
 - `.cursor/hooks.json`: repo-local Cursor task-gate hook created or merged by `agentpack install cursor --write`.
+- `.cursor/agents/builder.md`: Cursor-specific builder that inherits the parent model, including Auto on Free plans.
+- `.cursor/cli.json`: Cursor CLI permissions merged with explicit allow entries for read-only Agentpack MCP tools only.
 - `.agentpack/instructions/codex-mcp.example.toml`: local Codex config snippet, created by `agentpack install codex --write`.
 - `.agentpack/instructions/claude-desktop-mcp.example.json`: local Claude Desktop config snippet, created by `agentpack install claude-desktop --write`.
 
@@ -118,11 +120,11 @@ The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP con
 
 The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client claude`, launched through the current Node executable and Agentpack entrypoint rather than the shell `PATH`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved; re-running the installer does not duplicate the hook and upgrades older PATH-based hook entries in place. Because the launcher path pins the Node install, re-run `agentpack install claude --write` after switching Node versions.
 
-`.claude/agents/builder.md` defines an optional builder subagent: a Sonnet-tier implementer the coordinating session invokes explicitly with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. This keeps large implementation context out of the main session on a cheaper model. Delete the file to opt out.
+`.claude/agents/builder.md` defines an optional builder subagent: a Sonnet-tier implementer the coordinating session invokes explicitly with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. This keeps large implementation context out of the main session on a cheaper model. Delete the file to opt out. Cursor uses its separate `.cursor/agents/builder.md`, so Claude-specific model aliases do not leak into Cursor.
 
 The builder frontmatter's `model:` line is user-owned. You can keep the generated `model: sonnet` alias or replace it with a full model ID supported by your Claude Code version. Re-running `agentpack install claude --write` preserves that line while refreshing the rest of the generated builder definition, so later template fixes still apply.
 
-`CLAUDE.md` and `.agentpack/instructions/claude.md` also carry a delegation default: as a rough heuristic, slices needing more than 10-20 tool calls or touching several files are a good fit for the builder subagent, while small focused edits stay inline with the coordinator. This guidance is Claude-only for now; other client integrations do not ship it.
+`CLAUDE.md` and `.agentpack/instructions/claude.md` also carry a delegation default: as a rough heuristic, slices needing more than 10-20 tool calls or touching several files are a good fit for the builder subagent, while small focused edits stay inline with the coordinator. Cursor ships equivalent guidance pointing at its own builder definition.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
@@ -185,12 +187,18 @@ agentpack install cursor --write
 This writes:
 
 - `.cursor/rules/agentpack.mdc`
+- `.cursor/agents/builder.md`
+- `.cursor/cli.json`
 - `.cursor/mcp.json`
 - `.cursor/hooks.json`
 - `.agentpack/instructions/cursor.md`
 
 The Cursor MCP config uses `${workspaceFolder}` so it can point Agentpack at the current project root without hard-coding your local filesystem path.
 The generated MCP entry launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Cursor's GUI `PATH`.
+
+The Cursor builder uses `model: inherit`. This keeps the parent session's model selection, including Auto on Free plans, instead of interpreting Claude Code's `model: sonnet` alias as a pinned named model. Cursor searches `.cursor/agents/` before its Claude-compatibility directory, so the client-specific builder takes precedence without changing `.claude/agents/builder.md`.
+
+Current Cursor CLI versions do not consistently use standard MCP ToolAnnotations when deciding whether a headless tool call needs approval. The installer therefore merges explicit `Mcp(<server>:<tool>)` allow entries into project-local `.cursor/cli.json` for Agentpack's read-only tools only. Existing settings, allow entries, and deny entries are preserved. State-changing tools such as `record_decision`, `checkpoint`, and `task_finalize` are not allowlisted and continue to follow Cursor's approval policy. Agentpack does not use blanket `--approve-mcps` as an installation default.
 
 The `.cursor/hooks.json` merge adds one `preToolUse` hook for `Write|Delete`. Block mode returns `permission: "deny"` with user and agent feedback. Warn mode returns a silent `permission: "allow"`: Cursor only guarantees `agent_message` feedback when an action is denied, so Agentpack does not claim model-visible warning context on allowed edits. Existing hooks and top-level settings are preserved, and repeated installs are idempotent. Cursor hook failures are fail-open by default, so MCP warnings and the git pre-commit gate remain the reliable client-neutral layers. `agentpack init` and `agentpack install cursor --write` keep `.cursor` local through `.gitignore`; rerun the installer after switching Node versions.
 

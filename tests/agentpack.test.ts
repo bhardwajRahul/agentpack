@@ -2407,8 +2407,19 @@ test("previews and writes project-local MCP client install files", () => {
     new RegExp(`mcpServers\\.${serverName}`)
   );
 
+  mkdirSync(path.join(dir, ".cursor"), { recursive: true });
+  writeFileSync(path.join(dir, ".cursor", "cli.json"), JSON.stringify({
+    customSetting: "preserved",
+    permissions: {
+      allow: ["Shell(git)"],
+      deny: ["Shell(rm)"]
+    }
+  }), "utf8");
+
   const cursorInstall = run(dir, ["install", "cursor", "--write"]);
   assert.match(cursorInstall, /warn mode allows silently/);
+  assert.match(cursorInstall, /inherits the parent model/);
+  assert.match(cursorInstall, /read-only MCP tools/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /preserve existing functionality/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
@@ -2417,7 +2428,15 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /separate review task only for unrelated reviews/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or explicitly accepted as complete/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /load_context.*preset: "quick".*focused query/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Delegation default \(builder subagent\)/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /inherits the parent model/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
+  const cursorBuilder = readFileSync(path.join(dir, ".cursor", "agents", "builder.md"), "utf8");
+  assert.match(cursorBuilder, /^name: builder$/m);
+  assert.match(cursorBuilder, /^model: inherit$/m);
+  assert.ok(cursorBuilder.includes(`mcp__${serverName}__load_context`));
+  assert.match(cursorBuilder, /Edit only inside the write scope/);
+  assert.doesNotMatch(cursorBuilder, /archivist/i);
   const cursorMcp = JSON.parse(readFileSync(path.join(dir, ".cursor", "mcp.json"), "utf8"));
   assert.equal(cursorMcp.mcpServers[serverName].type, "stdio");
   assert.equal(cursorMcp.mcpServers[serverName].command, process.execPath);
@@ -2426,6 +2445,19 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(cursorMcp.mcpServers[serverName].args[0], cli);
   assert.deepEqual(cursorMcp.mcpServers[serverName].args.slice(1), ["mcp", "--root", "${workspaceFolder}"]);
   assert.equal(cursorMcp.mcpServers.agentpack, undefined);
+  const cursorCli = JSON.parse(readFileSync(path.join(dir, ".cursor", "cli.json"), "utf8"));
+  const expectedCursorReadOnlyPermissions = TOOL_DEFINITIONS
+    .filter((tool) => tool.annotations.readOnlyHint)
+    .map((tool) => `Mcp(${serverName}:${tool.name})`)
+    .sort();
+  assert.equal(cursorCli.customSetting, "preserved");
+  assert.deepEqual(cursorCli.permissions.deny, ["Shell(rm)"]);
+  assert.deepEqual(
+    cursorCli.permissions.allow.filter((entry: string) => entry.startsWith("Mcp(")).sort(),
+    expectedCursorReadOnlyPermissions
+  );
+  assert.ok(cursorCli.permissions.allow.includes("Shell(git)"));
+  assert.ok(!cursorCli.permissions.allow.includes(`Mcp(${serverName}:record_decision)`));
   const cursorHooks = JSON.parse(readFileSync(path.join(dir, ".cursor", "hooks.json"), "utf8")) as {
     version: number;
     hooks: { preToolUse: Array<{ command: string; matcher: string }> };
@@ -2435,6 +2467,12 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(cursorHooks.hooks.preToolUse[0]?.matcher, "Write|Delete");
   assert.match(cursorHooks.hooks.preToolUse[0]?.command || "", /task gate --client cursor$/);
   assert.match(runGit(dir, ["check-ignore", ".cursor/hooks.json"]), /\.cursor\/hooks\.json/);
+
+  run(dir, ["install", "cursor", "--write"]);
+  const reinstalledCursorCli = JSON.parse(readFileSync(path.join(dir, ".cursor", "cli.json"), "utf8"));
+  for (const permission of expectedCursorReadOnlyPermissions) {
+    assert.equal(reinstalledCursorCli.permissions.allow.filter((entry: string) => entry === permission).length, 1);
+  }
 
   const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
@@ -2485,6 +2523,23 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(codexSnippet, /args = \["mcp"\]/);
   assert.doesNotMatch(codexSnippet, /args = \["mcp", "--root"/);
   assert.doesNotMatch(codexSnippet, /cwd =/);
+});
+
+test("writes a schema-complete fresh Cursor CLI permission config", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-cursor-cli-test-"));
+  const serverName = expectedMcpServerName(dir);
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+
+  run(dir, ["install", "cursor", "--write"]);
+
+  const cursorCli = JSON.parse(readFileSync(path.join(dir, ".cursor", "cli.json"), "utf8"));
+  const expectedCursorReadOnlyPermissions = TOOL_DEFINITIONS
+    .filter((tool) => tool.annotations.readOnlyHint)
+    .map((tool) => `Mcp(${serverName}:${tool.name})`)
+    .sort();
+  assert.deepEqual(cursorCli.permissions.allow.slice().sort(), expectedCursorReadOnlyPermissions);
+  assert.deepEqual(cursorCli.permissions.deny, []);
 });
 
 test("writes ledger files and directories with owner-only permissions", { skip: process.platform === "win32" }, () => {

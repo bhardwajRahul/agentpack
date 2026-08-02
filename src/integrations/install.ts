@@ -10,6 +10,20 @@ const GATE_ROOT_MARKER = "# agentpack:root-base64 ";
 const CLAUDE_GATE_MARKER = "task gate --client claude";
 const CODEX_GATE_MARKER = "task gate --client codex";
 const CURSOR_GATE_MARKER = "task gate --client cursor";
+const CURSOR_READ_ONLY_MCP_TOOLS = [
+  "bundle_import_plan",
+  "bundle_inspect",
+  "diff",
+  "load_context",
+  "release_preflight",
+  "replay",
+  "resume",
+  "source_status",
+  "task_audit",
+  "task_handoff",
+  "task_list",
+  "task_status"
+] as const;
 
 export function formatClientGateCommand(
   execPath: string,
@@ -130,6 +144,13 @@ const CLAUDE_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
 - the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
 - small, focused edits stay inline in the coordinator session
 - this is a default heuristic, not a hard rule; it keeps large implementation context off the coordinator and runs the work on a cheaper model
+`;
+
+const CURSOR_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
+- when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.cursor/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
+- the Cursor builder inherits the parent model so Free-plan sessions can use Auto instead of a pinned named model
+- the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
+- small, focused edits stay inline in the coordinator session
 `;
 
 function claudeInstructions(): string {
@@ -296,12 +317,16 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
       ignorePatternPlan(root, ".cursor", "Keep project-local Cursor integration files out of git."),
       writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
       writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
+      writeFilePlan(root, ".cursor/agents/builder.md", "Write the builder subagent definition for Cursor.", cursorBuilderAgent(serverName)),
       jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer()),
+      cursorCliPermissionsPlan(root, serverName),
       cursorHooksMergePlan(root)
     ],
     notes: [
       "Only project-local files are modified.",
       "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
+      "The Cursor builder inherits the parent model, including Auto on Free plans; the Claude builder remains separate and unchanged.",
+      "Cursor CLI permissions allow only Agentpack's read-only MCP tools without prompting; write-capable Agentpack tools still require approval.",
       "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode allows silently, while block mode denies violations with feedback.",
       "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
       "The Cursor MCP entry uses an absolute Node launcher so Cursor does not depend on your shell/fnm/nvm PATH."
@@ -764,6 +789,10 @@ If verification fails twice on the same slice, or you are stalled, stop and repo
 Your final message is the handoff. Report: what changed (files plus a summary), how it was verified (commands and results), any deviations from the brief, and durable conclusions worth recording, clearly labeled as candidate facts for the coordinator.`;
 }
 
+function cursorBuilderAgent(serverName: string): string {
+  return claudeBuilderAgent(serverName, "model: inherit");
+}
+
 function existingClaudeBuilderModelLine(root: string): string {
   const builderPath = path.join(root, ".claude", "agents", "builder.md");
   if (!existsSync(builderPath)) {
@@ -844,10 +873,13 @@ function cursorInstructions(): string {
   return [
     INSTRUCTIONS.trimEnd(),
     "",
+    CURSOR_DELEGATION_GUIDANCE.trim(),
+    "",
     "Cursor-specific notes:",
     "- Project MCP only applies when Cursor opens this folder as the workspace root.",
     "- After `agentpack install cursor --write`, reload the Cursor window so `.cursor/mcp.json` is re-read.",
     "- In Cursor, open MCP Servers and enable the `agentpack` server if it appears toggled off.",
+    "- `.cursor/cli.json` explicitly allows only read-only Agentpack MCP tools; state-changing tools still follow Cursor's approval policy.",
     "- If Agentpack MCP tools are not visible in Cursor, run `agentpack doctor` and check Cursor's MCP/server logs.",
     "- If MCP is unavailable, use the CLI equivalents: `agentpack resume --preset agent`, `agentpack source status`, and `agentpack checkpoint ...`."
   ].join("\n");
@@ -858,6 +890,28 @@ function cursorMcpServer(): Record<string, unknown> {
     type: "stdio",
     command: process.execPath,
     args: [agentpackEntrypoint(), "mcp", "--root", "${workspaceFolder}"]
+  };
+}
+
+function cursorCliPermissionsPlan(root: string, serverName: string): InstallFile {
+  const filePath = path.join(root, ".cursor", "cli.json");
+  const existing = readJson<Record<string, unknown>>(filePath, {});
+  const permissions = isRecord(existing.permissions) ? { ...existing.permissions } : {};
+  const existingAllow = Array.isArray(permissions.allow) ? [...permissions.allow] : [];
+  const deny = Array.isArray(permissions.deny) ? [...permissions.deny] : [];
+  const readOnlyAllow = CURSOR_READ_ONLY_MCP_TOOLS.map((tool) => `Mcp(${serverName}:${tool})`);
+  const allow = [...existingAllow];
+
+  for (const entry of readOnlyAllow) {
+    if (!allow.includes(entry)) {
+      allow.push(entry);
+    }
+  }
+
+  return {
+    filePath,
+    description: "Allow only read-only Agentpack MCP tools in project Cursor CLI config.",
+    content: `${JSON.stringify({ ...existing, permissions: { ...permissions, allow, deny } }, null, 2)}\n`
   };
 }
 
