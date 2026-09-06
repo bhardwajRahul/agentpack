@@ -658,9 +658,9 @@ test("cross-client continuity preserves directional facts across drifted and imp
   assert.match(freshResume, /No inspected sources recorded yet\./, "a bundle carries selected source artifacts, not an unreviewed destination source-cache conclusion");
 
   writeFileSync(desktopConfig, JSON.stringify({ mcpServers: { preserved: { command: "preserve" } } }), "utf8");
-  run(source, ["install", "codex", "--write", "--with-builder"]);
-  run(source, ["install", "claude", "--write", "--with-builder"]);
-  run(source, ["install", "cursor", "--write", "--with-builder"]);
+  run(source, ["install", "codex", "--write"]);
+  run(source, ["install", "claude", "--write"]);
+  run(source, ["install", "cursor", "--write"]);
   installIntegration(realpathSync(source), "claude-desktop", { dryRun: false, claudeDesktopConfigPath: desktopConfig });
 
   const clientSurfaces: Array<[string, string, string[]]> = [
@@ -3220,22 +3220,22 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(existsSync(path.join(dir, ".mcp.json")), false);
   assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), false);
 
-  const claudeInstall = run(dir, ["install", "claude", "--write", "--with-builder"]);
+  const claudeInstall = run(dir, ["install", "claude", "--write"]);
   assert.match(claudeInstall, /Installed Agentpack claude integration/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Read-only questions do not need a new task/);
   assert.match(readFileSync(path.join(dir, ".agentpack", "instructions", "verification.md"), "utf8"), /Adversarial check type:/);
   assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), true);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /agentpack:start/);
   assertCoreInstructions("CLAUDE.md");
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Delegation default \(builder subagent\)/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /more than roughly 10-20 tool calls/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Optional builder:/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Before delegating, briefly announce/);
   assert.match(
     readFileSync(path.join(dir, ".agentpack", "instructions", "claude.md"), "utf8"),
-    /Delegation default \(builder subagent\)/
+    /Optional builder:/
   );
   assert.match(
     readFileSync(path.join(dir, ".agentpack", "instructions", "claude.md"), "utf8"),
-    /more than roughly 10-20 tool calls/
+    /Before delegating, briefly announce/
   );
   const claudeMcp = JSON.parse(readFileSync(path.join(dir, ".mcp.json"), "utf8"));
   assert.deepEqual(claudeMcp.mcpServers[serverName], {
@@ -3252,15 +3252,15 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(builderAgent, /warns by default and blocks when gateMode is "block"/);
   assert.match(builderAgent, /recording is the coordinator's job/);
   assert.doesNotMatch(builderAgent, /archivist/i);
-  assert.match(claudeInstall, /optional Claude builder/);
-  assert.match(builderAgent, /roughly 10-20 tool calls or multi-file changes/);
+  assert.match(claudeInstall, /Claude builder is available for optional use/);
+  assert.match(builderAgent, /Invoke when the user requests it or current instructions permit delegation/);
 
   writeFileSync(
     path.join(dir, ".claude", "agents", "builder.md"),
     builderAgent.replace("model: sonnet", "model: claude-sonnet-custom-id") + "\nStale user-edited template content.\n",
     "utf8"
   );
-  const claudeReinstall = run(dir, ["install", "claude", "--write", "--with-builder"]);
+  const claudeReinstall = run(dir, ["install", "claude", "--write"]);
   assert.match(claudeReinstall, /Installed Agentpack claude integration/);
   const reinstalledBuilder = readFileSync(path.join(dir, ".claude", "agents", "builder.md"), "utf8");
   assert.match(reinstalledBuilder, /^model: claude-sonnet-custom-id$/m);
@@ -3353,7 +3353,7 @@ test("previews and writes project-local MCP client install files", () => {
     }
   }), "utf8");
 
-  const cursorInstall = run(dir, ["install", "cursor", "--write", "--with-builder"]);
+  const cursorInstall = run(dir, ["install", "cursor", "--write"]);
   assert.match(cursorInstall, /warn mode allows silently/);
   assert.match(cursorInstall, /inherits the parent model/);
   assert.match(cursorInstall, /read-only MCP tools/);
@@ -3361,8 +3361,8 @@ test("previews and writes project-local MCP client install files", () => {
   assertCoreInstructions(".cursor/rules/agentpack.mdc");
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /review mode: review the current diff/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /load_context.*preset: "quick".*focused query/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Delegation default \(builder subagent\)/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /inherits the parent model/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Optional builder:/);
+  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Before delegating, briefly announce/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Cursor-specific notes/);
   const cursorBuilder = readFileSync(path.join(dir, ".cursor", "agents", "builder.md"), "utf8");
   assert.match(cursorBuilder, /^name: builder$/m);
@@ -3401,13 +3401,13 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(cursorHooks.hooks.preToolUse[0]?.command || "", /task gate --client cursor$/);
   assert.match(runGit(dir, ["check-ignore", ".cursor/hooks.json"]), /\.cursor\/hooks\.json/);
 
-  run(dir, ["install", "cursor", "--write", "--with-builder"]);
+  run(dir, ["install", "cursor", "--write"]);
   const reinstalledCursorCli = JSON.parse(readFileSync(path.join(dir, ".cursor", "cli.json"), "utf8"));
   for (const permission of expectedCursorReadOnlyPermissions) {
     assert.equal(reinstalledCursorCli.permissions.allow.filter((entry: string) => entry === permission).length, 1);
   }
 
-  const codexInstall = run(dir, ["install", "codex", "--write", "--with-builder"]);
+  const codexInstall = run(dir, ["install", "codex", "--write"]);
   assert.match(codexInstall, /No global Codex config is modified/);
   assert.match(codexInstall, /project-local \.codex\/config\.toml/);
   assert.match(codexInstall, /gpt-5\.6-terra at medium reasoning/);
@@ -3431,12 +3431,12 @@ test("previews and writes project-local MCP client install files", () => {
     /do not finalize a task just to free the current slot/,
     /prefer one aggregated verification evidence and one checkpoint/
   ]) assert.match(verification, boundary);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default \(builder subagent\)/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Optional builder:/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /one writer per slice/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /gpt-5\.6-terra at medium reasoning/);
+  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /current instructions permit delegation/);
   assert.match(
     readFileSync(path.join(dir, ".agentpack", "instructions", "codex.md"), "utf8"),
-    /Delegation default \(builder subagent\)/
+    /Optional builder:/
   );
   const codexConfig = readFileSync(path.join(dir, ".codex", "config.toml"), "utf8");
   assert.match(codexConfig, new RegExp(`\\[mcp_servers\\.${escapeRegExp(serverName)}\\]`));
@@ -3483,7 +3483,7 @@ test("previews and writes project-local MCP client install files", () => {
       .replace("You are the builder for one scoped implementation slice.", "Stale managed builder instructions."),
     "utf8"
   );
-  run(dir, ["install", "codex", "--write", "--with-builder"]);
+  run(dir, ["install", "codex", "--write"]);
   const reinstalledCodexBuilder = readFileSync(codexBuilderPath, "utf8");
   assert.match(reinstalledCodexBuilder, /^model = "gpt-5\.6-sol"$/m);
   assert.match(reinstalledCodexBuilder, /^model_reasoning_effort = "high"$/m);
@@ -3508,119 +3508,82 @@ model = "custom-model"
   mkdirSync(path.dirname(builderPath), { recursive: true });
   writeFileSync(builderPath, existingBuilder, "utf8");
 
-  const install = run(dir, ["install", "codex", "--write", "--with-builder"]);
+  const install = run(dir, ["install", "codex", "--write"]);
 
   assert.match(install, /existing unmarked \.codex\/agents\/builder\.toml was left untouched/);
   assert.equal(readFileSync(builderPath, "utf8"), existingBuilder);
 });
 
-test("installs builders only with explicit opt-in and preserves existing builder bytes", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-opt-in-test-"));
-  runGit(dir, ["init"]);
+test("installs builders by default with optional use and preserves custom files", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-default-test-"));
   run(dir, ["init"]);
-
   const clients = [
     { target: "codex", instructions: "AGENTS.md", builder: ".codex/agents/builder.toml" },
     { target: "claude", instructions: "CLAUDE.md", builder: ".claude/agents/builder.md" },
     { target: "cursor", instructions: ".cursor/rules/agentpack.mdc", builder: ".cursor/agents/builder.md" }
   ];
   for (const { target, instructions, builder } of clients) {
-    const defaultPreview = run(dir, ["install", target]);
-    assert.match(defaultPreview, new RegExp(`agentpack install ${target} --write`));
-    assert.doesNotMatch(defaultPreview, /\.\w+\/agents\/builder/);
+    const preview = run(dir, ["install", target]);
+    assert.match(preview, new RegExp(`agentpack install ${target} --write`));
+    assert.ok(preview.includes(builder));
+    assert.equal(existsSync(path.join(dir, builder)), false, "preview does not install a builder");
     run(dir, ["install", target, "--write"]);
-    assert.equal(existsSync(path.join(dir, builder)), false);
     const core = readFileSync(path.join(dir, instructions), "utf8");
-    assert.doesNotMatch(core, /Delegation default/);
-    // All three baseline surfaces exceeded 8,900 characters at fbb9e1f.
-    assert.ok(core.length <= 5000, `${target} core should stay substantially below the old always-on budget`);
-    assert.match(core, /verification\.md/);
-    assert.match(core, /checkpoint the summary, current status, and next actions/);
-  }
-  assert.equal(existsSync(path.join(dir, ".codex", "agents", "builder.toml")), false);
-  assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), false);
-  assert.equal(existsSync(path.join(dir, ".cursor", "agents", "builder.md")), false);
-  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default/);
-
-  const builderPaths: [string, string, string] = [
-    path.join(dir, ".codex", "agents", "builder.toml"),
-    path.join(dir, ".claude", "agents", "builder.md"),
-    path.join(dir, ".cursor", "agents", "builder.md")
-  ];
-  for (const { target, builder, instructions } of clients) {
-    const preview = run(dir, ["install", target, "--with-builder"]);
-    assert.match(preview, new RegExp(`agentpack install ${target} --write --with-builder`));
-    assert.equal(existsSync(path.join(dir, builder)), false, "opt-in preview must not create builders");
-    run(dir, ["install", target, "--write", "--with-builder=true"]);
-    assert.match(readFileSync(path.join(dir, instructions), "utf8"), /Delegation default/);
-  }
-  for (const builderPath of builderPaths) {
-    assert.equal(existsSync(builderPath), true);
-  }
-
-  const customClaude = "custom Claude builder bytes\n";
-  const customCursor = "custom Cursor builder bytes\n";
-  writeFileSync(builderPaths[1], customClaude, "utf8");
-  writeFileSync(builderPaths[2], customCursor, "utf8");
-  run(dir, ["install", "claude", "--write", "--with-builder"]);
-  run(dir, ["install", "cursor", "--write", "--with-builder"]);
-  assert.equal(readFileSync(builderPaths[1], "utf8"), customClaude);
-  assert.equal(readFileSync(builderPaths[2], "utf8"), customCursor);
-
-  for (const { target, instructions, builder } of clients) {
+    assert.match(core, /Optional builder:/);
+    assert.match(core, /using it is not required/);
+    assert.match(core, /when the user explicitly requests it.*current instructions permit delegation/);
+    assert.match(core, /Respect requests to work without subagents/);
+    assert.match(core, /Before delegating, briefly announce/);
+    assert.match(core, /announcement does not grant authorization/);
+    assert.match(core, /file counts and tool-call counts do not require delegation/);
+    assert.ok(core.length <= 5000, "default instructions remain substantially shorter than the original 8900+ characters");
     const builderPath = path.join(dir, builder);
-    const before = readFileSync(builderPath);
+    const original = readFileSync(builderPath, "utf8");
+    assert.match(original, /Invoke when the user requests it or current instructions permit delegation/);
+    assert.doesNotMatch(original, /10-20 tool calls|Use for multi-file/);
+    const custom = target === "codex" ? original.replace('model = "gpt-5.6-terra"', 'model = "custom-model"') : "User-owned custom builder instructions\n";
+    writeFileSync(builderPath, custom, "utf8");
     const mtime = statSync(builderPath).mtimeMs;
-    run(dir, ["install", target, "--write"]);
-    assert.deepEqual(readFileSync(builderPath), before);
-    assert.equal(statSync(builderPath).mtimeMs, mtime, "default reinstall must not rewrite existing builders");
-    const core = readFileSync(path.join(dir, instructions), "utf8");
-    assert.doesNotMatch(core, /Delegation default/);
-    const repeated = run(dir, ["install", target, "--write", "--with-builder=false"]);
-    assert.doesNotMatch(repeated, /(?:CREATE|UPDATE) /, "default reinstall should be idempotent");
+    const reinstall = run(dir, ["install", target, "--write"]);
+    assert.equal(readFileSync(builderPath, "utf8"), custom);
+    assert.equal(statSync(builderPath).mtimeMs, mtime);
     assert.equal(readFileSync(path.join(dir, instructions), "utf8"), core);
+    assert.doesNotMatch(reinstall, /(?:CREATE|UPDATE) /, "reinstall is idempotent");
   }
 });
 
-test("rejects unsupported or malformed builder options before writing files", () => {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-invalid-test-"));
+test("rejects unknown install options before writing files", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-install-option-test-"));
   run(dir, ["init"]);
   const snapshot = (): Array<[string, string]> => walkEntries(dir)
     .filter((file) => statSync(file).isFile())
     .sort()
     .map((file) => [path.relative(dir, file), readFileSync(file).toString("hex")]);
   const before = snapshot();
-  for (const target of ["claude-desktop", "git-hooks"]) {
-    for (const mode of ["--dry-run", "--write"]) {
-      assert.match(runExpectError(dir, ["install", target, "--with-builder", mode]), /supported only for codex, claude, and cursor/);
-      assert.deepEqual(snapshot(), before);
-    }
-  }
-  for (const value of ["maybe", "true=garbage", "false=garbage"]) {
-    assert.match(runExpectError(dir, ["install", "codex", `--with-builder=${value}`, "--write"]), /--with-builder requires true or false/);
+  for (const target of ["codex", "claude", "cursor", "claude-desktop", "git-hooks"]) {
+    assert.match(runExpectError(dir, ["install", target, "--unknown-option=false", "--write"]), /Unknown install option/);
     assert.deepEqual(snapshot(), before);
   }
 });
 
-test("default installs ignore optional builder symlinks and opt-in rejects them", { skip: process.platform === "win32" }, () => {
+test("builder installs reject live and dangling symlinks before writes", { skip: process.platform === "win32" }, () => {
   for (const target of ["codex", "claude", "cursor"]) {
     for (const dangling of [false, true]) {
       const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-symlink-test-"));
       const outside = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-outside-test-"));
       const victim = path.join(outside, "builder.md");
-      const content = "User-owned external builder; do not read or overwrite.\n";
+      const content = "User-owned external builder; do not overwrite.\n";
       if (!dangling) writeFileSync(victim, content, "utf8");
       run(dir, ["init"]);
       mkdirSync(path.join(dir, `.${target}`, "agents"), { recursive: true });
       symlinkSync(victim, path.join(dir, `.${target}`, "agents", target === "codex" ? "builder.toml" : "builder.md"));
-
-      run(dir, ["install", target, "--write"]);
       const instructionFile = target === "codex" ? "AGENTS.md" : target === "claude" ? "CLAUDE.md" : ".cursor/rules/agentpack.mdc";
-      const before = readFileSync(path.join(dir, instructionFile), "utf8");
-      assert.match(runExpectError(dir, ["install", target, "--with-builder", "--write"]), /symbolic link/);
-      assert.equal(existsSync(victim), !dangling, "opt-in must not create a dangling link's external target");
-      if (!dangling) assert.equal(readFileSync(victim, "utf8"), content);
-      assert.equal(readFileSync(path.join(dir, instructionFile), "utf8"), before, "failed opt-in must not partially update primary instructions");
+      for (const mode of ["--dry-run", "--write"]) {
+        assert.match(runExpectError(dir, ["install", target, mode]), /symbolic link/);
+        assert.equal(existsSync(victim), !dangling, "install must not create the external target");
+        if (!dangling) assert.equal(readFileSync(victim, "utf8"), content);
+        assert.equal(existsSync(path.join(dir, instructionFile)), false, "failed install must not partially write instructions");
+      }
     }
   }
 });

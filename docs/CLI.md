@@ -15,12 +15,11 @@ immediately before atomic replacement; this is optimistic conflict detection,
 not a lock on actively rewriting third-party processes. The dry-run form does
 not change either local or global files.
 
-For `codex`, `claude`, and `cursor`, add `--with-builder` to install an optional
-builder and delegation guidance: `agentpack install codex --with-builder --write`.
-Without the flag, no builder is created or modified. Existing Claude/Cursor
-builders are preserved even with the flag; Codex updates only a managed block.
-`claude-desktop` and `git-hooks` reject the flag before writes. See
-[integration details](INTEGRATIONS.md#optional-builder) for reinstall behavior.
+For `codex`, `claude`, and `cursor`, the default install includes a builder and
+brief guidance for optional, announced use. Existing Claude/Cursor builders are
+preserved; Codex updates only a managed block. Claude Desktop and git-hooks do
+not install builders. See [integration details](INTEGRATIONS.md#optional-builder)
+for usage and reinstall behavior.
 
 ## Inspect State
 

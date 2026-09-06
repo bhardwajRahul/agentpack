@@ -44,9 +44,9 @@ Run `agentpack doctor` to verify the setup, and `agentpack resume --preset agent
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for client-by-client setup, including what each installer writes and why.
 
-Builder agents are optional: add `--with-builder` to the Codex, Claude Code, or
-Cursor installer when you want delegation support. The default install focuses
-on task continuity and preserves any existing builder files.
+Codex, Claude Code, and Cursor installs include a builder. Using it is optional:
+ask for it explicitly, or let the agent select and announce a useful slice when
+your instructions permit delegation. Small tasks stay with the main agent.
 
 ## How it works
 

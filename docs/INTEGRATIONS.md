@@ -27,11 +27,11 @@ In a local project setup:
 - `.mcp.json`: repo-root project MCP config for Claude Code.
 - `AGENTS.md`: repo-root project instructions for Codex.
 - `.codex/config.toml`: repo-local Codex MCP config created by `agentpack install codex --write`.
-- `.codex/agents/builder.toml`: optional project-scoped Codex builder, installed with `--with-builder`.
+- `.codex/agents/builder.toml`: project-scoped Codex builder, installed by default for optional use.
 - `.codex/hooks.json`: repo-local Codex task-gate hook created or merged by `agentpack install codex --write`.
 - `.cursor/hooks.json`: repo-local Cursor task-gate hook created or merged by `agentpack install cursor --write`.
-- `.claude/agents/builder.md`: optional Claude Code builder, installed with `--with-builder`.
-- `.cursor/agents/builder.md`: optional Cursor builder, installed with `--with-builder`.
+- `.claude/agents/builder.md`: Claude Code builder, installed by default for optional use.
+- `.cursor/agents/builder.md`: Cursor builder, installed by default for optional use.
 - `.agentpack/instructions/verification.md`: detailed verification and completion guidance, installed for Codex, Claude Code, and Cursor and read at verification boundaries.
 - `.cursor/cli.json`: Cursor CLI permissions merged with explicit allow entries for read-only Agentpack MCP tools only.
 - `.agentpack/instructions/codex-mcp.example.toml`: local Codex config snippet, created by `agentpack install codex --write`.
@@ -76,25 +76,20 @@ Other installers do not edit global client configuration.
 
 ### Optional Builder
 
-The default install configures task continuity without creating a builder or
-adding delegation defaults. To include one, preview and apply explicitly:
+Codex, Claude Code, and Cursor installs include a builder. There is no separate
+builder installation choice. Claude Desktop and git-hooks do not install one.
 
-```bash
-agentpack install codex --with-builder
-agentpack install codex --with-builder --write
-# The same flag is supported for claude and cursor.
-```
+Availability does not require use: ask for a builder explicitly, or let the
+coordinator select a useful bounded slice when the current instructions permit
+delegation. The coordinator briefly announces what it delegates and why, keeps
+small tasks inline, and retains decisions, ledger records, final verification,
+and delivery responsibility. File counts or tool-call counts do not trigger
+mandatory delegation. An announcement does not grant permission.
 
-`--with-builder` is not supported for `claude-desktop` or `git-hooks`; those
-combinations fail before writing files. Without the flag, reinstalling leaves
-all existing builder files untouched and removes delegation guidance from the
-managed primary instructions. This does not disable a builder already available
-to the client. Keep or remove that existing agent separately as you prefer.
-
-With the flag, existing Claude Code and Cursor builder files are preserved in
-full, including model settings and custom instructions. Codex refreshes only its
-marked managed block, preserving user settings outside it; unmarked Codex agents
-are preserved in full. Review any desired changes to preserved builders manually.
+Existing Claude Code and Cursor builder files are preserved in full. Codex
+refreshes only its marked managed block, preserving user settings outside it;
+unmarked Codex agents are preserved in full. Existing descriptions may therefore
+retain older guidance; the current primary instructions govern optional use.
 
 The compact primary instructions retain task boundaries and link to
 `.agentpack/instructions/verification.md` for final verification, external review,
@@ -114,6 +109,7 @@ This writes:
 - `AGENTS.md`
 - `.codex/config.toml`
 - `.codex/hooks.json`
+- `.codex/agents/builder.toml`
 - `.agentpack/instructions/codex.md`
 - `.agentpack/instructions/verification.md`
 - `.agentpack/instructions/codex-mcp.example.toml`
@@ -130,13 +126,13 @@ Do not keep an older global `~/.codex/config.toml` entry with `args = ["mcp", "-
 
 If Agentpack still reports the wrong Pack root in Codex, remove the stale global `mcp_servers.agentpack` block, keep the project-local `.codex/config.toml`, then restart or reconnect the MCP server.
 
-Adding `--with-builder` installs `.codex/agents/builder.toml`, an optional implementation-focused custom agent. Its generated defaults are `gpt-5.6-terra` with medium reasoning; the coordinator keeps architecture, security-sensitive decisions, final verification, commits, and release actions. The builder is useful for a coherent implementation slice spanning several files. Keep small edits in the coordinator, and run multiple builders only when their write scopes do not overlap.
+The installer includes `.codex/agents/builder.toml`, an optional implementation-focused custom agent. Its generated defaults are `gpt-5.6-terra` with medium reasoning; the coordinator keeps architecture, security-sensitive decisions, final verification, commits, and release actions. The builder is useful for a coherent implementation slice spanning several files. Keep small edits in the coordinator, and run multiple builders only when their write scopes do not overlap.
 
 The builder receives a brief containing the active Task Passport objective, constraints, write scope, acceptance criteria, and narrow verification command. Its Agentpack MCP view is restricted to `load_context`; the quick resume already carries lifecycle and write-scope state, so a second status call would only duplicate context. The custom-agent config explicitly approves that one known read-only tool so non-interactive builder runs do not cancel it while every mutable Agentpack tool remains unavailable. Ledger mutation stays with the coordinator. The generated instructions also tell the builder to stop after repeated verification failure or when the slice needs a product, architecture, security, or scope decision instead of looping on a cheaper model.
 
 Generated client instructions keep one Passport for a coherent phase: use another only for an unrelated objective, materially different authorization boundary, or independent review requiring a separate frozen snapshot. Builders keep verification pending while remediating; intermediate green checks are evidence/checkpoints, and the coordinator records the final verdict only after edits end.
 
-Runtime settings before `# agentpack:builder:start` are user-owned. Re-running the installer with `--with-builder` refreshes the managed role and instructions while preserving changes such as `model`, `model_reasoning_effort`, and `sandbox_mode`, plus configuration outside the managed block. Delete the model lines to inherit the configured subagent or parent defaults. If `.codex/agents/builder.toml` already exists without Agentpack markers, the installer leaves it untouched rather than overwriting a user-defined agent.
+Runtime settings before `# agentpack:builder:start` are user-owned. Re-running the installer refreshes the managed role and instructions while preserving changes such as `model`, `model_reasoning_effort`, and `sandbox_mode`, plus configuration outside the managed block. Delete the model lines to inherit the configured subagent or parent defaults. If `.codex/agents/builder.toml` already exists without Agentpack markers, the installer leaves it untouched rather than overwriting a user-defined agent.
 
 The `.codex/hooks.json` merge adds one `PreToolUse` hook on `apply_patch`. It runs the shared gate through the current Node executable and Agentpack entrypoint, with a separate `commandWindows` launcher for Windows. Codex sends the patch text to the adapter, which checks every add, update, delete, and move path against the current Task Passport. Block mode returns a deny decision; warn mode adds model-visible context. Existing hooks are preserved and re-running the installer replaces the Agentpack entry instead of duplicating it.
 
@@ -155,6 +151,7 @@ This writes:
 - `CLAUDE.md`
 - `.mcp.json`
 - `.claude/settings.json`
+- `.claude/agents/builder.md`
 - `.agentpack/instructions/claude.md`
 - `.agentpack/instructions/verification.md`
 
@@ -162,11 +159,11 @@ The `.mcp.json` file is project-local. Claude Code treats project-scoped MCP con
 
 The `.claude/settings.json` merge adds one PreToolUse hook (`task gate --client claude`, launched through the current Node executable and Agentpack entrypoint rather than the shell `PATH`) on the `Edit|Write|MultiEdit|NotebookEdit` tools. Before each file edit, Claude Code runs the gate against the current Task Passport: in the default `warn` mode a violation is injected as additional context so the agent can self-correct; with `"gateMode": "block"` in `.agentpack/config.json` the edit is denied with the reason. Existing settings keys and hooks are preserved; re-running the installer does not duplicate the hook and upgrades older PATH-based hook entries in place. Because the launcher path pins the Node install, re-run `agentpack install claude --write` after switching Node versions.
 
-Adding `--with-builder` installs `.claude/agents/builder.md`: a Sonnet-tier implementer the coordinating session invokes with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. Cursor uses its separate `.cursor/agents/builder.md`, so Claude-specific model aliases do not leak into Cursor.
+The installer includes `.claude/agents/builder.md`: a Sonnet-tier implementer the coordinating session invokes with a brief (task objective, constraints, write scope). It works only inside the declared write scope, verifies its slice, and reports back; recording Agentpack state stays with the coordinator. Cursor uses its separate `.cursor/agents/builder.md`, so Claude-specific model aliases do not leak into Cursor.
 
-The builder file is user-owned once created. You can change its `model: sonnet` alias or instructions. Reinstalling, with or without `--with-builder`, preserves the whole existing file; template updates require manual review.
+The builder file is user-owned once created. You can change its `model: sonnet` alias or instructions. Reinstalling preserves the whole existing file; template updates require manual review.
 
-Only installations with `--with-builder` add delegation guidance to `CLAUDE.md` and `.agentpack/instructions/claude.md`. Codex and Cursor use the same opt-in behavior for their own instruction files.
+The primary instructions explain optional, announced builder use. Codex and Cursor carry the same usage policy for their own builders.
 
 Official reference: [Claude Code MCP docs](https://docs.claude.com/en/docs/claude-code/mcp) and [hooks reference](https://code.claude.com/docs/en/hooks.md).
 
@@ -222,6 +219,7 @@ agentpack install cursor --write
 This writes:
 
 - `.cursor/rules/agentpack.mdc`
+- `.cursor/agents/builder.md`
 - `.cursor/cli.json`
 - `.cursor/mcp.json`
 - `.cursor/hooks.json`
@@ -231,7 +229,7 @@ This writes:
 The Cursor MCP config uses `${workspaceFolder}` so it can point Agentpack at the current project root without hard-coding your local filesystem path.
 The generated MCP entry launches Agentpack through the current Node executable and Agentpack entrypoint, rather than relying on `agentpack` being available in Cursor's GUI `PATH`.
 
-Adding `--with-builder` creates `.cursor/agents/builder.md` with `model: inherit`. This retains the parent session's model selection instead of using Claude Code's `model: sonnet` alias. Existing Cursor builder files are preserved in full. Installing a Cursor builder does not change `.claude/agents/builder.md`.
+The installer creates `.cursor/agents/builder.md` with `model: inherit`. This retains the parent session's model selection instead of using Claude Code's `model: sonnet` alias. Existing Cursor builder files are preserved in full. Installing a Cursor builder does not change `.claude/agents/builder.md`.
 
 Current Cursor CLI versions do not consistently use standard MCP ToolAnnotations when deciding whether a headless tool call needs approval. The installer therefore merges explicit `Mcp(<server>:<tool>)` allow entries into project-local `.cursor/cli.json` for Agentpack's read-only tools only. Existing settings, allow entries, and deny entries are preserved. State-changing tools such as `record_decision`, `checkpoint`, and `task_finalize` are not allowlisted and continue to follow Cursor's approval policy. Agentpack does not use blanket `--approve-mcps` as an installation default.
 

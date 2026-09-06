@@ -61,8 +61,10 @@ from the checkpoint and final verdict instead of copying its output repeatedly.
 Generated client instructions keep this core workflow short and load
 `.agentpack/instructions/verification.md` for final verification, external review,
 or release work. That reference preserves the existing verification policy.
-Builder installation and delegation guidance require `--with-builder`; they are
-not prerequisites for continuity.
+Builder availability comes with supported client installs. Actual delegation is
+optional: use an explicit user request or permission in the current instructions,
+and announce the selected slice. Small tasks stay inline; file or tool-call
+counts alone do not require delegation.
 
 ```text
 record_source(path, summary)

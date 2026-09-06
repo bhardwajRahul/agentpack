@@ -113,41 +113,27 @@ Evidence cadence:
 
 After meaningful progress, call \`checkpoint\` with summary, current status, and next actions.`;
 
-const CLAUDE_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
-- when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.claude/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
-- the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
-- small, focused edits stay inline in the coordinator session
-- this is a default heuristic, not a hard rule; it keeps large implementation context off the coordinator and runs the work on a cheaper model
-`;
-
-const CODEX_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
-- delegate one coherent implementation slice to the builder custom agent (\`.codex/agents/builder.toml\`) when it is likely to need more than roughly 10-20 tool calls or spans several files; keep small focused edits inline
-- give the builder a brief with the active Task Passport objective, constraints, write scope, acceptance criteria, and the narrow verification command
-- use one writer per slice; only run builders in parallel when their write scopes do not overlap
-- keep architecture, security-sensitive decisions, Agentpack records, final verification, commits, and release actions with the coordinator
-- the generated builder defaults to gpt-5.6-terra at medium reasoning for efficient everyday implementation; use the coordinator for ambiguous or high-risk work, and tune the user-owned model settings when the slice needs a different tradeoff
-`;
-
-const CURSOR_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
-- when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.cursor/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
-- the Cursor builder inherits the parent model so Free-plan sessions can use Auto instead of a pinned named model
-- the coordinator keeps the brief, report review, and verification; the builder implements inside its write scope and reports back without writing Agentpack records
-- small, focused edits stay inline in the coordinator session
-`;
-
-function codexInstructions(withBuilder = false): string {
-  return withBuilder ? `${INSTRUCTIONS.trimEnd()}\n\n${CODEX_DELEGATION_GUIDANCE.trim()}\n` : `${INSTRUCTIONS.trimEnd()}\n`;
+function builderGuidance(builderPath: string): string {
+  return `Optional builder:
+- A builder is available at \`${builderPath}\`; using it is not required. Keep small tasks inline; file counts and tool-call counts do not require delegation.
+- Use it when the user explicitly requests it, or when current instructions permit delegation and a bounded implementation slice would benefit. Respect requests to work without subagents.
+- Before delegating, briefly announce the slice and why it benefits from a builder; an announcement does not grant authorization or require another approval when delegation is already permitted.
+- Give the builder the objective, constraints, write scope, acceptance criteria, and narrow verification command; use one writer per slice.
+- The coordinator keeps decisions, Agentpack records, final verification, commits, and release actions.`;
 }
 
-function claudeInstructions(withBuilder = false): string {
-  return withBuilder ? `${INSTRUCTIONS.trimEnd()}\n\n${CLAUDE_DELEGATION_GUIDANCE.trim()}\n` : `${INSTRUCTIONS.trimEnd()}\n`;
+function codexInstructions(): string {
+  return `${INSTRUCTIONS.trimEnd()}\n\n${builderGuidance(".codex/agents/builder.toml")}\n`;
+}
+
+function claudeInstructions(): string {
+  return `${INSTRUCTIONS.trimEnd()}\n\n${builderGuidance(".claude/agents/builder.md")}\n`;
 }
 
 type InstallTarget = typeof INSTALL_TARGETS[number];
 
-export interface InstallOptions {
+interface InstallOptions {
   dryRun?: boolean;
-  withBuilder?: boolean;
   claudeDesktopConfigPath?: string;
   beforeClaudeDesktopConfigWrite?: () => void;
 }
@@ -178,11 +164,8 @@ interface DesktopConfigSnapshot {
 
 export function installIntegration(root: string, targetValue: string, options: InstallOptions = {}): string {
   const target = parseTarget(targetValue);
-  if (options.withBuilder === true && target !== "codex" && target !== "claude" && target !== "cursor") {
-    throw new Error("--with-builder is supported only for codex, claude, and cursor installs");
-  }
   const dryRun = options.dryRun !== false;
-  const plan = buildInstallPlan(root, target, options.withBuilder === true);
+  const plan = buildInstallPlan(root, target);
   validateInstallPlan(root, plan);
   const statuses = plan.files.map((file) => ({
     file,
@@ -205,35 +188,33 @@ export function installIntegration(root: string, targetValue: string, options: I
     }
   }
 
-  const localResult = formatInstallResult(root, plan, statuses, dryRun, options.withBuilder === true);
+  const localResult = formatInstallResult(root, plan, statuses, dryRun);
   return desktopResult ? `${localResult}\n\n${desktopResult}` : localResult;
 }
 
-function buildInstallPlan(root: string, target: InstallTarget, withBuilder: boolean): InstallPlan {
+function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   const serverName = mcpServerName(root);
 
   if (target === "codex") {
     const codexSnippetPath = getPackPath(root, "instructions", "codex-mcp.example.toml");
-    const codexBuilder = withBuilder ? codexBuilderAgentPlan(root, serverName) : undefined;
+    const codexBuilder = codexBuilderAgentPlan(root, serverName);
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", codexInstructions(withBuilder)),
+        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", codexInstructions()),
         writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
-        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", codexInstructions(withBuilder)),
+        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", codexInstructions()),
         tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", `mcp_servers.${serverName}`, codexMcpTomlTable(serverName), "mcp_servers.agentpack"),
-        ...(codexBuilder ? [codexBuilder.file] : []),
+        codexBuilder.file,
         codexHooksMergePlan(root),
         writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(serverName))
       ],
       notes: [
         "No global Codex config is modified.",
         `Codex should use the project-local .codex/config.toml entry named ${serverName} for this repo.`,
-        codexBuilder?.managed
+        codexBuilder.managed
           ? "The project builder uses gpt-5.6-terra at medium reasoning by default, sees only Agentpack load_context, and preserves user-owned config outside its managed block."
-          : withBuilder
-            ? "An existing unmarked .codex/agents/builder.toml was left untouched."
-            : "No builder agent is installed by default; pass --with-builder to add the optional scoped builder.",
+          : "An existing unmarked .codex/agents/builder.toml was left untouched.",
         "The project PreToolUse hook runs `agentpack task gate` before apply_patch edits; Codex requires the hook definition to be reviewed and trusted before it runs.",
         "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
         `For manual review, see ${relativePath(root, codexSnippetPath)}.`
@@ -242,22 +223,22 @@ function buildInstallPlan(root: string, target: InstallTarget, withBuilder: bool
   }
 
   if (target === "claude") {
-    const builder = withBuilder ? preservedOrNewBuilderPlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName)) : undefined;
+    const builder = preservedOrNewBuilderPlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName));
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions(withBuilder)),
+        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions()),
         writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
-        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions(withBuilder)),
+        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions()),
         jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
-        ...(builder ? [builder] : []),
+        builder,
         claudeHooksMergePlan(root)
       ],
       notes: [
         "Only project-local files are modified.",
         `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json.",
-        withBuilder ? "The optional Claude builder was installed only if no builder file existed; existing builder bytes are preserved." : "No builder agent is installed by default; pass --with-builder to add one.",
+        "The Claude builder is available for optional use; existing builder files are preserved.",
         "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json.",
         "The hook launches the gate through the current Node executable and Agentpack entrypoint, not the shell PATH; re-run this install after switching Node versions."
       ]
@@ -336,10 +317,10 @@ function buildInstallPlan(root: string, target: InstallTarget, withBuilder: bool
     target,
     files: [
       ignorePatternPlan(root, ".cursor", "Keep project-local Cursor integration files out of git."),
-      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions(withBuilder)),
+      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
       writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
-      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions(withBuilder)),
-      ...(withBuilder ? [preservedOrNewBuilderPlan(root, ".cursor/agents/builder.md", "Write the builder subagent definition for Cursor.", cursorBuilderAgent(serverName))] : []),
+      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
+      preservedOrNewBuilderPlan(root, ".cursor/agents/builder.md", "Write the builder subagent definition for Cursor.", cursorBuilderAgent(serverName)),
       jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer()),
       cursorCliPermissionsPlan(root, serverName),
       cursorHooksMergePlan(root)
@@ -347,7 +328,7 @@ function buildInstallPlan(root: string, target: InstallTarget, withBuilder: bool
     notes: [
       "Only project-local files are modified.",
       "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
-      withBuilder ? "The optional Cursor builder inherits the parent model and preserves any existing builder bytes." : "No builder agent is installed by default; pass --with-builder to add one.",
+      "The Cursor builder is available for optional use, inherits the parent model, and preserves existing builder files.",
       "Cursor CLI permissions allow only Agentpack's read-only MCP tools without prompting; write-capable Agentpack tools still require approval.",
       "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode allows silently, while block mode denies violations with feedback.",
       "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
@@ -428,7 +409,7 @@ function removeEmptyDirectoryChain(deepest: string, shallowest: string): void {
   }
 }
 
-function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ file: InstallFile; status: string }>, dryRun: boolean, withBuilder: boolean): string {
+function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ file: InstallFile; status: string }>, dryRun: boolean): string {
   const lines = [
     dryRun
       ? `Agentpack ${plan.target} install plan (dry run)`
@@ -442,7 +423,7 @@ function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ 
   ];
 
   if (dryRun) {
-    lines.push("", "To apply:", `  agentpack install ${plan.target} --write${withBuilder ? " --with-builder" : ""}`);
+    lines.push("", "To apply:", `  agentpack install ${plan.target} --write`);
   }
 
   return lines.join("\n");
@@ -827,7 +808,7 @@ model_reasoning_effort = "medium"`;
 
 function codexBuilderManagedBlock(serverName: string): string {
   return `name = "builder"
-description = "Efficient implementation agent for one bounded, coordinator-defined coding slice. Use for multi-file or tool-heavy edits with a non-overlapping write scope; keep small, ambiguous, security-sensitive, and release work with the coordinator."
+description = "Implementation agent for one bounded, coordinator-defined coding slice. Invoke when the user requests it or current instructions permit delegation and the slice benefits; announce its use and keep small tasks with the coordinator."
 developer_instructions = """
 You are the builder for one scoped implementation slice. The coordinator owns requirements, architecture, the Task Passport lifecycle, durable Agentpack records, final verification, commits, and release actions.
 
@@ -868,7 +849,7 @@ function claudeMcpServer(): Record<string, unknown> {
 function claudeBuilderAgent(serverName: string, modelLine = "model: sonnet"): string {
   return `---
 name: builder
-description: Implementation subagent for scoped coding slices in this repo. Use for implementation slices above roughly 10-20 tool calls or multi-file changes; small focused edits stay with the coordinator. Invoke explicitly with a brief that names the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
+description: Implementation subagent for scoped coding slices in this repo. Invoke when the user requests it or current instructions permit delegation and the slice benefits; announce its use and keep small tasks with the coordinator. Provide the active Task Passport objective, constraints, and write scope. Works only inside the declared write scope and reports back; it does not write Agentpack records.
 ${modelLine}
 ---
 
@@ -1173,10 +1154,11 @@ function claudeDesktopInstructions(root: string, snippetPath: string, serverName
   ].join("\n");
 }
 
-function cursorInstructions(withBuilder = false): string {
+function cursorInstructions(): string {
   return [
     INSTRUCTIONS.trimEnd(),
-    ...(withBuilder ? ["", CURSOR_DELEGATION_GUIDANCE.trim()] : []),
+    "",
+    builderGuidance(".cursor/agents/builder.md"),
     "",
     "Cursor-specific notes:",
     "- Project MCP only applies when Cursor opens this folder as the workspace root.",
