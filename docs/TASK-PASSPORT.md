@@ -427,9 +427,13 @@ When task support is introduced, Agentpack can create an initial passport from t
 
 This avoids breaking existing users while moving new work into passport-scoped ledgers.
 
-## Advisory adversarial verification
+## Advisory verification evidence
 
-Successful `passed` or `accepted` completion is advised to reference evidence containing:
+Successful `passed` or `accepted` completion should reference evidence that fits the task risk.
+
+For low-risk work, use a short readable note or useful test output that says what was checked, what happened, and any relevant limit. It does not need prescribed labels or a minimum length. Code scopes still include a `Reviewed HEAD:` exactly matching the Passport-bound SHA. The advisory can flag evidence that is missing, unreadable, empty, only names a HEAD, or is wholly generic; it does not decide whether the technical conclusion is correct.
+
+Classify contract-changing work as medium/high risk. Medium/high evidence retains the following fields:
 
 ```text
 Claim or assumption attacked: <specific claim>
@@ -439,4 +443,4 @@ Unresolved findings: none identified after <specific check>
 Residual risk: <remaining risk>
 ```
 
-Classify contract-changing work as medium/high risk. For medium/high risk, use `review`, `adversarial-review`, or compatible historical `challenge` evidence, plus `Review mode: independent read-only` and an `Adversarial check type:` naming negative, differential, operational, or rollback. Code scopes also record `Reviewed HEAD:` exactly as bound in the Passport; a missing or malformed bound HEAD leaves the advisory unsatisfied. Bare or padded generic values such as `none`, `checked`, `verified`, `risks considered`, `tests passed`, and `looks good` are not enough. Except for the explicit `none identified after <specific check>` form, each required value needs at least 32 characters and six words; this structural threshold reduces checkbox prose without interpreting technical meaning. After risk is calibrated, `task audit` and `task finalize` report exact missing or malformed labels for the best incomplete referenced candidate and print a copy-ready template; they do not judge the technical conclusion. The advisory examines newest evidence first, at most the latest 12 referenced evidence IDs, a 4 MiB tail of the event log, 64 KiB per evidence file, and 256 KiB total evidence content. This is lexical hygiene, not a semantic-correctness judgment. There is no blocking switch or config knob in this iteration: dogfood has not justified enforcement.
+For medium/high risk, use `review`, `adversarial-review`, or compatible historical `challenge` evidence, plus `Review mode: independent read-only` and an `Adversarial check type:` naming negative, differential, operational, or rollback. A missing or malformed bound HEAD leaves a code-scope advisory unsatisfied. Bare or padded generic values such as `none`, `checked`, `verified`, `risks considered`, `tests passed`, and `looks good` are not enough. Except for the explicit `none identified after <specific check>` form, each required value needs at least 32 characters and six words; this structural threshold reduces checkbox prose without interpreting technical meaning. After risk is calibrated, `task audit` and `task finalize` report exact missing or malformed labels for the best incomplete referenced candidate and print a copy-ready template; they do not judge the technical conclusion. The advisory examines newest evidence first, at most the latest 12 referenced evidence IDs, a 4 MiB tail of the event log, 64 KiB per evidence file, and 256 KiB total evidence content. This is lexical hygiene, not a semantic-correctness judgment. There is no blocking switch or config knob in this iteration: dogfood has not justified enforcement.

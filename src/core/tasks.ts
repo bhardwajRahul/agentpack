@@ -632,14 +632,13 @@ export function formatTaskAuditReport(report: TaskAuditReport): string {
   ].join("\n");
 }
 
-// This is deliberately lexical: it checks that an attempt at falsification was
-// recorded, not whether the claim, review, or technical conclusion is correct.
+// These are structural evidence checks, not judgments of technical correctness.
 function adversarialVerificationAdvisory(root: string, passport: TaskPassport): string | null {
   if (passport.verification.status === "failed") return null;
   const risk = passport.risk || "unknown";
   const requirement = risk === "medium" || risk === "high"
     ? "referenced review-like evidence satisfying `Review mode: independent read-only`, `Adversarial check type:` naming negative, differential, operational, or rollback, and the adversarial evidence template"
-    : "referenced evidence satisfying the compact adversarial self-challenge template";
+    : "a readable verification note or test output describing the check, result, and relevant limits";
   const prefix = passport.verification.status === "passed" || passport.verification.status === "accepted"
     ? "Success completion lacks"
     : "Before a successful final verdict, provide";
@@ -748,10 +747,21 @@ function assessAdversarialEvidence(evidence: AdversarialEvidence, passport: Task
   const missing: string[] = [];
   const malformed: string[] = [];
   let relevanceFailures = 0;
-  for (const label of REQUIRED_ADVERSARIAL_LABELS) {
-    const value = values.get(label);
-    if (value === undefined) missing.push(label);
-    else if (!validAdversarialValue(value, label === "Unresolved findings")) malformed.push(label);
+  if (risk === "low") {
+    const body = evidence.content.split("\n")
+      .filter((line) => !/^Reviewed HEAD:/.test(line))
+      .map((line) => line.replace(/^(?:Claim or assumption attacked|Counterexample or disconfirming check|Observed result|Unresolved findings|Residual risk):\s*/, "").trim());
+    const hasContent = !evidence.content.includes("\0") && body.some((line) => /[\p{L}\p{N}]/u.test(line)
+      && !hasAdversarialPlaceholder(line)
+      && !GENERIC_ADVERSARIAL_VALUE.test(line)
+      && !/^(?:tests? passed|risks? considered)[.!]?$/i.test(line));
+    if (!hasContent) missing.push("verification note or test output");
+  } else {
+    for (const label of REQUIRED_ADVERSARIAL_LABELS) {
+      const value = values.get(label);
+      if (value === undefined) missing.push(label);
+      else if (!validAdversarialValue(value, label === "Unresolved findings")) malformed.push(label);
+    }
   }
   if (hasCodeScope(passport)) {
     if (!/^[0-9a-f]{7,40}$/i.test(passport.currentHead || "")) malformed.push("Passport-bound Reviewed HEAD");
@@ -796,6 +806,12 @@ function formatAdversarialEvidenceDiagnostic(assessment: AdversarialEvidenceAsse
 }
 
 function adversarialEvidenceTemplate(passport: TaskPassport, risk: TaskRisk): string {
+  if (risk === "low") {
+    return [
+      "Describe what you checked, the result, and any relevant limits in your own words, or reference test output. No prescribed fields or minimum length.",
+      ...(hasCodeScope(passport) ? [`Reviewed HEAD: ${/^[0-9a-f]{7,40}$/i.test(passport.currentHead || "") ? passport.currentHead : "<Passport-bound SHA>"}`] : [])
+    ].join("\n");
+  }
   const lines = [
     "Copy-ready evidence template (replace placeholders with specific six-word, 32-character values):",
     "Claim or assumption attacked: <specific claim or assumption under challenge>",

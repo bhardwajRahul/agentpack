@@ -2440,6 +2440,53 @@ test("adversarial verification is referenced-evidence-only and advisory", () => 
   assert.doesNotMatch(run(dir, ["task", "audit"]), /Success completion lacks/);
 });
 
+test("low-risk verification accepts short free-form evidence while preserving HEAD and review boundaries", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-low-risk-evidence-"));
+  runGit(dir, ["init"]);
+  writeFileSync(path.join(dir, "index.js"), "export const value = 1;\n");
+  runGit(dir, ["add", "index.js"]);
+  runGit(dir, ["-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "-m", "Initial"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Small fix", "--risk", "low", "--write-scope", "index.js", "--constraint", "No remote delivery"]);
+  const passport = JSON.parse(run(dir, ["task", "passport"]));
+  const passportPath = path.join(dir, ".agentpack", "tasks", passport.id, "passport.json");
+  const check = (body: string, head = passport.currentHead, risk = "low") => {
+    writeFileSync(path.join(dir, "verification.txt"), `${body}\nReviewed HEAD: ${head}`);
+    const evidence = run(dir, ["evidence", "add", "--kind", "test", "--file", "verification.txt"])
+      .match(/Attached evidence (evt_[^\s.]+)/)?.[1] || "";
+    assert.ok(evidence);
+    writeFileSync(passportPath, JSON.stringify({ ...passport, risk, verification: { status: "pending", evidence: [], summary: "" } }));
+    run(dir, ["task", "verify", "--status", "passed", "--evidence", evidence]);
+    return run(dir, ["task", "audit"]);
+  };
+  for (const empty of ["", "\0", "\uFFFD\uFFFD", "!!!", "ok", "tests passed", "<specific result observed from that check>"]) {
+    assert.match(check(empty), /Success completion lacks/);
+  }
+  const concise = "Parser: 3 cases passed.";
+  assert.ok(concise.length < 32 && concise.split(" ").length < 6);
+  assert.doesNotMatch(check(concise), /Success completion lacks/);
+  assert.match(check(concise, "0000000000000000000000000000000000000000"), /Reviewed HEAD/);
+  assert.match(check(concise, ""), /Success completion lacks/);
+  for (const risk of ["medium", "high"]) {
+    assert.match(check(concise, passport.currentHead, risk), /review-like evidence satisfying/);
+  }
+  assert.match(check(concise, passport.currentHead, "unknown"), /risk calibration/);
+  assert.doesNotMatch(check(concise), /Success completion lacks/);
+  const mcp = createMcpHarness(dir);
+  const audit = await mcp.send({ jsonrpc: "2.0", id: 850, method: "tools/call", params: { name: "task_audit", arguments: {} } });
+  assert.doesNotMatch(audit.result.content[0].text, /Success completion lacks/);
+  const result = await mcp.send({ jsonrpc: "2.0", id: 851, method: "tools/call", params: { name: "task_finalize", arguments: { summary: "Parser: 3 cases passed. No remote delivery." } } });
+  assert.doesNotMatch(result.result.content[0].text, /Success completion lacks/);
+  assert.match(result.result.content[0].text, /No repo checkpoint since this task started/);
+  const resume = run(dir, ["resume", "--preset", "agent"]);
+  assert.match(resume, /completed/);
+  assert.match(resume, /Parser: 3 cases passed/);
+  assert.match(resume, /No remote delivery/);
+  const handoff = run(dir, ["task", "handoff"]);
+  assert.match(handoff, /Parser: 3 cases passed/);
+  assert.match(handoff, /No remote delivery/);
+});
+
 test("adversarial verification requires a valid bound HEAD for code and exempts failed verdicts", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-adversarial-headless-test-"));
   mkdirSync(path.join(dir, "src"));
@@ -2494,7 +2541,7 @@ test("adversarial preflight rejects verbatim templates and prioritizes relevant 
   run(templateDir, ["task", "start", "Template fixture", "--write-scope", "docs", "--risk", "low"]);
   const verbatimTemplate = addEvidenceFixture(templateDir, "note", "Claim or assumption attacked: <specific claim or assumption under challenge>\nCounterexample or disconfirming check: <specific negative, differential, operational, or rollback check>\nObserved result: <specific result observed from that check>\nUnresolved findings: none identified after <specific check performed>\nResidual risk: <specific remaining risk after the check>");
   run(templateDir, ["task", "verify", "--status", "passed", "--evidence", verbatimTemplate]);
-  assert.match(run(templateDir, ["task", "audit"]), /malformed labels\/requirements: `Claim or assumption attacked`, `Counterexample or disconfirming check`, `Observed result`, `Unresolved findings`, `Residual risk`/);
+  assert.match(run(templateDir, ["task", "audit"]), /verification note or test output/);
   const specificEvidence = addEvidenceFixture(templateDir, "note", "Claim or assumption attacked: Template placeholders might satisfy lexical validation unchanged.\nCounterexample or disconfirming check: Attach the copied template before replacing every placeholder.\nObserved result: The copied placeholder-bearing evidence remains advisory-unsatisfied after review.\nUnresolved findings: none identified after placeholder rejection regression\nResidual risk: Generic Map<T> syntax and literal <specific check> text remain valid.");
   run(templateDir, ["task", "verify", "--status", "passed", "--evidence", specificEvidence]);
   assert.doesNotMatch(run(templateDir, ["task", "audit"]), /Success completion lacks/);
@@ -2561,14 +2608,14 @@ test("adversarial verification accepts bounded compatible review kinds and degra
   run(boundedDir, ["init"]);
   run(boundedDir, ["task", "start", "Bound referenced evidence", "--write-scope", "docs", "--risk", "low"]);
   const oldValid = addEvidenceFixture(boundedDir, "note", "Claim or assumption attacked: Old evidence remains eligible after unbounded references accumulate.\nCounterexample or disconfirming check: Put one valid record before twelve newer unrelated evidence records.\nObserved result: The valid record fell outside the documented latest-twelve window.\nUnresolved findings: none identified after reference-window probe\nResidual risk: Users must link current challenge evidence near the final verdict.");
-  const newer = Array.from({ length: 12 }, (_, index) => addEvidenceFixture(boundedDir, "note", `unrelated evidence ${index}`));
+  const newer = Array.from({ length: 12 }, () => addEvidenceFixture(boundedDir, "note", "tests passed"));
   run(boundedDir, ["task", "verify", "--status", "passed", "--evidence", oldValid, ...newer.flatMap((id) => ["--evidence", id])]);
   assert.match(run(boundedDir, ["task", "audit"]), /Success completion lacks/);
 
   const priorityDir = mkdtempSync(path.join(os.tmpdir(), "agentpack-adversarial-priority-"));
   run(priorityDir, ["init"]);
   run(priorityDir, ["task", "start", "Prioritize newest evidence", "--write-scope", "docs", "--risk", "low"]);
-  const largeEarlier = Array.from({ length: 4 }, (_, index) => addEvidenceFixture(priorityDir, "note", `${index}${"x".repeat(64 * 1024 - 1)}`));
+  const largeEarlier = Array.from({ length: 4 }, () => addEvidenceFixture(priorityDir, "note", " ".repeat(64 * 1024)));
   const newestValid = addEvidenceFixture(priorityDir, "note", "Claim or assumption attacked: Earlier large evidence can starve the newest current challenge record.\nCounterexample or disconfirming check: Attach four maximum-size notes before one current valid challenge.\nObserved result: Newest-first evaluation accepted the current challenge before reaching the byte cap.\nUnresolved findings: none identified after newest-evidence priority probe\nResidual risk: Older valid evidence outside bounded windows can still be omitted.");
   run(priorityDir, ["task", "verify", "--status", "passed", ...largeEarlier.flatMap((id) => ["--evidence", id]), "--evidence", newestValid]);
   assert.doesNotMatch(run(priorityDir, ["task", "audit"]), /Success completion lacks/);
@@ -3419,7 +3466,8 @@ test("previews and writes project-local MCP client install files", () => {
   for (const boundary of [
     /commit the in-scope changes and confirm the commit changed nothing/,
     /adversarial verification is advisory, not a semantic judgment/,
-    /for low risk, attach one concrete self-challenge/,
+    /for low risk, attach a short readable note or useful test output/,
+    /does not need prescribed labels or a minimum length/,
     /classify contract-changing work as medium\/high risk/,
     /Review mode: independent read-only/,
     /Adversarial check type:.*negative, differential, operational, or rollback/,

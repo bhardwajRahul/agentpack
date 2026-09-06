@@ -47,6 +47,7 @@ Default cadence:
 - During normal coding, keep working locally; record only durable decisions, dead ends, source conclusions, and evidence.
 - Sequence state-changing Agentpack calls; do not run them in parallel with audit, status, or checkpoint calls.
 - Keep verification pending during a coherent fix loop; record aggregated intermediate evidence and checkpoints, then record a final verdict only after edits end.
+- For low-risk work, one short evidence note or useful test output should explain the check, result, and relevant limits. Code scopes still record the Passport-bound `Reviewed HEAD`. Save the full review template for medium/high work.
 - For risky changes and releases, record important findings as they happen and follow the verification policy.
 - Park deferred work before switching to an unrelated task. Do not use accepted
   finalization as a pause; finalization means the task is complete or
