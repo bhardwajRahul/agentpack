@@ -52,7 +52,17 @@ Default cadence:
   finalization as a pause; finalization means the task is complete or
   intentionally accepted as-is.
 
-This keeps Agentpack useful without turning every micro-step into ledger traffic. The intended default cost is one context load near the start and one durable save near the end.
+This keeps Agentpack useful without turning every micro-step into ledger traffic.
+Load context once and save material progress at a coherent boundary; task start,
+evidence, and finalization may still need separate calls. A read-only question
+alone does not require a new Passport. Reuse one substantive verification record
+from the checkpoint and final verdict instead of copying its output repeatedly.
+
+Generated client instructions keep this core workflow short and load
+`.agentpack/instructions/verification.md` for final verification, external review,
+or release work. That reference preserves the existing verification policy.
+Builder installation and delegation guidance require `--with-builder`; they are
+not prerequisites for continuity.
 
 ```text
 record_source(path, summary)

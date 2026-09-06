@@ -63,46 +63,32 @@ function collaborationModesSection(): string {
 
 const INSTRUCTIONS = `# Agentpack
 
-Use Agentpack as the task-state ledger for this repo.
-Agentpack is not an activity logger; do not record every thought, file read, or edit.
+Use Agentpack as the task-state ledger, not an activity log. Read-only questions do not need a new task.
 
-Safety invariant:
-- preserve existing functionality; do not make changes that knowingly break current behavior
-- make changes carefully, with compatibility and rollback impact in mind
-- verify meaningful changes with focused tests, smoke checks, or documented reasoning before handing off
-- if a requested change risks a regression, call out the risk and choose the safer path unless explicitly directed otherwise
-
-Coding defaults:
-- read the relevant code before changing it, then follow existing project patterns and helper APIs
-- keep changes small, focused, and reviewable; avoid unrelated refactors, formatting churn, dependency changes, or generated-file noise
-- prefer clear, boring code over clever abstractions; add abstractions only when they remove real complexity or match an established local pattern
-- treat security as a default: do not log secrets, weaken auth or validation, add unsafe shell execution, or broaden permissions without a clear reason
-- run the narrowest meaningful verification first, then broader checks when the risk or blast radius warrants it
-
-Git and PR hygiene:
-- use concise imperative commit messages, for example \`Add release preflight check\`
-- do not add AI or agent prefixes, model names, \`Co-authored-by\`, or AI attribution to commits, PR titles, PR bodies, release notes, or branch names
-- avoid branch names with AI or agent-style prefixes such as \`claude/\`, \`codex/\`, \`ai/\`, or \`agent/\`
-- keep commits logically small; separate docs, tests, feature changes, and release prep when practical
-- before staging or committing, inspect the diff and avoid including unrelated user changes
-
-Focused skills/rules:
-- when the client supports skills, rules, or sub-instructions, keep coding workflow, git hygiene, secure coding review, and frontend QA as focused opt-in guidance rather than expanding the always-on project instructions
+Safety and coding:
+- preserve current behavior, compatibility, security, and rollback options; make small, reviewable changes and verify them proportionately
+- read relevant code first; follow local patterns; avoid unrelated refactors, dependency churn, unsafe shell execution, weakened validation, or secret logging
+- inspect the diff before staging; use small imperative commits and exclude unrelated changes, AI attribution, and AI/agent-style branch prefixes
 
 ${collaborationModesSection()}
 
-At the start of a task:
-- call \`load_context\` with \`preset: "quick"\` and a focused query for the current task first
-- call \`source_status\` only when you need a full stale-source check beyond the context you just loaded
+Task workflow:
+- start with \`load_context\` (\`preset: "quick"\` and a focused query); use \`source_status\` only for a needed stale-source check
+- before editing, confirm the active Task Passport's objective, constraints, worktree, branch/HEAD, lifecycle, and write scope. Stop for unexplained drift or a verifying, blocked, closed, or parked task
+- declare a write scope by default; keep one active task per coherent phase. Park deferred work; do not turn a review task into implementation. A review of the current task stays in it; create another Passport only for a different objective or authorization boundary, or an independent frozen-snapshot review
+- record only material decisions, durable source conclusions, unresolved findings, dead ends, meaningful evidence, and checkpoints. Reuse one relevant evidence item instead of duplicating it; a matching hash proves only that a file is unchanged, not that its recorded conclusion is true
+- at a meaningful pause or handoff, checkpoint the summary, current status, and next actions; sequence state-changing Agentpack calls and do not repeat fresh status checks
+- keep verification pending through fixes. A final verdict binds the reviewed HEAD and freezes edits
+- checks do not grant remote authority: never infer permission to push, merge, publish, message, or otherwise mutate external state
 
-Task lifecycle gate:
-- before implementation, confirm the current Task Passport is the right active task for this phase and branch
-- declare a write scope when starting a task (\`task_start\`/\`task start --write-scope <path>\`), so the task gate can protect its boundaries; a repo-wide task can still start without one, but scope should be the default, not an afterthought
-- if the current task is verifying, blocked, closed, or has unexplained branch/head drift, stop and resolve it before editing code
-- treat review mode as a scope check, not an automatic new Task Passport: keep reviews that verify the current active/verifying task inside that task as evidence/checkpoint; start a separate Passport only for an unrelated objective, materially different authorization boundary, or an independent review that needs its own frozen snapshot
-- park deferred work with \`task_park\`/\`task park\`, or switch/close only when appropriate, before starting unrelated work
-- do not finalize a task just to free the current slot; finalization means verification is passed, failed, or explicitly accepted as complete
-- verification order: keep verification pending throughout the active fix loop; aggregate intermediate green checks as evidence/checkpoints, then when no edits remain commit the in-scope changes and confirm the commit changed nothing (clean tree, hooks silent) before recording the final verdict
+Read \`.agentpack/instructions/verification.md\` before a final verdict, external review, or release. It contains the detailed verification policy and evidence templates.`;
+
+const VERIFICATION_INSTRUCTIONS = `# Agentpack verification policy
+
+Read this before recording a final verdict, requesting or handling external review, or preparing a release.
+
+Verification order:
+- keep verification pending throughout the active fix loop; aggregate intermediate green checks as evidence/checkpoints, then when no edits remain commit the in-scope changes and confirm the commit changed nothing (clean tree, hooks silent) before recording the final verdict
 - no external wait: end with one \`task_finalize\` call carrying the final status, evidence, and commit hash, so no verifying window opens
 - adversarial verification is advisory, not a semantic judgment: for low risk, attach one concrete self-challenge evidence note with Claim or assumption attacked, Counterexample or disconfirming check, Observed result, Unresolved findings, and Residual risk; generic \`risks considered\` or \`tests passed\` is insufficient
 - classify contract-changing work as medium/high risk; for medium/high risk, use review-like evidence containing \`Review mode: independent read-only\` and \`Adversarial check type:\` naming a negative, differential, operational, or rollback check; record the exact \`Reviewed HEAD:\` when code is in scope
@@ -110,39 +96,22 @@ Task lifecycle gate:
 - a recorded final verdict binds the reviewed HEAD, moves the task to verifying, and freezes code changes; do not use a passed-to-pending reset for normal iteration because the final verdict belongs only after edits end
 - keep next actions current: clear or replace a stale plan (\`task update --clear-next-actions\`) before finalizing, so closed passports read as history, not as open work
 - if a task still has next actions and must pause for unrelated work, park it instead of using \`task_finalize\`/\`task finalize --status accepted\`; force accepted finalization only when the remaining next actions are intentionally historical
-- do not mutate a review task into implementation work
-- keep one active task per coherent phase: review, stabilization, rewrite, deployment
+- do not finalize a task just to free the current slot; finalization means verification is passed, failed, or explicitly accepted as complete
 
-During work:
+Evidence cadence:
 - call \`record_source\` only when you have a durable conclusion about an important file; avoid repeated records for the same file unless the conclusion changed
 - call \`record_decision\` for durable technical/product decisions, not every preference
 - call \`record_dead_end\` when an approach failed and should not be repeated
 - call \`attach_evidence\` for meaningful verification, review findings, or command output worth preserving
-
-Avoid turning Agentpack into an activity log:
 - do not record every file read, mode switch, minor diff check, or routine command
-- do not call \`source_status\` repeatedly when \`load_context\`, \`task_audit\`, or a recent status check already answered the question
 - do not call \`record_source\` for every changed file just to make an audit warning disappear; prefer a checkpoint summary for batch changes and refresh source records only when the durable conclusion changed
 - for small tasks, prefer one aggregated verification evidence and one checkpoint; add source records only for important implementation files with reusable conclusions
-- for small verified slices, attach one evidence item for the meaningful verification result
 - link that evidence from \`task_update_verification\`, or from \`task_finalize\` when finalize performs the verification update
 - mention commit hashes in checkpoint/finalize summaries instead of attaching separate commit evidence
 - attach separate commit, tag, workflow, or publish evidence only when that output is itself part of the verification contract
-
-Default cadence:
-- start with Agentpack context
-- work locally without recording every micro-step
 - sequence state-changing Agentpack calls; do not run them in parallel with audit/status/checkpoint calls
-- record durable findings and evidence before a checkpoint
-- use full safe mode for risky or release-like changes
 
-Before re-reading an unchanged source file, prefer the recorded source conclusion unless the task requires fresh inspection.
-
-After meaningful progress, call \`checkpoint\` with:
-- summary
-- current status
-- next actions
-`;
+After meaningful progress, call \`checkpoint\` with summary, current status, and next actions.`;
 
 const CLAUDE_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
 - when a slice looks like it needs more than roughly 10-20 tool calls, or touches several files, invoke the builder subagent (\`.claude/agents/builder.md\`) with a brief naming the task objective, constraints, and write scope
@@ -166,18 +135,19 @@ const CURSOR_DELEGATION_GUIDANCE = `Delegation default (builder subagent):
 - small, focused edits stay inline in the coordinator session
 `;
 
-function codexInstructions(): string {
-  return `${INSTRUCTIONS.trimEnd()}\n\n${CODEX_DELEGATION_GUIDANCE.trim()}\n`;
+function codexInstructions(withBuilder = false): string {
+  return withBuilder ? `${INSTRUCTIONS.trimEnd()}\n\n${CODEX_DELEGATION_GUIDANCE.trim()}\n` : `${INSTRUCTIONS.trimEnd()}\n`;
 }
 
-function claudeInstructions(): string {
-  return `${INSTRUCTIONS.trimEnd()}\n\n${CLAUDE_DELEGATION_GUIDANCE.trim()}\n`;
+function claudeInstructions(withBuilder = false): string {
+  return withBuilder ? `${INSTRUCTIONS.trimEnd()}\n\n${CLAUDE_DELEGATION_GUIDANCE.trim()}\n` : `${INSTRUCTIONS.trimEnd()}\n`;
 }
 
 type InstallTarget = typeof INSTALL_TARGETS[number];
 
-interface InstallOptions {
+export interface InstallOptions {
   dryRun?: boolean;
+  withBuilder?: boolean;
   claudeDesktopConfigPath?: string;
   beforeClaudeDesktopConfigWrite?: () => void;
 }
@@ -208,8 +178,11 @@ interface DesktopConfigSnapshot {
 
 export function installIntegration(root: string, targetValue: string, options: InstallOptions = {}): string {
   const target = parseTarget(targetValue);
+  if (options.withBuilder === true && target !== "codex" && target !== "claude" && target !== "cursor") {
+    throw new Error("--with-builder is supported only for codex, claude, and cursor installs");
+  }
   const dryRun = options.dryRun !== false;
-  const plan = buildInstallPlan(root, target);
+  const plan = buildInstallPlan(root, target, options.withBuilder === true);
   validateInstallPlan(root, plan);
   const statuses = plan.files.map((file) => ({
     file,
@@ -232,32 +205,35 @@ export function installIntegration(root: string, targetValue: string, options: I
     }
   }
 
-  const localResult = formatInstallResult(root, plan, statuses, dryRun);
+  const localResult = formatInstallResult(root, plan, statuses, dryRun, options.withBuilder === true);
   return desktopResult ? `${localResult}\n\n${desktopResult}` : localResult;
 }
 
-function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
+function buildInstallPlan(root: string, target: InstallTarget, withBuilder: boolean): InstallPlan {
   const serverName = mcpServerName(root);
 
   if (target === "codex") {
     const codexSnippetPath = getPackPath(root, "instructions", "codex-mcp.example.toml");
-    const codexBuilder = codexBuilderAgentPlan(root, serverName);
+    const codexBuilder = withBuilder ? codexBuilderAgentPlan(root, serverName) : undefined;
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", codexInstructions()),
-        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", codexInstructions()),
+        writeFilePlan(root, ".agentpack/instructions/codex.md", "Write Codex-specific Agentpack workflow instructions.", codexInstructions(withBuilder)),
+        writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
+        managedBlockPlan(root, "AGENTS.md", "Add or update the Agentpack block in AGENTS.md.", codexInstructions(withBuilder)),
         tomlTablePlan(root, ".codex/config.toml", "Add the Agentpack MCP server to project-local Codex config.", `mcp_servers.${serverName}`, codexMcpTomlTable(serverName), "mcp_servers.agentpack"),
-        codexBuilder.file,
+        ...(codexBuilder ? [codexBuilder.file] : []),
         codexHooksMergePlan(root),
         writeFilePlan(root, ".agentpack/instructions/codex-mcp.example.toml", "Write a Codex MCP config snippet for manual review.", codexTomlSnippet(serverName))
       ],
       notes: [
         "No global Codex config is modified.",
         `Codex should use the project-local .codex/config.toml entry named ${serverName} for this repo.`,
-        codexBuilder.managed
+        codexBuilder?.managed
           ? "The project builder uses gpt-5.6-terra at medium reasoning by default, sees only Agentpack load_context, and preserves user-owned config outside its managed block."
-          : "An existing unmarked .codex/agents/builder.toml was left untouched; rename or remove it before reinstalling to opt into Agentpack's builder template.",
+          : withBuilder
+            ? "An existing unmarked .codex/agents/builder.toml was left untouched."
+            : "No builder agent is installed by default; pass --with-builder to add the optional scoped builder.",
         "The project PreToolUse hook runs `agentpack task gate` before apply_patch edits; Codex requires the hook definition to be reviewed and trusted before it runs.",
         "Remove any old ~/.codex/config.toml agentpack server that hard-codes --root or cwd to another project.",
         `For manual review, see ${relativePath(root, codexSnippetPath)}.`
@@ -266,20 +242,22 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
   }
 
   if (target === "claude") {
+    const builder = withBuilder ? preservedOrNewBuilderPlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName)) : undefined;
     return {
       target,
       files: [
-        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions()),
-        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions()),
+        writeFilePlan(root, ".agentpack/instructions/claude.md", "Write Claude-specific Agentpack workflow instructions.", claudeInstructions(withBuilder)),
+        writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
+        managedBlockPlan(root, "CLAUDE.md", "Add or update the Agentpack block in CLAUDE.md.", claudeInstructions(withBuilder)),
         jsonMergePlan(root, ".mcp.json", "Add the Agentpack MCP server to project .mcp.json.", serverName, claudeMcpServer()),
-        writeFilePlan(root, ".claude/agents/builder.md", "Write the builder subagent definition for Claude Code.", claudeBuilderAgent(serverName, existingClaudeBuilderModelLine(root))),
+        ...(builder ? [builder] : []),
         claudeHooksMergePlan(root)
       ],
       notes: [
         "Only project-local files are modified.",
         `The Claude Code MCP server key is ${serverName} to avoid cross-repo name collisions.`,
         "Claude Code prompts before using project-scoped MCP servers from .mcp.json.",
-        "The builder subagent (.claude/agents/builder.md) implements scoped task slices on a cheaper model when invoked explicitly; delete the file to opt out.",
+        withBuilder ? "The optional Claude builder was installed only if no builder file existed; existing builder bytes are preserved." : "No builder agent is installed by default; pass --with-builder to add one.",
         "The PreToolUse hook runs `agentpack task gate` before file edits; it warns by default and blocks only when gateMode is \"block\" in .agentpack/config.json.",
         "The hook launches the gate through the current Node executable and Agentpack entrypoint, not the shell PATH; re-run this install after switching Node versions."
       ]
@@ -358,9 +336,10 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     target,
     files: [
       ignorePatternPlan(root, ".cursor", "Keep project-local Cursor integration files out of git."),
-      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions()),
-      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions()),
-      writeFilePlan(root, ".cursor/agents/builder.md", "Write the builder subagent definition for Cursor.", cursorBuilderAgent(serverName)),
+      writeFilePlan(root, ".agentpack/instructions/cursor.md", "Write Cursor-specific Agentpack workflow instructions.", cursorInstructions(withBuilder)),
+      writeFilePlan(root, ".agentpack/instructions/verification.md", "Write detailed Agentpack verification instructions.", VERIFICATION_INSTRUCTIONS),
+      writeFilePlan(root, ".cursor/rules/agentpack.mdc", "Write a Cursor project rule for Agentpack.", cursorInstructions(withBuilder)),
+      ...(withBuilder ? [preservedOrNewBuilderPlan(root, ".cursor/agents/builder.md", "Write the builder subagent definition for Cursor.", cursorBuilderAgent(serverName))] : []),
       jsonMergePlan(root, ".cursor/mcp.json", "Add the Agentpack MCP server to Cursor project MCP config.", serverName, cursorMcpServer()),
       cursorCliPermissionsPlan(root, serverName),
       cursorHooksMergePlan(root)
@@ -368,7 +347,7 @@ function buildInstallPlan(root: string, target: InstallTarget): InstallPlan {
     notes: [
       "Only project-local files are modified.",
       "Cursor reads project-specific MCP servers from .cursor/mcp.json when this folder is opened as the workspace.",
-      "The Cursor builder inherits the parent model, including Auto on Free plans; the Claude builder remains separate and unchanged.",
+      withBuilder ? "The optional Cursor builder inherits the parent model and preserves any existing builder bytes." : "No builder agent is installed by default; pass --with-builder to add one.",
       "Cursor CLI permissions allow only Agentpack's read-only MCP tools without prompting; write-capable Agentpack tools still require approval.",
       "The project preToolUse hook runs `agentpack task gate` before Write and Delete tools; warn mode allows silently, while block mode denies violations with feedback.",
       "After writing the config, reload the Cursor window, open MCP Servers, and enable the Agentpack server if it is toggled off.",
@@ -449,7 +428,7 @@ function removeEmptyDirectoryChain(deepest: string, shallowest: string): void {
   }
 }
 
-function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ file: InstallFile; status: string }>, dryRun: boolean): string {
+function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ file: InstallFile; status: string }>, dryRun: boolean, withBuilder: boolean): string {
   const lines = [
     dryRun
       ? `Agentpack ${plan.target} install plan (dry run)`
@@ -463,7 +442,7 @@ function formatInstallResult(root: string, plan: InstallPlan, statuses: Array<{ 
   ];
 
   if (dryRun) {
-    lines.push("", "To apply:", `  agentpack install ${plan.target} --write`);
+    lines.push("", "To apply:", `  agentpack install ${plan.target} --write${withBuilder ? " --with-builder" : ""}`);
   }
 
   return lines.join("\n");
@@ -670,10 +649,11 @@ function validateInstallPath(root: string, filePath: string): void {
   let current = base;
   for (const segment of relative.split(path.sep).filter(Boolean)) {
     current = path.join(current, segment);
-    if (!existsSync(current)) {
+    const entry = lstatSync(current, { throwIfNoEntry: false });
+    if (!entry) {
       break;
     }
-    if (lstatSync(current).isSymbolicLink()) {
+    if (entry.isSymbolicLink()) {
       throw new Error(`Install path contains a symbolic link: ${filePath}`);
     }
   }
@@ -830,6 +810,15 @@ function codexBuilderAgentPlan(root: string, serverName: string): { file: Instal
   };
 }
 
+function preservedOrNewBuilderPlan(root: string, relativeFilePath: string, description: string, content: string): InstallFile {
+  const filePath = path.join(root, relativeFilePath);
+  validateInstallPath(root, filePath);
+  if (existsSync(filePath)) {
+    return { filePath, description: `Preserve the existing builder agent (${description}).`, content: readFileSync(filePath, "utf8") };
+  }
+  return writeFilePlan(root, relativeFilePath, description, content);
+}
+
 function codexBuilderRuntimeDefaults(): string {
   return `# Runtime tuning is user-owned and preserved across Agentpack reinstalls.
 model = "gpt-5.6-terra"
@@ -907,17 +896,6 @@ Your final message is the handoff. Report: what changed (files plus a summary), 
 
 function cursorBuilderAgent(serverName: string): string {
   return claudeBuilderAgent(serverName, "model: inherit");
-}
-
-function existingClaudeBuilderModelLine(root: string): string {
-  const builderPath = path.join(root, ".claude", "agents", "builder.md");
-  if (!existsSync(builderPath)) {
-    return "model: sonnet";
-  }
-
-  const existing = readFileSync(builderPath, "utf8");
-  const frontmatter = existing.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/)?.[1] || "";
-  return frontmatter.match(/^model:\s*\S.*$/m)?.[0] || "model: sonnet";
 }
 
 function claudeDesktopMcpServer(root: string): Record<string, unknown> {
@@ -1195,11 +1173,10 @@ function claudeDesktopInstructions(root: string, snippetPath: string, serverName
   ].join("\n");
 }
 
-function cursorInstructions(): string {
+function cursorInstructions(withBuilder = false): string {
   return [
     INSTRUCTIONS.trimEnd(),
-    "",
-    CURSOR_DELEGATION_GUIDANCE.trim(),
+    ...(withBuilder ? ["", CURSOR_DELEGATION_GUIDANCE.trim()] : []),
     "",
     "Cursor-specific notes:",
     "- Project MCP only applies when Cursor opens this folder as the workspace root.",

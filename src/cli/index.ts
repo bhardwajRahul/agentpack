@@ -267,9 +267,16 @@ export async function runCli(argv: string[], cwd: string): Promise<void> {
     if (!target) {
       throw new Error("install requires target: codex, claude, claude-desktop, or cursor");
     }
-    const parsed = parseArgs(rest.slice(1));
+    const installArgs = rest.slice(1);
+    // Validate the complete new flag value without changing parsing for other commands.
+    for (const arg of installArgs) {
+      if (arg.startsWith("--with-builder=")) {
+        booleanOption(arg.slice("--with-builder=".length), "--with-builder");
+      }
+    }
+    const parsed = parseArgs(installArgs);
     const dryRun = installDryRun(parsed.options);
-    const message = installIntegration(root, target, { dryRun });
+    const message = installIntegration(root, target, { dryRun, withBuilder: booleanOption(parsed.options["with-builder"], "--with-builder") });
     process.stdout.write(`${message}\n`);
     return;
   }
@@ -298,7 +305,7 @@ Default workflow:
 
 Setup:
   agentpack init
-  agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write]
+  agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write] [--with-builder]
   agentpack doctor
   agentpack mcp [--root <path>]
 
@@ -363,11 +370,12 @@ Initialize .agentpack/ in the current repository and add local Agentpack files t
   }
 
   if (command === "install") {
-    return `agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write]
+    return `agentpack install codex|claude|claude-desktop|cursor|git-hooks [--dry-run|--write] [--with-builder]
 
 Generate MCP client configuration and project instructions for one client surface.
 git-hooks installs a pre-commit hook that runs \`agentpack task gate --staged\`.
 Defaults to dry-run; pass --write to apply generated files.
+For codex, claude, or cursor, --with-builder adds the optional scoped builder agent; default installs do not create or rewrite builder files.
 On macOS, claude-desktop --write also reports and atomically merges the repo entry into the user-local Desktop config.
 This uses optimistic conflict detection; unrelated active writers are not locked.`;
   }

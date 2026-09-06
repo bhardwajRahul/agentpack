@@ -44,10 +44,14 @@ Run `agentpack doctor` to verify the setup, and `agentpack resume --preset agent
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for client-by-client setup, including what each installer writes and why.
 
+Builder agents are optional: add `--with-builder` to the Codex, Claude Code, or
+Cursor installer when you want delegation support. The default install focuses
+on task continuity and preserves any existing builder files.
+
 ## How it works
 
 1. At session start, the agent loads compact Agentpack context: the current Task Passport, recent checkpoints, decisions, and reviewed source conclusions.
-2. While working, it records durable state — decisions worth keeping, approaches that failed, verification evidence — and caches reviewed source conclusions with file hashes so unchanged files don't need re-reading.
+2. While working, it records durable state — decisions worth keeping, approaches that failed, verification evidence — and selectively caches reviewed source conclusions with file hashes. A matching hash shows that the file is unchanged; it does not prove the conclusion is correct.
 3. At a coherent boundary, it creates a checkpoint with status, next actions, and git state.
 4. The next session — any MCP-connected agent — continues from that state instead of rebuilding it from chat history.
 

@@ -658,9 +658,9 @@ test("cross-client continuity preserves directional facts across drifted and imp
   assert.match(freshResume, /No inspected sources recorded yet\./, "a bundle carries selected source artifacts, not an unreviewed destination source-cache conclusion");
 
   writeFileSync(desktopConfig, JSON.stringify({ mcpServers: { preserved: { command: "preserve" } } }), "utf8");
-  run(source, ["install", "codex", "--write"]);
-  run(source, ["install", "claude", "--write"]);
-  run(source, ["install", "cursor", "--write"]);
+  run(source, ["install", "codex", "--write", "--with-builder"]);
+  run(source, ["install", "claude", "--write", "--with-builder"]);
+  run(source, ["install", "cursor", "--write", "--with-builder"]);
   installIntegration(realpathSync(source), "claude-desktop", { dryRun: false, claudeDesktopConfigPath: desktopConfig });
 
   const clientSurfaces: Array<[string, string, string[]]> = [
@@ -3177,6 +3177,33 @@ test("previews and writes project-local MCP client install files", () => {
   const serverName = expectedMcpServerName(dir);
   runGit(dir, ["init"]);
   run(dir, ["init"]);
+  const assertCoreInstructions = (relativeFile: string): void => {
+    const instructions = readFileSync(path.join(dir, relativeFile), "utf8");
+    for (const boundary of [
+      /Read-only questions do not need a new task/,
+      /preserve current behavior, compatibility, security, and rollback/,
+      /avoid unrelated refactors.*unsafe shell execution.*secret logging/,
+      /inspect the diff before staging.*exclude unrelated changes, AI attribution/,
+      /Collaboration modes/,
+      /design mode: do not write code/,
+      /load_context.*preset: "quick".*focused query/,
+      /objective, constraints, worktree, branch\/HEAD, lifecycle, and write scope/,
+      /verifying, blocked, closed, or parked task/,
+      /declare a write scope by default/,
+      /do not turn a review task into implementation/,
+      /review of the current task stays in it/,
+      /different objective or authorization boundary.*independent frozen-snapshot review/,
+      /unresolved findings, dead ends/,
+      /Reuse one relevant evidence item instead of duplicating/,
+      /matching hash proves only that a file is unchanged/,
+      /checkpoint the summary, current status, and next actions/,
+      /sequence state-changing Agentpack calls/,
+      /keep verification pending through fixes/,
+      /final verdict binds the reviewed HEAD and freezes edits/,
+      /never infer permission to push, merge, publish, message/,
+      /Read `\.agentpack\/instructions\/verification\.md` before a final verdict, external review, or release/
+    ]) assert.match(instructions, boundary, `${relativeFile} must retain ${boundary}`);
+  };
   const gitignorePath = path.join(dir, ".gitignore");
   writeFileSync(gitignorePath, readFileSync(gitignorePath, "utf8").replace(".cursor\n", ""), "utf8");
 
@@ -3193,21 +3220,13 @@ test("previews and writes project-local MCP client install files", () => {
   assert.equal(existsSync(path.join(dir, ".mcp.json")), false);
   assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), false);
 
-  const claudeInstall = run(dir, ["install", "claude", "--write"]);
+  const claudeInstall = run(dir, ["install", "claude", "--write", "--with-builder"]);
   assert.match(claudeInstall, /Installed Agentpack claude integration/);
+  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Read-only questions do not need a new task/);
+  assert.match(readFileSync(path.join(dir, ".agentpack", "instructions", "verification.md"), "utf8"), /Adversarial check type:/);
+  assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), true);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /agentpack:start/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /preserve existing functionality/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Coding defaults/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not log secrets/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Collaboration modes/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /design mode: do not write code/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Task lifecycle gate/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /treat review mode as a scope check/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /park deferred work with `task_park`\/`task park`/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /do not finalize a task just to free the current slot/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /PR bodies, release notes, or branch names/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /avoid branch names with AI or agent-style prefixes/);
-  assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /load_context.*preset: "quick".*focused query/);
+  assertCoreInstructions("CLAUDE.md");
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /Delegation default \(builder subagent\)/);
   assert.match(readFileSync(path.join(dir, "CLAUDE.md"), "utf8"), /more than roughly 10-20 tool calls/);
   assert.match(
@@ -3233,7 +3252,7 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(builderAgent, /warns by default and blocks when gateMode is "block"/);
   assert.match(builderAgent, /recording is the coordinator's job/);
   assert.doesNotMatch(builderAgent, /archivist/i);
-  assert.match(claudeInstall, /builder subagent/);
+  assert.match(claudeInstall, /optional Claude builder/);
   assert.match(builderAgent, /roughly 10-20 tool calls or multi-file changes/);
 
   writeFileSync(
@@ -3241,12 +3260,12 @@ test("previews and writes project-local MCP client install files", () => {
     builderAgent.replace("model: sonnet", "model: claude-sonnet-custom-id") + "\nStale user-edited template content.\n",
     "utf8"
   );
-  const claudeReinstall = run(dir, ["install", "claude", "--write"]);
+  const claudeReinstall = run(dir, ["install", "claude", "--write", "--with-builder"]);
   assert.match(claudeReinstall, /Installed Agentpack claude integration/);
   const reinstalledBuilder = readFileSync(path.join(dir, ".claude", "agents", "builder.md"), "utf8");
   assert.match(reinstalledBuilder, /^model: claude-sonnet-custom-id$/m);
   assert.match(reinstalledBuilder, /recording is the coordinator's job/);
-  assert.doesNotMatch(reinstalledBuilder, /Stale user-edited template content/);
+  assert.equal(reinstalledBuilder, builderAgent.replace("model: sonnet", "model: claude-sonnet-custom-id") + "\nStale user-edited template content.\n");
 
   const claudeDesktopPreview = run(dir, ["install", "claude-desktop"]);
   assert.match(claudeDesktopPreview, /claude-desktop install plan/);
@@ -3334,17 +3353,13 @@ test("previews and writes project-local MCP client install files", () => {
     }
   }), "utf8");
 
-  const cursorInstall = run(dir, ["install", "cursor", "--write"]);
+  const cursorInstall = run(dir, ["install", "cursor", "--write", "--with-builder"]);
   assert.match(cursorInstall, /warn mode allows silently/);
   assert.match(cursorInstall, /inherits the parent model/);
   assert.match(cursorInstall, /read-only MCP tools/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /task-state ledger/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /preserve existing functionality/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Collaboration modes/);
+  assertCoreInstructions(".cursor/rules/agentpack.mdc");
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /review mode: review the current diff/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Task lifecycle gate/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /independent review that needs its own frozen snapshot/);
-  assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /finalization means verification is passed, failed, or explicitly accepted as complete/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /load_context.*preset: "quick".*focused query/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /Delegation default \(builder subagent\)/);
   assert.match(readFileSync(path.join(dir, ".cursor", "rules", "agentpack.mdc"), "utf8"), /inherits the parent model/);
@@ -3386,46 +3401,36 @@ test("previews and writes project-local MCP client install files", () => {
   assert.match(cursorHooks.hooks.preToolUse[0]?.command || "", /task gate --client cursor$/);
   assert.match(runGit(dir, ["check-ignore", ".cursor/hooks.json"]), /\.cursor\/hooks\.json/);
 
-  run(dir, ["install", "cursor", "--write"]);
+  run(dir, ["install", "cursor", "--write", "--with-builder"]);
   const reinstalledCursorCli = JSON.parse(readFileSync(path.join(dir, ".cursor", "cli.json"), "utf8"));
   for (const permission of expectedCursorReadOnlyPermissions) {
     assert.equal(reinstalledCursorCli.permissions.allow.filter((entry: string) => entry === permission).length, 1);
   }
 
-  const codexInstall = run(dir, ["install", "codex", "--write"]);
+  const codexInstall = run(dir, ["install", "codex", "--write", "--with-builder"]);
   assert.match(codexInstall, /No global Codex config is modified/);
   assert.match(codexInstall, /project-local \.codex\/config\.toml/);
   assert.match(codexInstall, /gpt-5\.6-terra at medium reasoning/);
   assert.match(codexInstall, /sees only Agentpack load_context/);
   assert.match(codexInstall, /Remove any old ~\/\.codex\/config\.toml agentpack server/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /agentpack:start/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /preserve existing functionality/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Git and PR hygiene/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not add AI or agent prefixes/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /`claude\/`, `codex\/`, `ai\/`, or `agent\/`/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Focused skills\/rules/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Collaboration modes/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /treat named modes as explicit collaboration preferences/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /checkpoint mode: summarize what was decided/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Task lifecycle gate/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /declare a write scope when starting a task/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /commit the in-scope changes and confirm the commit changed nothing/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /adversarial verification is advisory, not a semantic judgment/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /classify contract-changing work as medium\/high risk/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Review mode: independent read-only/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /one `task_finalize` call carrying the final status, evidence, and commit hash/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record `passed` via `task_update_verification`, then `task_park`/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep next actions current: clear or replace a stale plan/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /verifying, blocked, closed/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /keep reviews that verify the current active\/verifying task inside that task/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /do not mutate a review task into implementation work/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Avoid turning Agentpack into an activity log/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /record_source` only when you have a durable conclusion/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` only when you need a full stale-source check/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /load_context.*preset: "quick".*focused query/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /prefer one aggregated verification evidence and one checkpoint/);
-  assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /sequence state-changing Agentpack calls/);
-  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /source_status` before re-reading/);
+  assertCoreInstructions("AGENTS.md");
+  const verification = readFileSync(path.join(dir, ".agentpack", "instructions", "verification.md"), "utf8");
+  for (const boundary of [
+    /commit the in-scope changes and confirm the commit changed nothing/,
+    /adversarial verification is advisory, not a semantic judgment/,
+    /for low risk, attach one concrete self-challenge/,
+    /classify contract-changing work as medium\/high risk/,
+    /Review mode: independent read-only/,
+    /Adversarial check type:.*negative, differential, operational, or rollback/,
+    /Reviewed HEAD:/,
+    /one `task_finalize` call carrying the final status, evidence, and commit hash/,
+    /record `passed` via `task_update_verification`, then `task_park`/,
+    /do not use a passed-to-pending reset for normal iteration/,
+    /keep next actions current: clear or replace a stale plan/,
+    /do not finalize a task just to free the current slot/,
+    /prefer one aggregated verification evidence and one checkpoint/
+  ]) assert.match(verification, boundary);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default \(builder subagent\)/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /one writer per slice/);
   assert.match(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /gpt-5\.6-terra at medium reasoning/);
@@ -3478,7 +3483,7 @@ test("previews and writes project-local MCP client install files", () => {
       .replace("You are the builder for one scoped implementation slice.", "Stale managed builder instructions."),
     "utf8"
   );
-  run(dir, ["install", "codex", "--write"]);
+  run(dir, ["install", "codex", "--write", "--with-builder"]);
   const reinstalledCodexBuilder = readFileSync(codexBuilderPath, "utf8");
   assert.match(reinstalledCodexBuilder, /^model = "gpt-5\.6-sol"$/m);
   assert.match(reinstalledCodexBuilder, /^model_reasoning_effort = "high"$/m);
@@ -3503,10 +3508,121 @@ model = "custom-model"
   mkdirSync(path.dirname(builderPath), { recursive: true });
   writeFileSync(builderPath, existingBuilder, "utf8");
 
-  const install = run(dir, ["install", "codex", "--write"]);
+  const install = run(dir, ["install", "codex", "--write", "--with-builder"]);
 
   assert.match(install, /existing unmarked \.codex\/agents\/builder\.toml was left untouched/);
   assert.equal(readFileSync(builderPath, "utf8"), existingBuilder);
+});
+
+test("installs builders only with explicit opt-in and preserves existing builder bytes", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-opt-in-test-"));
+  runGit(dir, ["init"]);
+  run(dir, ["init"]);
+
+  const clients = [
+    { target: "codex", instructions: "AGENTS.md", builder: ".codex/agents/builder.toml" },
+    { target: "claude", instructions: "CLAUDE.md", builder: ".claude/agents/builder.md" },
+    { target: "cursor", instructions: ".cursor/rules/agentpack.mdc", builder: ".cursor/agents/builder.md" }
+  ];
+  for (const { target, instructions, builder } of clients) {
+    const defaultPreview = run(dir, ["install", target]);
+    assert.match(defaultPreview, new RegExp(`agentpack install ${target} --write`));
+    assert.doesNotMatch(defaultPreview, /\.\w+\/agents\/builder/);
+    run(dir, ["install", target, "--write"]);
+    assert.equal(existsSync(path.join(dir, builder)), false);
+    const core = readFileSync(path.join(dir, instructions), "utf8");
+    assert.doesNotMatch(core, /Delegation default/);
+    // All three baseline surfaces exceeded 8,900 characters at fbb9e1f.
+    assert.ok(core.length <= 5000, `${target} core should stay substantially below the old always-on budget`);
+    assert.match(core, /verification\.md/);
+    assert.match(core, /checkpoint the summary, current status, and next actions/);
+  }
+  assert.equal(existsSync(path.join(dir, ".codex", "agents", "builder.toml")), false);
+  assert.equal(existsSync(path.join(dir, ".claude", "agents", "builder.md")), false);
+  assert.equal(existsSync(path.join(dir, ".cursor", "agents", "builder.md")), false);
+  assert.doesNotMatch(readFileSync(path.join(dir, "AGENTS.md"), "utf8"), /Delegation default/);
+
+  const builderPaths: [string, string, string] = [
+    path.join(dir, ".codex", "agents", "builder.toml"),
+    path.join(dir, ".claude", "agents", "builder.md"),
+    path.join(dir, ".cursor", "agents", "builder.md")
+  ];
+  for (const { target, builder, instructions } of clients) {
+    const preview = run(dir, ["install", target, "--with-builder"]);
+    assert.match(preview, new RegExp(`agentpack install ${target} --write --with-builder`));
+    assert.equal(existsSync(path.join(dir, builder)), false, "opt-in preview must not create builders");
+    run(dir, ["install", target, "--write", "--with-builder=true"]);
+    assert.match(readFileSync(path.join(dir, instructions), "utf8"), /Delegation default/);
+  }
+  for (const builderPath of builderPaths) {
+    assert.equal(existsSync(builderPath), true);
+  }
+
+  const customClaude = "custom Claude builder bytes\n";
+  const customCursor = "custom Cursor builder bytes\n";
+  writeFileSync(builderPaths[1], customClaude, "utf8");
+  writeFileSync(builderPaths[2], customCursor, "utf8");
+  run(dir, ["install", "claude", "--write", "--with-builder"]);
+  run(dir, ["install", "cursor", "--write", "--with-builder"]);
+  assert.equal(readFileSync(builderPaths[1], "utf8"), customClaude);
+  assert.equal(readFileSync(builderPaths[2], "utf8"), customCursor);
+
+  for (const { target, instructions, builder } of clients) {
+    const builderPath = path.join(dir, builder);
+    const before = readFileSync(builderPath);
+    const mtime = statSync(builderPath).mtimeMs;
+    run(dir, ["install", target, "--write"]);
+    assert.deepEqual(readFileSync(builderPath), before);
+    assert.equal(statSync(builderPath).mtimeMs, mtime, "default reinstall must not rewrite existing builders");
+    const core = readFileSync(path.join(dir, instructions), "utf8");
+    assert.doesNotMatch(core, /Delegation default/);
+    const repeated = run(dir, ["install", target, "--write", "--with-builder=false"]);
+    assert.doesNotMatch(repeated, /(?:CREATE|UPDATE) /, "default reinstall should be idempotent");
+    assert.equal(readFileSync(path.join(dir, instructions), "utf8"), core);
+  }
+});
+
+test("rejects unsupported or malformed builder options before writing files", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-invalid-test-"));
+  run(dir, ["init"]);
+  const snapshot = (): Array<[string, string]> => walkEntries(dir)
+    .filter((file) => statSync(file).isFile())
+    .sort()
+    .map((file) => [path.relative(dir, file), readFileSync(file).toString("hex")]);
+  const before = snapshot();
+  for (const target of ["claude-desktop", "git-hooks"]) {
+    for (const mode of ["--dry-run", "--write"]) {
+      assert.match(runExpectError(dir, ["install", target, "--with-builder", mode]), /supported only for codex, claude, and cursor/);
+      assert.deepEqual(snapshot(), before);
+    }
+  }
+  for (const value of ["maybe", "true=garbage", "false=garbage"]) {
+    assert.match(runExpectError(dir, ["install", "codex", `--with-builder=${value}`, "--write"]), /--with-builder requires true or false/);
+    assert.deepEqual(snapshot(), before);
+  }
+});
+
+test("default installs ignore optional builder symlinks and opt-in rejects them", { skip: process.platform === "win32" }, () => {
+  for (const target of ["codex", "claude", "cursor"]) {
+    for (const dangling of [false, true]) {
+      const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-symlink-test-"));
+      const outside = mkdtempSync(path.join(os.tmpdir(), "agentpack-builder-outside-test-"));
+      const victim = path.join(outside, "builder.md");
+      const content = "User-owned external builder; do not read or overwrite.\n";
+      if (!dangling) writeFileSync(victim, content, "utf8");
+      run(dir, ["init"]);
+      mkdirSync(path.join(dir, `.${target}`, "agents"), { recursive: true });
+      symlinkSync(victim, path.join(dir, `.${target}`, "agents", target === "codex" ? "builder.toml" : "builder.md"));
+
+      run(dir, ["install", target, "--write"]);
+      const instructionFile = target === "codex" ? "AGENTS.md" : target === "claude" ? "CLAUDE.md" : ".cursor/rules/agentpack.mdc";
+      const before = readFileSync(path.join(dir, instructionFile), "utf8");
+      assert.match(runExpectError(dir, ["install", target, "--with-builder", "--write"]), /symbolic link/);
+      assert.equal(existsSync(victim), !dangling, "opt-in must not create a dangling link's external target");
+      if (!dangling) assert.equal(readFileSync(victim, "utf8"), content);
+      assert.equal(readFileSync(path.join(dir, instructionFile), "utf8"), before, "failed opt-in must not partially update primary instructions");
+    }
+  }
 });
 
 test("writes a schema-complete fresh Cursor CLI permission config", () => {
