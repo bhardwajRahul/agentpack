@@ -47,24 +47,19 @@ Default cadence:
 - During normal coding, keep working locally; record only durable decisions, dead ends, source conclusions, and evidence.
 - Sequence state-changing Agentpack calls; do not run them in parallel with audit, status, or checkpoint calls.
 - Keep verification pending during a coherent fix loop; record aggregated intermediate evidence and checkpoints, then record a final verdict only after edits end.
-- Use full safe mode for risky or release-like changes: record important findings as they happen and run the full verification loop.
+- For risky changes and releases, record important findings as they happen and follow the verification policy.
 - Park deferred work before switching to an unrelated task. Do not use accepted
   finalization as a pause; finalization means the task is complete or
   intentionally accepted as-is.
 
-This keeps Agentpack useful without turning every micro-step into ledger traffic.
-Load context once and save material progress at a coherent boundary; task start,
-evidence, and finalization may still need separate calls. A read-only question
-alone does not require a new Passport. Reuse one substantive verification record
-from the checkpoint and final verdict instead of copying its output repeatedly.
+Load context once, then save what the next session will need. Task start,
+evidence, and finalization may need separate calls. A read-only question does
+not need a new Passport. Store verification output once and reference it in the
+checkpoint and final verdict.
 
-Generated client instructions keep this core workflow short and load
-`.agentpack/instructions/verification.md` for final verification, external review,
-or release work. That reference preserves the existing verification policy.
-Builder availability comes with supported client installs. Actual delegation is
-optional: use an explicit user request or permission in the current instructions,
-and announce the selected slice. Small tasks stay inline; file or tool-call
-counts alone do not require delegation.
+Before final verification, external review, or a release, read
+`.agentpack/instructions/verification.md`. For builder setup and usage, see
+[Optional Builder](INTEGRATIONS.md#optional-builder).
 
 ```text
 record_source(path, summary)
@@ -76,7 +71,7 @@ attach_evidence(kind, content, command, exitCode)
 Good source summaries are conclusions, not file descriptions:
 
 ```text
-src/integrations/install.ts: install uses a dry-run plan by default and writes only project-local files with --write.
+src/integrations/install.ts: installs preview changes by default. With --write, codex, claude, and cursor update project files; claude-desktop also merges an entry into the user config on macOS.
 ```
 
 Good dead ends prevent repeated work:

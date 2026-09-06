@@ -3534,8 +3534,8 @@ test("installs builders by default with optional use and preserves custom files"
     assert.match(core, /when the user explicitly requests it.*current instructions permit delegation/);
     assert.match(core, /Respect requests to work without subagents/);
     assert.match(core, /Before delegating, briefly announce/);
-    assert.match(core, /announcement does not grant authorization/);
-    assert.match(core, /file counts and tool-call counts do not require delegation/);
+    assert.match(core, /Follow the existing permissions/);
+    assert.match(core, /Keep small tasks inline/);
     assert.ok(core.length <= 5000, "default instructions remain substantially shorter than the original 8900+ characters");
     const builderPath = path.join(dir, builder);
     const original = readFileSync(builderPath, "utf8");

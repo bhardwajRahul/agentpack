@@ -76,25 +76,19 @@ Other installers do not edit global client configuration.
 
 ### Optional Builder
 
-Codex, Claude Code, and Cursor installs include a builder. There is no separate
-builder installation choice. Claude Desktop and git-hooks do not install one.
+Codex, Claude Code, and Cursor include a builder for delegated implementation
+work. The main agent can use it when you ask or your instructions allow
+delegation. Before starting, it explains what it will hand off and why. Small
+tasks stay with the main agent, which also owns decisions, ledger records,
+final verification, and delivery.
 
-Availability does not require use: ask for a builder explicitly, or let the
-coordinator select a useful bounded slice when the current instructions permit
-delegation. The coordinator briefly announces what it delegates and why, keeps
-small tasks inline, and retains decisions, ledger records, final verification,
-and delivery responsibility. File counts or tool-call counts do not trigger
-mandatory delegation. An announcement does not grant permission.
+Reinstalling preserves existing Claude Code and Cursor builder files. Codex
+updates its marked managed block and preserves settings outside it; unmarked
+Codex builder files are left unchanged. Review existing builder files when
+upgrading to pick up changes to the template.
 
-Existing Claude Code and Cursor builder files are preserved in full. Codex
-refreshes only its marked managed block, preserving user settings outside it;
-unmarked Codex agents are preserved in full. Existing descriptions may therefore
-retain older guidance; the current primary instructions govern optional use.
-
-The compact primary instructions retain task boundaries and link to
-`.agentpack/instructions/verification.md` for final verification, external review,
-and release work. The reference preserves the existing verification policy;
-moving it out of the always-on text does not relax it.
+For final verification, external review, and releases, the main instructions
+point to `.agentpack/instructions/verification.md`.
 
 Generated MCP server names are repo-specific to avoid collisions when several repos are open in the same client. The Agentpack repo itself keeps the short name `agentpack`; other repos use `agentpack-<repo-name>`, such as `agentpack-example-app`.
 

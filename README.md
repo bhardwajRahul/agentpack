@@ -44,9 +44,10 @@ Run `agentpack doctor` to verify the setup, and `agentpack resume --preset agent
 
 See [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) for client-by-client setup, including what each installer writes and why.
 
-Codex, Claude Code, and Cursor installs include a builder. Using it is optional:
-ask for it explicitly, or let the agent select and announce a useful slice when
-your instructions permit delegation. Small tasks stay with the main agent.
+Codex, Claude Code, and Cursor include an optional builder for implementation
+work. The main agent can use it when you ask or your instructions allow
+delegation, and explains what it will hand off before starting. Small tasks stay
+with the main agent.
 
 ## How it works
 

@@ -115,9 +115,9 @@ After meaningful progress, call \`checkpoint\` with summary, current status, and
 
 function builderGuidance(builderPath: string): string {
   return `Optional builder:
-- A builder is available at \`${builderPath}\`; using it is not required. Keep small tasks inline; file counts and tool-call counts do not require delegation.
-- Use it when the user explicitly requests it, or when current instructions permit delegation and a bounded implementation slice would benefit. Respect requests to work without subagents.
-- Before delegating, briefly announce the slice and why it benefits from a builder; an announcement does not grant authorization or require another approval when delegation is already permitted.
+- A builder is available at \`${builderPath}\`; using it is not required. Keep small tasks inline.
+- Use it when the user explicitly requests it or current instructions permit delegation. Respect requests to work without subagents.
+- Before delegating, briefly announce what the builder will do and why. Follow the existing permissions; do not ask again for already authorized work.
 - Give the builder the objective, constraints, write scope, acceptance criteria, and narrow verification command; use one writer per slice.
 - The coordinator keeps decisions, Agentpack records, final verification, commits, and release actions.`;
 }
