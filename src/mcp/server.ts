@@ -258,7 +258,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "task_audit",
     annotations: READ_ONLY_TOOL_ANNOTATIONS,
-    description: "Audit the current Task Passport for continuity risks and advisory-only risk-proportional adversarial-verification evidence (a concrete self-challenge at low risk; independent read-only review and a named disconfirming check at medium/high risk). It does not judge semantic correctness or block lifecycle actions. Call before finalizing, after a long gap, or when drift is suspected; skip when a recent audit already answered it. Read-only.",
+    description: "Audit the current Task Passport for continuity risks and advisory-only risk-proportional adversarial-verification evidence (a concise verification note or test output at low risk; independent read-only review and a named disconfirming check at medium/high risk). It does not judge semantic correctness or block lifecycle actions. Call before finalizing, after a long gap, or when drift is suspected; skip when a recent audit already answered it. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
