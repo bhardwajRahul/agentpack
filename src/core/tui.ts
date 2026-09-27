@@ -18,6 +18,7 @@ const MAX_TOTAL_PASSPORT_BYTES = 32_000_000;
 const MAX_CURRENT_TASK_BYTES = 512;
 const MAX_CHECKPOINTS = 5_000;
 const MAX_EVIDENCE_PER_TASK = 32;
+const CHECKPOINT_FILES = ["checkpoint.json", "git-status.txt", "diff.patch", "resume.md"] as const;
 const MAX_PREVIEW_LINES = 160;
 const MAX_SECTION_ITEMS = 100;
 const MAX_WARNINGS = 100;
@@ -50,6 +51,8 @@ export interface TuiEvidence {
 
 export interface TuiTask { passport: TaskPassport; current: boolean }
 export interface TuiTaskDetails { timeline: AgentpackEvent[]; evidence: TuiEvidence[]; warnings: string[] }
+export interface TuiCheckpointFile { name: string; preview: string; warning?: string }
+export interface TuiCheckpointDetails { id: string; files: TuiCheckpointFile[]; warnings: string[] }
 interface EventLogRead { events: AgentpackEvent[]; evidenceById: Map<string, AgentpackEvent> }
 export interface TuiHealth { taskCount: number; eventCount: number; evidenceEventCount: number; eventBytes: number; checkpointCount: number }
 export interface TuiModel {
@@ -60,7 +63,15 @@ export interface TuiModel {
   health: TuiHealth;
   evidenceById: Map<string, AgentpackEvent>;
 }
-export interface TuiNavigation { selected: number; view: number; offset: number; query: string; searching: boolean }
+export interface TuiNavigation {
+  selected: number;
+  view: number;
+  offset: number;
+  query: string;
+  searching: boolean;
+  itemSelected?: number;
+  drillDown?: boolean;
+}
 export interface TuiRuntime {
   stdin: Pick<NodeJS.ReadStream, "isTTY" | "setRawMode" | "resume" | "pause" | "on" | "off" | "once">;
   stdout: Pick<NodeJS.WriteStream, "isTTY" | "write" | "on" | "off" | "once">;
@@ -112,6 +123,28 @@ export function loadTuiTaskDetails(model: TuiModel, task: TuiTask): TuiTaskDetai
   return { timeline, evidence, warnings };
 }
 
+/** Loads bounded content from the selected global checkpoint without inferring a task relationship. */
+export function loadTuiCheckpointDetails(model: TuiModel, id: string): TuiCheckpointDetails {
+  const warnings: string[] = [];
+  if (!model.checkpoints.includes(id)) {
+    return { id, files: [], warnings: ["Checkpoint is not present in the bounded inventory."] };
+  }
+  const base = getPackPath(model.root, "checkpoints", id);
+  const files: TuiCheckpointFile[] = [];
+  for (const name of CHECKPOINT_FILES) {
+    const file = path.join(base, name);
+    try { lstatSync(file); } catch { continue; }
+    try {
+      const relative = path.relative(getPackPath(model.root), file);
+      files.push({ name, preview: readSafePreviewWithin(model.root, base, relative, `TUI checkpoint ${name} path`) });
+    } catch {
+      files.push({ name, preview: "", warning: "Unsafe or unreadable checkpoint file omitted." });
+    }
+  }
+  if (!files.length) pushWarning(warnings, "No readable checkpoint files found.");
+  return { id, files, warnings };
+}
+
 export function renderTuiSnapshot(model: TuiModel, query = ""): string {
   const tasks = visibleTasks(model, query);
   const lines = [
@@ -141,6 +174,7 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
   let restored = false;
   const colors = terminalColorsEnabled();
   let cachedDetails: { taskId: string; value: TuiTaskDetails } | undefined;
+  let cachedCheckpoint: { id: string; value: TuiCheckpointDetails } | undefined;
   const visible = () => visibleTasks(model, navigation.query);
   const detailFor = (task: TuiTask): TuiTaskDetails => {
     if (cachedDetails?.taskId === task.passport.id) return cachedDetails.value;
@@ -148,17 +182,40 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
     cachedDetails = { taskId: task.passport.id, value: loaded };
     return loaded;
   };
+  const checkpointFor = (id: string): TuiCheckpointDetails => {
+    if (cachedCheckpoint?.id === id) return cachedCheckpoint.value;
+    const loaded = loadTuiCheckpointDetails(model, id);
+    cachedCheckpoint = { id, value: loaded };
+    return loaded;
+  };
   const draw = () => {
     const tasks = visible();
     navigation.selected = Math.max(0, Math.min(navigation.selected, Math.max(0, tasks.length - 1)));
     if (navigation.view === 0) navigation.offset = visibleOffset(navigation.selected, navigation.offset);
     const task = tasks[navigation.selected];
+    const loadedTask = navigation.view === 3 && task ? detailFor(task) : undefined;
+    const evidence = loadedTask?.evidence || [];
+    const itemCount = navigation.view === 3 ? evidence.length : navigation.view === 4 ? model.checkpoints.length : 0;
+    const itemPrefixRows = navigation.view === 3 ? warningSummaryLines(loadedTask?.warnings || []).length : navigation.view === 4 ? 1 : 0;
+    navigation.itemSelected = Math.max(0, Math.min(navigation.itemSelected || 0, Math.max(0, itemCount - 1)));
+    if ((navigation.view === 3 || navigation.view === 4) && !navigation.drillDown && itemCount > 0) {
+      navigation.offset = visibleOffset(itemBodyIndex(navigation.itemSelected, itemPrefixRows), navigation.offset);
+    }
     const labels = ["Tasks", "Passport", "Timeline", "Evidence", "Checkpoints", "Health"];
     let body: string[];
     if (navigation.view === 0) {
       body = tasks.length ? tasks.map((item, index) => taskListLine(item, index === navigation.selected, false)) : ["No matching task."];
     } else if (navigation.view === 4) {
-      body = ["Global repository checkpoints (the current schema has no task-to-checkpoint link):", ...(model.checkpoints.length ? model.checkpoints : ["No checkpoints."])];
+      if (navigation.drillDown && model.checkpoints[navigation.itemSelected]) {
+        body = checkpointDetailLines(checkpointFor(model.checkpoints[navigation.itemSelected] || ""));
+      } else {
+        body = [
+          "Global repository checkpoints (the current schema has no task-to-checkpoint link):",
+          ...(model.checkpoints.length
+            ? model.checkpoints.map((id, index) => selectableLine(id, index === navigation.itemSelected))
+            : ["No checkpoints."])
+        ];
+      }
     } else if (navigation.view === 5) {
       body = healthLines(model);
     } else if (!task) {
@@ -168,10 +225,17 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
     } else if (navigation.view === 2) {
       const loaded = detailFor(task);
       body = [...(loaded.timeline.length ? loaded.timeline.map(eventLine) : ["No task timeline events."]), ...loaded.warnings.map((warning) => `[warning] ${warning}`)];
+    } else if (navigation.drillDown && evidence[navigation.itemSelected]) {
+      body = evidenceDetailLines(task, evidence[navigation.itemSelected]!, loadedTask?.warnings || []);
     } else {
-      const loaded = detailFor(task);
-      body = loaded.evidence.length ? loaded.evidence.flatMap(evidenceLines) : ["No verification evidence linked."];
-      body.push(...loaded.warnings.map((warning) => `[warning] ${warning}`));
+      const loaded = loadedTask || detailFor(task);
+      body = loaded.evidence.length
+        ? [
+          ...warningSummaryLines(loaded.warnings),
+          ...loaded.evidence.map((item, index) => evidenceListLine(item, index === navigation.itemSelected))
+        ]
+        : ["No verification evidence linked."];
+      if (!loaded.evidence.length) body.push(...loaded.warnings.map((warning) => `[warning] ${warning}`));
     }
     navigation.offset = Math.min(navigation.offset, Math.max(0, body.length - PAGE_ROWS));
     const page = body.slice(navigation.offset, navigation.offset + PAGE_ROWS).map((line, index) => {
@@ -179,18 +243,30 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
         const item = tasks[navigation.offset + index];
         return item ? styledTaskLine(item, navigation.offset + index === navigation.selected, colors) : displayLine(line);
       }
+      if ((navigation.view === 3 || navigation.view === 4) && !navigation.drillDown) {
+        const absoluteIndex = navigation.offset + index - itemPrefixRows;
+        return styledSelectableLine(displayLine(line), absoluteIndex === navigation.itemSelected, colors);
+      }
       return styledContentLine(displayLine(line), colors);
     });
     const header = labels.map((label, index) => {
       const tab = index === navigation.view ? `[${label}]` : label;
       return index === navigation.view ? paint(tab, colors, ANSI.bold, ANSI.cyan) : paint(tab, colors, ANSI.dim);
     }).join("  ");
-    const selected = task
-      ? paint(displayLine(`Selected: ${task.passport.id} (${task.current ? "current" : "historical"})`), colors, ANSI.dim)
-      : "";
+    const selected = navigation.view === 4 && model.checkpoints[navigation.itemSelected]
+      ? paint(displayLine(`Selected checkpoint: ${model.checkpoints[navigation.itemSelected]} (global repository artifact)`), colors, ANSI.dim)
+      : navigation.view === 3 && task && evidence[navigation.itemSelected]
+        ? paint(displayLine(`Selected evidence: ${evidence[navigation.itemSelected]?.id} · Task: ${task.passport.id}`), colors, ANSI.dim)
+        : task
+          ? paint(displayLine(`Selected: ${task.passport.id} (${task.current ? "current" : "historical"})`), colors, ANSI.dim)
+          : "";
     const footer = navigation.searching
       ? paint(displayLine(`/${navigation.query}`), colors, ANSI.bold, ANSI.yellow)
-      : paint("j/k move/scroll · Enter drill · Tab view · / search · Esc back · q quit", colors, ANSI.dim);
+      : paint(navigation.drillDown
+        ? "j/k scroll · Esc list · Tab view · q quit"
+        : (navigation.view === 3 || navigation.view === 4) && itemCount > 0
+          ? "j/k select · Enter open · Tab view · / search · Esc back · q quit"
+          : "j/k move/scroll · Enter drill · Tab view · / search · Esc back · q quit", colors, ANSI.dim);
     const title = [
       paint("Agentpack Inspector", colors, ANSI.bold, ANSI.cyan),
       paint("· READ ONLY", colors, ANSI.dim),
@@ -212,7 +288,14 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
     try {
       for (const key of parseTuiKeys(data)) {
         if (key === "\u0003" || (!navigation.searching && key === "q")) { restore(); return; }
-        navigation = reduceTuiNavigation(navigation, key, visible().length);
+        const tasks = visible();
+        const task = tasks[navigation.selected];
+        const loaded = navigation.view === 3 && task ? detailFor(task) : undefined;
+        const itemCount = navigation.view === 3
+          ? loaded?.evidence.length || 0
+          : navigation.view === 4 ? model.checkpoints.length : 0;
+        const itemPrefixRows = navigation.view === 3 ? warningSummaryLines(loaded?.warnings || []).length : navigation.view === 4 ? 1 : 0;
+        navigation = reduceTuiNavigation(navigation, key, tasks.length, itemCount, itemPrefixRows);
       }
       draw();
     } catch {
@@ -253,39 +336,57 @@ export function runTuiSession(model: TuiModel, runtime: TuiRuntime): () => void 
   return restore;
 }
 
-export function reduceTuiNavigation(state: TuiNavigation, key: string, taskCount: number): TuiNavigation {
+export function reduceTuiNavigation(state: TuiNavigation, key: string, taskCount: number, itemCount = 0, itemPrefixRows = 0): TuiNavigation {
   const next = { ...state };
+  next.itemSelected = Math.max(0, Math.min(next.itemSelected || 0, Math.max(0, itemCount - 1)));
   if (next.searching) {
     if (key === "\r") next.searching = false;
     else if (key === "\u001b") { next.searching = false; next.query = ""; }
     else if (key === "\u007f") next.query = next.query.slice(0, -1);
     else if (/^[^\x00-\x1f\x7f]+$/.test(key)) next.query += key;
     next.selected = 0;
+    next.itemSelected = 0;
+    next.drillDown = false;
     next.offset = 0;
     return next;
   }
-  if (key === "/") next.searching = true;
+  if (key === "/") { next.searching = true; next.drillDown = false; }
   else if (key === "j" || key === "\u001b[B") {
-    if (next.view === 0) {
+    if (next.drillDown) next.offset += 1;
+    else if (next.view === 0) {
       next.selected = Math.min(Math.max(0, taskCount - 1), next.selected + 1);
       next.offset = visibleOffset(next.selected, next.offset);
+    } else if ((next.view === 3 || next.view === 4) && itemCount > 0) {
+      next.itemSelected = Math.min(Math.max(0, itemCount - 1), next.itemSelected + 1);
+      next.offset = visibleOffset(itemBodyIndex(next.itemSelected, itemPrefixRows), next.offset);
     } else next.offset += 1;
   } else if (key === "k" || key === "\u001b[A") {
-    if (next.view === 0) {
+    if (next.drillDown) next.offset = Math.max(0, next.offset - 1);
+    else if (next.view === 0) {
       next.selected = Math.max(0, next.selected - 1);
       next.offset = visibleOffset(next.selected, next.offset);
+    } else if ((next.view === 3 || next.view === 4) && itemCount > 0) {
+      next.itemSelected = Math.max(0, next.itemSelected - 1);
+      next.offset = visibleOffset(itemBodyIndex(next.itemSelected, itemPrefixRows), next.offset);
     } else next.offset = Math.max(0, next.offset - 1);
   } else if (key === "\t") {
     next.view = (next.view + 1) % 6;
+    next.itemSelected = 0;
+    next.drillDown = false;
     next.offset = 0;
   } else if (key === "\r") {
-    next.view = Math.min(next.view + 1, 5);
+    if ((next.view === 3 || next.view === 4) && itemCount > 0) next.drillDown = true;
+    else next.view = Math.min(next.view + 1, 5);
     next.offset = 0;
   } else if (key === "\u001b" || key === "\u007f") {
-    next.view = Math.max(0, next.view - 1);
+    if (next.drillDown) next.drillDown = false;
+    else next.view = Math.max(0, next.view - 1);
     next.offset = 0;
   }
   if (next.view === 0) next.offset = visibleOffset(next.selected, next.offset);
+  else if ((next.view === 3 || next.view === 4) && !next.drillDown && itemCount > 0) {
+    next.offset = visibleOffset(itemBodyIndex(next.itemSelected, itemPrefixRows), next.offset);
+  }
   return next;
 }
 
@@ -412,15 +513,25 @@ function previewEvidence(root: string, id: string, event: AgentpackEvent | undef
   };
   if (!relative.startsWith("evidence/") || relative.includes("\0")) return { ...common, preview: "", warning: "Unsafe evidence path omitted." };
   try {
-    const candidate = path.resolve(getPackPath(root), relative);
-    const realBase = realpathSync(base);
-    if (!candidate.startsWith(`${path.resolve(base)}${path.sep}`)) throw new Error("unsafe evidence path");
-    const safe = resolveRegularFileWithin(getPackPath(root), relative, "TUI evidence path");
-    if (!realpathSync(safe).startsWith(`${realBase}${path.sep}`) || !statSync(safe).isFile()) throw new Error("unsafe evidence path");
-    return { ...common, preview: sanitizeTerminalText(redactForRoot(root, readPreview(safe))) };
+    return { ...common, preview: readSafePreviewWithin(root, base, relative, "TUI evidence path") };
   } catch {
     return { ...common, command: "", preview: "", warning: "Unsafe or unreadable evidence omitted." };
   }
+}
+
+function readSafePreviewWithin(root: string, base: string, relative: string, label: string): string {
+  const packRoot = getPackPath(root);
+  const candidate = path.resolve(packRoot, relative);
+  const realBase = realpathSync(base);
+  if (!isInsideDirectory(path.resolve(base), candidate)) throw new Error("unsafe preview path");
+  const safe = resolveRegularFileWithin(packRoot, relative, label);
+  if (!isInsideDirectory(realBase, realpathSync(safe)) || !statSync(safe).isFile()) throw new Error("unsafe preview path");
+  return sanitizeTerminalText(redactForRoot(root, readPreview(safe)));
+}
+
+function isInsideDirectory(base: string, candidate: string): boolean {
+  const relative = path.relative(base, candidate);
+  return Boolean(relative && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
 }
 
 function readPreview(file: string): string {
@@ -510,6 +621,10 @@ function styledTaskLine(task: TuiTask, selected: boolean, colors: boolean): stri
   return task.current ? withStatus.replace("*", paint("*", colors, ANSI.bold, ANSI.cyan)) : withStatus;
 }
 
+function styledSelectableLine(line: string, selected: boolean, colors: boolean): string {
+  return selected ? paint(line, colors, ANSI.bold, ANSI.cyan, ANSI.reverse) : styledContentLine(line, colors);
+}
+
 function styledContentLine(line: string, colors: boolean): string {
   if (!line) return line;
   if (/^\[warning\]|^Warnings?:/i.test(line)) return paint(line, colors, ANSI.yellow);
@@ -565,14 +680,42 @@ function sectionLines(title: string, items: string[]): string[] {
   return [title, ...(shown.length ? shown.map((item) => `- ${item}`) : ["—"]), ...(items.length > shown.length ? [`… ${items.length - shown.length} more omitted.`] : [])];
 }
 
-function evidenceLines(evidence: TuiEvidence): string[] {
+function selectableLine(value: string, selected: boolean): string {
+  return `${selected ? ">" : " "} ${value}`;
+}
+
+function evidenceListLine(evidence: TuiEvidence, selected: boolean): string {
+  return selectableLine(`[${evidence.kind}] ${evidence.id} · ${evidence.ts || "unknown"} · exit ${evidence.exitCode ?? "—"}`, selected);
+}
+
+function warningSummaryLines(warnings: string[]): string[] {
+  if (!warnings.length) return [];
+  const remaining = warnings.length - 1;
+  return [`[warning] ${warnings[0]}${remaining ? ` (+${remaining} more in detail)` : ""}`];
+}
+
+function evidenceDetailLines(task: TuiTask, evidence: TuiEvidence, warnings: string[]): string[] {
   return [
+    `Evidence linked from task ${task.passport.id}:`,
     `[${evidence.kind}] ${evidence.id}`,
     `Recorded: ${evidence.ts || "unknown"} · Exit: ${evidence.exitCode ?? "—"}`,
     `Path: ${evidence.path || "—"}`,
     ...(evidence.command ? [`Command: ${evidence.command}`] : []),
     ...(evidence.warning ? [evidence.warning] : previewLines(evidence.preview)),
+    ...(warnings.length ? ["", "Task detail warnings:", ...warnings.map((warning) => `[warning] ${warning}`)] : []),
     "",
+  ];
+}
+
+function checkpointDetailLines(details: TuiCheckpointDetails): string[] {
+  return [
+    `Global repository checkpoint ${details.id} (no task link is encoded):`,
+    ...details.files.flatMap((file) => [
+      "",
+      `${file.name}:`,
+      ...(file.warning ? [`[warning] ${file.warning}`] : previewLines(file.preview))
+    ]),
+    ...details.warnings.map((warning) => `[warning] ${warning}`),
   ];
 }
 
@@ -602,6 +745,10 @@ function visibleOffset(selected: number, offset: number): number {
   if (selected < offset) return selected;
   if (selected >= offset + PAGE_ROWS) return selected - PAGE_ROWS + 1;
   return Math.max(0, offset);
+}
+
+function itemBodyIndex(itemSelected: number, prefixRows: number): number {
+  return itemSelected + prefixRows;
 }
 
 function displayLine(value: unknown): string {

@@ -26,7 +26,7 @@ import { findCeremonyDiagnostics } from "../src/core/ledger.js";
 import { getGitInfo } from "../src/core/git.js";
 import { sha256 } from "../src/core/hash.js";
 import { buildResume } from "../src/core/resume.js";
-import { buildTuiModel, loadTuiTaskDetails, reduceTuiNavigation, renderTuiSnapshot, runTuiSession, sanitizeTerminalText } from "../src/core/tui.js";
+import { buildTuiModel, loadTuiCheckpointDetails, loadTuiTaskDetails, reduceTuiNavigation, renderTuiSnapshot, runTuiSession, sanitizeTerminalText } from "../src/core/tui.js";
 import { writePackTransaction } from "../src/core/store.js";
 import { formatClientGateCommand, installIntegration, mergeClaudeDesktopConfig } from "../src/integrations/install.js";
 import { startMcpServer, TOOL_DEFINITIONS } from "../src/mcp/server.js";
@@ -219,6 +219,102 @@ test("TUI terminal session restores raw mode and alternate screen", () => {
   );
   assert.deepEqual(failingRawModes, [true, false]);
   assert.ok(failingWrites.includes("\x1b[?25h\x1b[?1049l"), "draw failure restores the alternate screen");
+});
+
+test("TUI drills into bounded evidence and global checkpoint details without mutation", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "agentpack-tui-drill-"));
+  run(root, ["init"]);
+  run(root, ["task", "start", "drill down"]);
+  const evidenceId = addEvidenceFixture(root, "test", "evidence detail marker\nsecret=top\n");
+  run(root, ["task", "verify", "--status", "passed", "--evidence", evidenceId, "--summary", "checked"]);
+  run(root, ["checkpoint", "-m", "checkpoint detail marker secret=top"]);
+
+  const model = buildTuiModel(root);
+  const checkpointId = model.checkpoints[0] || "";
+  const checkpointDir = path.join(root, ".agentpack", "checkpoints", checkpointId);
+  writeFileSync(path.join(checkpointDir, "diff.patch"), `\u001b[31mcheckpoint diff marker\u001b[0m\n${"x".repeat(12_100)}\nsecret=top\n`, "utf8");
+  const checkpointDetails = loadTuiCheckpointDetails(model, checkpointId);
+  const checkpointText = checkpointDetails.files.map((file) => `${file.name}\n${file.preview}\n${file.warning || ""}`).join("\n");
+  assert.match(checkpointText, /checkpoint detail marker/);
+  assert.match(checkpointText, /checkpoint diff marker/);
+  assert.match(checkpointText, /\[preview truncated\]/, "checkpoint files use bounded previews");
+  assert.doesNotMatch(checkpointText, /secret=top/, "checkpoint details are redacted");
+  assert.doesNotMatch(checkpointText, /\x1b/, "checkpoint details are terminal-sanitized");
+
+  const beforePack = packTreeSnapshot(path.join(root, ".agentpack"));
+  const input = new PassThrough() as PassThrough & { isTTY: boolean; setRawMode: (enabled: boolean) => PassThrough };
+  const output = new PassThrough() as PassThrough & { isTTY: boolean };
+  const signals = new EventEmitter();
+  let outputText = "";
+  input.isTTY = true;
+  input.setRawMode = () => input;
+  output.isTTY = true;
+  output.on("data", (chunk) => { outputText += chunk.toString(); });
+  runTuiSession(model, { stdin: input as any, stdout: output as any, signals: signals as any });
+
+  outputText = "";
+  input.write("\t\t\t");
+  assert.match(outputText, new RegExp(evidenceId));
+  assert.match(outputText, /> \[test\]/, "Evidence selection remains visible without relying on color");
+  assert.doesNotMatch(outputText, /evidence detail marker/, "Evidence list does not flatten file content");
+  outputText = "";
+  input.write("\r");
+  assert.match(outputText, /Evidence linked from task/);
+  assert.match(outputText, /evidence detail marker/);
+  assert.doesNotMatch(outputText, /secret=top/);
+  outputText = "";
+  input.write("\u001b");
+  assert.match(outputText, new RegExp(evidenceId));
+  assert.doesNotMatch(outputText, /evidence detail marker/, "Esc returns to the Evidence list");
+
+  outputText = "";
+  input.write("\t");
+  assert.match(outputText, /Global repository checkpoints/);
+  assert.match(outputText, new RegExp(checkpointId));
+  assert.match(outputText, new RegExp(`> ${checkpointId}`), "Checkpoint selection remains visible without relying on color");
+  outputText = "";
+  input.write("\r");
+  assert.match(outputText, /no task link is encoded/);
+  assert.match(outputText, /checkpoint detail marker/);
+  outputText = "";
+  input.write("\u001b");
+  assert.match(outputText, /Global repository checkpoints/);
+  assert.doesNotMatch(outputText, /checkpoint detail marker/, "Esc returns to the Checkpoints list");
+  input.write("q");
+  assert.deepEqual(packTreeSnapshot(path.join(root, ".agentpack")), beforePack, "drill-down navigation must not alter the ledger");
+
+  const outside = path.join(mkdtempSync(path.join(os.tmpdir(), "agentpack-tui-checkpoint-outside-")), "outside.md");
+  writeFileSync(outside, "outside checkpoint content\n", "utf8");
+  unlinkSync(path.join(checkpointDir, "resume.md"));
+  symlinkSync(outside, path.join(checkpointDir, "resume.md"));
+  const unsafe = loadTuiCheckpointDetails(model, checkpointId);
+  const unsafeResume = unsafe.files.find((file) => file.name === "resume.md");
+  assert.match(unsafeResume?.warning || "", /Unsafe or unreadable/);
+  assert.doesNotMatch(unsafeResume?.preview || "", /outside checkpoint content/);
+
+  let evidenceNavigation = reduceTuiNavigation(
+    { selected: 0, view: 3, offset: 0, query: "", searching: false, itemSelected: 0 },
+    "j",
+    1,
+    2
+  );
+  assert.equal(evidenceNavigation.itemSelected, 1);
+  evidenceNavigation = reduceTuiNavigation(evidenceNavigation, "\r", 1, 2);
+  assert.equal(evidenceNavigation.drillDown, true);
+  evidenceNavigation = reduceTuiNavigation(evidenceNavigation, "j", 1, 2);
+  assert.equal(evidenceNavigation.offset, 1, "j scrolls inside a detail view");
+  evidenceNavigation = reduceTuiNavigation(evidenceNavigation, "\u001b", 1, 2);
+  assert.equal(evidenceNavigation.drillDown, false);
+  assert.equal(evidenceNavigation.view, 3);
+  evidenceNavigation = reduceTuiNavigation(evidenceNavigation, "\u001b", 1, 2);
+  assert.equal(evidenceNavigation.view, 2, "a second Esc leaves the Evidence list");
+  const emptyEvidenceNavigation = reduceTuiNavigation(
+    { selected: 0, view: 3, offset: 0, query: "", searching: false },
+    "j",
+    1,
+    0
+  );
+  assert.equal(emptyEvidenceNavigation.offset, 1, "empty Evidence views keep warnings scrollable");
 });
 
 test("TUI styling adds hierarchy while NO_COLOR keeps the same readable structure", () => {
