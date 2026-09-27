@@ -3287,6 +3287,9 @@ test("previews and writes project-local MCP client install files", () => {
     for (const boundary of [
       /Read-only questions do not need a new task/,
       /preserve current behavior, compatibility, security, and rollback/,
+      /consistency with the repository's established patterns.*affected contracts or parallel interfaces/,
+      /maintainability: clear structure, minimal unnecessary complexity.*focused tests.*likely to regress/,
+      /intentional deviation or added complexity must be explicit, justified, and covered by verification/,
       /avoid unrelated refactors.*unsafe shell execution.*secret logging/,
       /inspect the diff before staging.*exclude unrelated changes, AI attribution/,
       /Collaboration modes/,

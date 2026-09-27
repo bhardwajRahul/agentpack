@@ -67,6 +67,7 @@ Use Agentpack as the task-state ledger, not an activity log. Read-only questions
 
 Safety and coding:
 - preserve current behavior, compatibility, security, and rollback options; make small, reviewable changes and verify them proportionately
+- check changed code for consistency with the repository's established patterns and all affected contracts or parallel interfaces, and for maintainability: clear structure, minimal unnecessary complexity, and focused tests for behavior likely to regress. Any intentional deviation or added complexity must be explicit, justified, and covered by verification
 - read relevant code first; follow local patterns; avoid unrelated refactors, dependency churn, unsafe shell execution, weakened validation, or secret logging
 - inspect the diff before staging; use small imperative commits and exclude unrelated changes, AI attribution, and AI/agent-style branch prefixes
 
