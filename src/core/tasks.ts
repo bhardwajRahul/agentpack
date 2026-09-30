@@ -11,6 +11,8 @@ import {
   readJson,
   SCHEMA_VERSION,
   withPackWriteLock,
+  writePackTransaction,
+  type PackTransactionFile,
   writeJson
 } from "./store.js";
 import type {
@@ -22,7 +24,9 @@ import type {
 } from "./types.js";
 import type { CeremonyDiagnostic } from "./ledger.js";
 
-const TASK_STATUSES = new Set<TaskStatus>(["active", "parked", "blocked", "verifying", "completed", "abandoned"]);
+export const TASK_LIST_STATUSES = ["active", "parked", "blocked", "verifying", "completed", "abandoned"] as const satisfies readonly TaskStatus[];
+export const OPEN_TASK_STATUSES = ["active", "parked", "blocked", "verifying"] as const satisfies readonly TaskStatus[];
+const TASK_STATUSES = new Set<TaskStatus>(TASK_LIST_STATUSES);
 
 export interface TaskStartOptions {
   title: string;
@@ -228,14 +232,14 @@ export function listTasks(root: string): TaskListResult {
   return { tasks, warnings };
 }
 
-export function formatTaskList(tasks: TaskListItem[]): string {
+export function formatTaskList(tasks: TaskListItem[], compact = false): string {
   return tasks.map((task) => [
     task.current ? "*" : "-",
     task.id,
     `[${task.status}]`,
     task.title,
-    task.branch ? `(branch: ${task.branch})` : "",
-    task.writeScope.length > 0 ? `(scope: ${formatWriteScope(task.writeScope)})` : ""
+    !compact && task.branch ? `(branch: ${task.branch})` : "",
+    !compact && task.writeScope.length > 0 ? `(scope: ${formatWriteScope(task.writeScope)})` : ""
   ].filter(Boolean).join(" ")).join("\n");
 }
 
@@ -293,7 +297,7 @@ export function readPassport(root: string, taskId: string): TaskPassport {
   return validateTaskPassport(value, taskId);
 }
 
-export function switchTask(root: string, taskId: string): TaskPassport {
+export function switchTask(root: string, taskId: string, options: { parkCurrent?: boolean } = {}): TaskPassport {
   return withPackWriteLock(root, () => {
     const existing = readPassport(root, taskId);
     if (CLOSED_STATUSES.has(existing.status)) {
@@ -301,10 +305,14 @@ export function switchTask(root: string, taskId: string): TaskPassport {
     }
 
     const currentTaskId = readCurrentTaskId(root);
+    let departing: TaskPassport | undefined;
     if (currentTaskId && currentTaskId !== taskId) {
       const currentPassport = readPassport(root, currentTaskId);
       if (!CLOSED_STATUSES.has(currentPassport.status) && currentPassport.status !== "parked") {
-        throw new Error(`Cannot switch tasks while current task ${currentTaskId} is ${currentPassport.status}; park or finalize it first.`);
+        if (!options.parkCurrent) {
+          throw new Error(`Cannot switch tasks while current task ${currentTaskId} is ${currentPassport.status}; park or finalize it first.`);
+        }
+        departing = currentPassport;
       }
     }
 
@@ -323,6 +331,36 @@ export function switchTask(root: string, taskId: string): TaskPassport {
           updatedAt: new Date().toISOString()
         }
       : existing;
+
+    if (departing) {
+      const parked: TaskPassport = {
+        ...departing,
+        status: "parked",
+        currentHead: FINAL_VERIFICATION_STATUSES.has(departing.verification.status)
+          ? departing.currentHead : getGitInfo(root).head,
+        updatedAt: new Date().toISOString()
+      };
+      const files: PackTransactionFile[] = [
+        { relativePath: path.join("tasks", parked.id, "passport.json"), content: `${JSON.stringify(parked, null, 2)}\n`, mode: "replace" },
+        { relativePath: path.join("tasks", passport.id, "passport.json"), content: `${JSON.stringify(passport, null, 2)}\n`, mode: "replace" },
+        { relativePath: path.join("tasks", "current"), content: `${passport.id}\n`, mode: "replace" }
+      ];
+      const queueEvent = (id: string, type: string, payload: Record<string, unknown>): void => {
+        const relativePath = path.join("tasks", id, "events.jsonl");
+        const existingEvents = existsSync(taskEventsPath(root, id))
+          ? readFileSync(resolveRegularFileWithin(getPackPath(root), relativePath, "task events"), "utf8") : "";
+        const event = { id: createId("evt"), ts: new Date().toISOString(), type, ...payload };
+        files.push({ relativePath, content: `${existingEvents}${JSON.stringify(event)}\n`, mode: "replace" });
+      };
+      queueEvent(parked.id, "task-park", {
+        status: parked.status, objective: parked.objective, writeScope: parked.writeScope,
+        nextActions: parked.nextActions, risk: parked.risk, reason: parked.blockedReason || "",
+        verificationStatus: parked.verification.status, evidence: parked.verification.evidence
+      });
+      queueEvent(passport.id, "task-switch", { previousStatus, status: passport.status });
+      writePackTransaction(root, files);
+      return passport;
+    }
 
     if (passport !== existing) {
       writePassport(root, passport);

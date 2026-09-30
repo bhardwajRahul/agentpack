@@ -112,15 +112,35 @@ push, tag, publish, or create GitHub Releases.
 
 `load_context`, `resume`, and `task_status` append a `Gate Warnings` section when the current passport has gate findings (no active task; task parked, blocked, verifying, or closed; branch drift). This is the client-neutral warn layer of the task gate: any MCP client sees lifecycle warnings without needing hook support. Enforcement modes and the full check live in `agentpack task gate` (see docs/CLI.md).
 
+Repeated `task_status` calls on one MCP connection shorten only an unchanged
+branch-drift advisory to a reminder referring to the status's `Drift` line.
+The first warning is full; context loads/resumes always show full warnings.
+Task, branch, mode or finding changes, successful MCP mutations, initialization,
+or a new connection restore full wording. State retains one fingerprint in
+memory and writes nothing to the ledger. Lifecycle/blocking findings and
+CLI/native-hook diagnostics are always complete; the gate is evaluated on
+every call and its enforcement behavior is unchanged.
+
 `task_park` marks the current Task Passport as `parked` without finalizing verification. Use it when work is intentionally deferred and a different task or phase should become current. A parked task remains switchable and can be resumed later with `task_switch`.
 
-`task_list` lists all Task Passports with id, status, title, and branch, matching the default `agentpack task list` output; the current task is marked with `*`. Pass `{ "json": true }` for a JSON array, including `[]` when the pack has no tasks. Unreadable passport files are skipped without changing that array contract; their diagnostics are returned in MCP result metadata under `io.agentpack/taskListWarnings`. The CLI's `--scope`, `--status`, and `--open` filters are CLI-only; agents needing a subset can filter the JSON output themselves.
+`task_list` without arguments lists all Task Passports using the legacy text format; the current task is marked with `*`. For open work, prefer `{ "open": true, "compact": true, "limit": 20 }`. `open: true` selects active, parked, blocked, and verifying tasks and cannot combine with `status`. `status` accepts a status string or non-empty array (OR); `scope` accepts a path string or non-empty array of overlapping write-scope paths (OR), matching CLI filters. Status and scope filters combine with AND. Closed history remains available with no filters or `status: ["completed", "abandoned"]`.
 
-`task_switch` makes another open task current by `id`. A parked task with
+`compact: true` omits branch/scope from text. With `json: true`, it removes JSON whitespace but preserves every array item field. JSON remains an array, including `[]` for empty results. `limit` is an optional integer from 1 to 1000, applied after filtering in newest-updated-first order. There is no implicit limit. Limited responses report `matched`, `returned`, and `omitted` counts in result metadata under `io.agentpack/taskListPage`; text also notes omitted matches. Increase the limit or narrow filters to see omitted tasks; this is not cursor pagination. Unreadable passports are skipped and warnings remain in text or JSON result metadata under `io.agentpack/taskListWarnings`, even when filters exclude all readable tasks. Listing does not modify the ledger.
+
+`task_switch` makes another open task current by `id`. Setting
+`parkCurrent: true` can park a different active, blocked, or verifying current
+task and switch in one call; the target is validated before changes. The default
+still requires an explicit park or finalize. Both passports, task events, and
+the current pointer are updated under the pack lock using the existing file
+transaction with rollback on ordinary write failures. This does not guarantee
+recovery after abrupt process or machine termination. Verification and frozen
+HEAD bindings are preserved; switching to the current ID does not park it.
+
+A parked task with
 `unknown` or `pending` verification resumes as `active`; a parked task with a
 final verdict resumes as `verifying`, keeping code frozen until verification is
-explicitly returned to `pending`. Park or finalize a different active, blocked,
-or verifying current task before switching; closed target tasks remain
+explicitly returned to `pending`. Without `parkCurrent`, park or finalize a
+different active, blocked, or verifying current task before switching; closed target tasks remain
 unswitchable.
 
 `task close` intentionally has no MCP equivalent. Closing a task without a verification verdict bypasses the lifecycle discipline that `task_park` and `task_finalize` enforce, so it stays a human CLI operation (`agentpack task close`). The full passport JSON view also stays CLI-only (`agentpack task passport`); `task_status` is the MCP summary equivalent.

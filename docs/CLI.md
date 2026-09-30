@@ -123,6 +123,11 @@ The gate fails closed where it matters: an unreadable `config.json` blocks inste
 
 `task passport` prints the current `passport.json`. `task switch <id>` points the worktree at another open passport: pending or unknown verification resumes as `active`, while a final verdict resumes as `verifying` and remains frozen with its bound HEAD until verification returns to pending. `task block --reason <text>`, `task park`, and `task close` remain available for explicit lifecycle control. `task update-verification` remains available as a compatibility alias for `task verify`.
 
+`task switch <id> --park-current` combines parking a different current open task
+and switching to a validated target. It preserves both verification states and
+frozen HEAD bindings and rolls back ordinary transaction write failures. The
+default switch behavior is unchanged. The flag takes no value.
+
 `task finalize --status accepted` refuses to close a task that still has next
 actions, because that usually means the task should be parked instead. Pass
 `--force` only when those remaining next actions are intentionally historical

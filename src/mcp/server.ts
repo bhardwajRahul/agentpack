@@ -31,6 +31,9 @@ import {
   formatTaskList,
   formatVerificationUpdateMessage,
   listTasks,
+  OPEN_TASK_STATUSES,
+  TASK_LIST_STATUSES,
+  scopeOverlaps,
   parkCurrentTask,
   startTask,
   switchTask,
@@ -440,10 +443,21 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "task_list",
     annotations: READ_ONLY_TOOL_ANNOTATIONS,
-    description: "List all Task Passports with id, status, title, and branch; the current task is marked with an asterisk. Call to find a task id for task_switch or to review open work. Read-only.",
+    description: "Find Task Passport ids or inspect task history. Prefer open: true and compact: true for open work; optionally limit the result. No arguments lists all history with legacy formatting. Filters combine with AND; current task is marked with an asterisk. Read-only.",
     inputSchema: {
       type: "object",
       properties: {
+        open: { type: "boolean", description: "Only active, parked, blocked, and verifying tasks. Cannot combine true with status." },
+        status: {
+          description: "One status or a non-empty array of statuses (OR within this filter).",
+          oneOf: [{ type: "string", enum: [...TASK_LIST_STATUSES] }, { type: "array", minItems: 1, items: { type: "string", enum: [...TASK_LIST_STATUSES] } }]
+        },
+        scope: {
+          description: "One path or a non-empty array of paths overlapping task write scopes, matching CLI --scope semantics.",
+          oneOf: [{ type: "string", minLength: 1 }, { type: "array", minItems: 1, items: { type: "string", minLength: 1 } }]
+        },
+        compact: { type: "boolean", description: "Omit branch/scope in text or JSON whitespace; JSON fields remain unchanged." },
+        limit: { type: "integer", minimum: 1, maximum: 1000, description: "Return at most this many matching tasks, newest updated first. Result metadata reports matched/returned/omitted counts." },
         json: {
           type: "boolean",
           description: "Return structured JSON instead of formatted text."
@@ -454,14 +468,15 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     name: "task_switch",
     annotations: UPDATING_TOOL_ANNOTATIONS,
-    description: "Make another open Task Passport current by id. A parked target with pending or unknown verification resumes as active; a parked target with a final verdict resumes as verifying and stays frozen until verification returns to pending. Park or finalize a different active, blocked, or verifying current task first; closed tasks cannot be switched to. Updates the current-task pointer under .agentpack/.",
+    description: "Make another open Task Passport current by id. Set parkCurrent: true to park a different active/blocked/verifying current task in the same locked transaction, after validating the target. Otherwise park or finalize it first. A parked target with pending or unknown verification resumes as active; a parked target with a final verdict resumes as verifying and stays frozen until verification returns to pending. Closed targets cannot be switched to.",
     inputSchema: {
       type: "object",
       properties: {
         id: {
           type: "string",
           description: "Task Passport id to switch to (see task_list)."
-        }
+        },
+        parkCurrent: { type: "boolean", description: "Park a different current open task and switch in one call. Default false; preserves its verification and bound HEAD." }
       },
       required: ["id"]
     }
@@ -650,8 +665,13 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   }
 ];
 
+interface McpWarningState {
+  branchWarningKey?: string;
+}
+
 export function startMcpServer(startDir: string, input: Readable = process.stdin, output: Writable = process.stdout): void {
   const root = requirePackRoot(startDir);
+  const warnings: McpWarningState = {};
   let buffer = "";
 
   input.setEncoding("utf8");
@@ -664,12 +684,12 @@ export function startMcpServer(startDir: string, input: Readable = process.stdin
       if (!line.trim()) {
         continue;
       }
-      handleMessage(root, line, output);
+      handleMessage(root, line, output, warnings);
     }
   });
 }
 
-function handleMessage(root: string, line: string, output: Writable): void {
+function handleMessage(root: string, line: string, output: Writable, warnings: McpWarningState): void {
   let parsed: unknown;
   try {
     parsed = JSON.parse(line);
@@ -697,11 +717,18 @@ function handleMessage(root: string, line: string, output: Writable): void {
     }
     const params = request.params ?? {};
     const modern = validateModernRequest(params);
-    const result = route(root, request.method, params, modern);
+    // A notification has no response: it must not mark a warning as shown.
+    const result = route(root, request.method, params, modern, notification ? {} : warnings);
+    if (notification && request.method === "tools/call"
+        && TOOL_DEFINITIONS.find((tool) => tool.name === params.name)?.annotations.readOnlyHint === false
+        && !objectValue(result).isError) {
+      delete warnings.branchWarningKey;
+    }
     if (!notification) {
       send(output, request.id, modern ? modernResult(request.method, result) : result);
     }
   } catch (error) {
+    delete warnings.branchWarningKey;
     if (notification) {
       return;
     }
@@ -711,7 +738,7 @@ function handleMessage(root: string, line: string, output: Writable): void {
   }
 }
 
-function route(root: string, method: string | undefined, params: Record<string, unknown>, modern: boolean): unknown {
+function route(root: string, method: string | undefined, params: Record<string, unknown>, modern: boolean, warnings: McpWarningState): unknown {
   if (method === "server/discover" && modern) {
     return {
       supportedVersions: [MODERN_PROTOCOL_VERSION],
@@ -721,6 +748,7 @@ function route(root: string, method: string | undefined, params: Record<string, 
   }
 
   if (method === "initialize") {
+    delete warnings.branchWarningKey;
     if (modern) {
       throw new McpProtocolError(-32601, "Method not found: initialize");
     }
@@ -742,7 +770,13 @@ function route(root: string, method: string | undefined, params: Record<string, 
     if (params.arguments !== undefined && !isObject(params.arguments)) {
       throw new McpProtocolError(-32602, "tools/call arguments must be an object");
     }
-    return callTool(root, text(params.name), objectValue(params.arguments));
+    const name = text(params.name);
+    const result = callTool(root, name, objectValue(params.arguments), warnings);
+    if (TOOL_DEFINITIONS.find((tool) => tool.name === name)?.annotations.readOnlyHint === false
+        && !objectValue(result).isError) {
+      delete warnings.branchWarningKey;
+    }
+    return result;
   }
 
   if (method === "resources/list") {
@@ -872,7 +906,7 @@ function isImplementation(value: unknown): boolean {
   return isObject(value) && typeof value.name === "string" && typeof value.version === "string";
 }
 
-function callTool(root: string, name: string, args: Record<string, unknown>): unknown {
+function callTool(root: string, name: string, args: Record<string, unknown>, warnings: McpWarningState): unknown {
   if ((name === "record_decision" || name === "record_dead_end")
       && (typeof args.text !== "string" || !args.text.trim())) {
     return { ...toolText(`${name} requires non-empty text.`), isError: true };
@@ -885,7 +919,8 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
       ...(preset ? { preset } : {})
     }, 4000);
     const resume = buildResume(root, { budget, query: text(args.query) });
-    return toolText(appendGateWarnings(root, resume.markdown));
+    delete warnings.branchWarningKey;
+    return toolText(appendGateWarnings(root, resume.markdown, warnings));
   }
 
   if (name === "record_decision") {
@@ -1014,24 +1049,34 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
   }
 
   if (name === "task_status") {
-    return toolText(appendGateWarnings(root, redactForRoot(root, formatCurrentTaskStatus(root))));
+    return toolText(appendGateWarnings(root, redactForRoot(root, formatCurrentTaskStatus(root)), warnings, true));
   }
 
   if (name === "task_list") {
-    const { tasks, warnings } = listTasks(root);
+    const options = taskListOptions(args);
+    const { tasks: all, warnings } = listTasks(root);
+    const matching = all.filter((task) =>
+      (options.status.length === 0 || options.status.includes(task.status)) &&
+      (options.scope.length === 0 || scopeOverlaps(task.writeScope, options.scope)));
+    const tasks = options.limit === undefined ? matching : matching.slice(0, options.limit);
+    const metadata = {
+      ...(warnings.length > 0 ? { [TASK_LIST_WARNINGS_META_KEY]: warnings.map((warning) => redactForRoot(root, warning)) } : {}),
+      ...(options.limit !== undefined ? { "io.agentpack/taskListPage": { matched: matching.length, returned: tasks.length, omitted: matching.length - tasks.length } } : {})
+    };
+    const meta = Object.keys(metadata).length > 0 ? metadata : undefined;
     if (booleanValue(args.json, false)) {
       return toolText(
-        redactForRoot(root, JSON.stringify(tasks, null, 2)),
-        warnings.length > 0
-          ? { [TASK_LIST_WARNINGS_META_KEY]: warnings.map((warning) => redactForRoot(root, warning)) }
-          : undefined
+        redactForRoot(root, JSON.stringify(tasks, null, options.compact ? undefined : 2)),
+        meta
       );
     }
     const warningOutput = warnings.map((warning) => `[warn] ${warning}\n`).join("");
     if (tasks.length === 0) {
-      return toolText(`${warningOutput}No task passports yet. Call \`task_start\` first.`);
+      return toolText(redactForRoot(root, `${warningOutput}${all.length === 0 ? "No task passports yet. Call `task_start` first." : "No task passports match the filters."}`), meta);
     }
-    return toolText(redactForRoot(root, `${warningOutput}${formatTaskList(tasks)}`));
+    const omitted = matching.length - tasks.length;
+    const suffix = omitted > 0 ? `\nShowing ${tasks.length} of ${matching.length} matching tasks (${omitted} omitted). Increase limit or narrow filters.` : "";
+    return toolText(redactForRoot(root, `${warningOutput}${formatTaskList(tasks, options.compact)}${suffix}`), meta);
   }
 
   if (name === "task_switch") {
@@ -1039,7 +1084,10 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
     if (!taskId) {
       throw new Error("task_switch requires a task id");
     }
-    const passport = switchTask(root, taskId);
+    if (args.parkCurrent !== undefined && typeof args.parkCurrent !== "boolean") {
+      throw new Error("task_switch parkCurrent must be a boolean");
+    }
+    const passport = switchTask(root, taskId, { parkCurrent: args.parkCurrent === true });
     return toolText(`Switched to task ${passport.id} (${passport.status}).`);
   }
 
@@ -1118,15 +1166,24 @@ function callTool(root: string, name: string, args: Record<string, unknown>): un
 
 // MCP-warn layer: state-reading tools carry current gate findings so any MCP client sees
 // lifecycle/drift warnings without needing client-specific hooks.
-function appendGateWarnings(root: string, body: string): string {
+function appendGateWarnings(root: string, body: string, warnings: McpWarningState, compactRepeatedBranch = false): string {
   try {
     const report = evaluateGate(root, {});
+    const branch = report.findings.find((finding) => finding.code === "branch-drift");
+    const key = branch ? JSON.stringify([report.mode, report.taskId, report.taskStatus, report.findings]) : undefined;
+    const repeated = key !== undefined && key === warnings.branchWarningKey;
+    if (key === undefined) delete warnings.branchWarningKey;
+    else warnings.branchWarningKey = key;
     if (report.findings.length === 0) {
       return body;
     }
-    const lines = report.findings.map((finding) => `- [${finding.level}] ${finding.message}`);
+    const lines = report.findings.map((finding) => `- [${finding.level}] ${
+      compactRepeatedBranch && repeated && finding.code === "branch-drift"
+        ? "Branch drift unchanged; see Drift above. Resolve before editing."
+        : finding.message}`);
     return `${body}\n\n## Gate Warnings\n${lines.join("\n")}`;
   } catch {
+    delete warnings.branchWarningKey;
     return body;
   }
 }
@@ -1159,6 +1216,35 @@ function send(output: Writable, id: JsonRpcRequest["id"], result: unknown, error
   }
 
   output.write(`${JSON.stringify(payload)}\n`);
+}
+
+function taskListOptions(args: Record<string, unknown>): { status: string[]; scope: string[]; compact: boolean; limit?: number } {
+  for (const field of ["open", "compact"]) {
+    if (args[field] !== undefined && typeof args[field] !== "boolean") {
+      throw new Error(`task_list ${field} must be a boolean`);
+    }
+  }
+  const strings = (field: string): string[] => {
+    if (args[field] === undefined) return [];
+    const values = Array.isArray(args[field]) ? args[field] : [args[field]];
+    if (values.length === 0 || values.some((value) => typeof value !== "string" || !value.trim())) {
+      throw new Error(`task_list ${field} must be a non-empty string or array of non-empty strings`);
+    }
+    return [...new Set((values as string[]).map((value) => value.trim()))];
+  };
+  const status = strings("status");
+  const scope = strings("scope");
+  if (args.open === true && args.status !== undefined) {
+    throw new Error("task_list open cannot be combined with status");
+  }
+  if (status.some((value) => !(TASK_LIST_STATUSES as readonly string[]).includes(value))) {
+    throw new Error(`task_list status requires one of: ${TASK_LIST_STATUSES.join(", ")}`);
+  }
+  if (args.limit !== undefined && (typeof args.limit !== "number" || !Number.isInteger(args.limit) || args.limit < 1 || args.limit > 1000)) {
+    throw new Error("task_list limit must be an integer between 1 and 1000");
+  }
+  return { status: args.open === true ? [...OPEN_TASK_STATUSES] : status, scope, compact: args.compact === true,
+    ...(args.limit !== undefined ? { limit: args.limit as number } : {}) };
 }
 
 function objectValue(value: unknown): Record<string, unknown> {

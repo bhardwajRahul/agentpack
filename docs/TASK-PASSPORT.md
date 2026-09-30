@@ -226,6 +226,14 @@ target tasks remain unswitchable.
 
 MCP exposes the same start/status/list/switch path for connected agents through `task_start`, `task_status`, `task_list`, `task_switch`, and `task_park`. Blocking, explicit close, and full passport JSON inspection remain CLI-only until dogfooding shows they are needed through MCP.
 
+Use `task_switch({ id, parkCurrent: true })` or CLI
+`agentpack task switch <id> --park-current` to combine parking a different
+current open task and switching. The target is validated first; passports,
+events, and pointer are changed together under the pack lock with rollback for
+ordinary write failures. This uses the existing file transaction and does not
+guarantee crash recovery. Pending work resumes active; final verdicts and their
+bound HEAD remain frozen. The option never finalizes work or clears blockers.
+
 **`task handoff`** prints a compact current-passport handoff for switching chats, clients, worktrees, or agents. It includes objective, constraints, write scope, next actions, verification, drift, and audit summary without dumping the full passport JSON.
 
 **`task audit`** is a diagnostic pass for continuity risk. It checks the current passport for branch/head drift, missing next actions, open verification, closed-current-task anomalies, and source-cache metadata drift. Metadata warnings are shown separately so stale source records do not look like action-required task failures.

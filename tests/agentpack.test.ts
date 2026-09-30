@@ -4007,6 +4007,95 @@ test("task gate checks lifecycle, write scope, and gate modes", async () => {
   assert.match(status.result.content[0].text, /Current task is parked/);
 });
 
+test("MCP shortens only unchanged branch advisories and restores full diagnostics across contexts", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-gate-repeat-"));
+  runGit(dir, ["init"]);
+  writeFileSync(path.join(dir, "index.js"), "initial\n");
+  runGit(dir, ["add", "index.js"]);
+  commit(dir, "initial");
+  runGit(dir, ["branch", "-M", "main"]);
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Warning continuity", "--write-scope", "."]);
+  const taskId = JSON.parse(run(dir, ["task", "passport"])).id;
+  runGit(dir, ["switch", "-c", "drift-one"]);
+  const mcp = createMcpHarness(dir);
+  let id = 0;
+  const call = async (name = "task_status", args: Record<string, unknown> = {}, harness = mcp) => {
+    const response = await harness.send({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name, arguments: args } });
+    assert.equal(response.error, undefined);
+    return response.result.content[0].text as string;
+  };
+  const full = (text: string) => assert.match(text, /Branch drift: task .*current branch is drift-/);
+  const short = (text: string) => assert.match(text, /Branch drift unchanged; see Drift above/);
+  const eventPath = path.join(dir, ".agentpack", "tasks", taskId, "events.jsonl");
+  const eventsBefore = readFileSync(eventPath, "utf8");
+  const first = await call();
+  full(first);
+  const repeated = await call();
+  short(repeated);
+  assert.match(repeated, /Drift: branch main -> drift-one/);
+  assert.ok(repeated.length < first.length);
+  const modern = await mcp.send({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: {
+    name: "task_status", arguments: {}, _meta: {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { name: "gate-test", version: "1" },
+      "io.modelcontextprotocol/clientCapabilities": {}
+    }
+  } });
+  short(modern.result.content[0].text);
+  assert.equal(modern.result.resultType, "complete");
+  assert.equal(modern.result._meta["io.modelcontextprotocol/serverInfo"].name, "agentpack");
+  assert.equal(readFileSync(eventPath, "utf8"), eventsBefore);
+  // Separate connections must not inherit an earlier client's presentation state.
+  const otherClient = createMcpHarness(dir);
+  full(await call("task_status", {}, otherClient));
+  runGit(dir, ["switch", "-c", "drift-two"]);
+  full(await call());
+  short(await call());
+  runGit(dir, ["switch", "main"]);
+  assert.doesNotMatch(await call(), /Branch drift/);
+  runGit(dir, ["switch", "drift-two"]);
+  full(await call());
+  short(await call());
+  full(await call("load_context", { preset: "quick" }));
+  full(await call("resume", { preset: "quick" }));
+  short(await call());
+  await call("task_update", { objective: "A durable updated objective" });
+  full(await call());
+  await mcp.send({ jsonrpc: "2.0", id: ++id, method: "initialize", params: {} });
+  full(await call());
+  const configPath = path.join(dir, ".agentpack", "config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "block" }));
+  full(await call());
+  run(dir, ["task", "park"]);
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const status = await call();
+    assert.match(status, /\[block\] Current task is parked/);
+  }
+  const cliGate = runWithStatus(dir, ["task", "gate", "--file", "index.js"]);
+  assert.equal(cliGate.status, 2);
+  assert.match(cliGate.stderr, /Branch drift: task/);
+  const cliGateAgain = runWithStatus(dir, ["task", "gate", "--file", "index.js"]);
+  assert.match(cliGateAgain.stderr, /Branch drift: task/);
+  writeFileSync(configPath, "{invalid");
+  for (let repeat = 0; repeat < 2; repeat++) {
+    const response = await mcp.send({ jsonrpc: "2.0", id: ++id, method: "tools/call", params: { name: "task_status", arguments: {} } });
+    assert.equal(response.error?.code, -32000, "config parse failures must remain visible");
+    const gate = runWithStatus(dir, ["task", "gate", "--file", "index.js"]);
+    assert.equal(gate.status, 2);
+    assert.match(gate.stderr, /Cannot read \.agentpack\/config\.json/);
+  }
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "off" }));
+  assert.doesNotMatch(await call(), /## Gate Warnings/);
+  writeFileSync(configPath, JSON.stringify({ ...config, gateMode: "warn" }));
+  full(await call());
+  // A request with no response must not consume the first visible warning.
+  const notificationClient = createMcpHarness(dir);
+  notificationClient.input.write(JSON.stringify({ jsonrpc: "2.0", method: "tools/call", params: { name: "task_status", arguments: {} } }) + "\n");
+  full(await call("task_status", {}, notificationClient));
+});
+
 test("task gate --staged handles non-ASCII staged file names", () => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-gate-nonascii-test-"));
   runGit(dir, ["init"]);
@@ -5044,6 +5133,199 @@ test("task list survives a corrupt background passport and reports a warning", a
   });
   assert.deepEqual(JSON.parse(mcpAllCorruptJson.result.content[0].text), []);
   assert.equal(mcpAllCorruptJson.result._meta?.["io.agentpack/taskListWarnings"]?.length, 2);
+});
+
+test("MCP task_list filters match CLI and compact limits preserve history and read-only state", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-mcp-list-filters-"));
+  run(dir, ["init"]);
+  const ids: string[] = [];
+  for (const [title, scope] of [["Closed API", "api"], ["Parked API", "api"], ["Current UI", "ui"]]) {
+    run(dir, ["task", "start", title!, "--write-scope", scope!]);
+    ids.push(JSON.parse(run(dir, ["task", "passport"])).id);
+    run(dir, ["task", "park"]);
+  }
+  const closedPath = path.join(dir, ".agentpack", "tasks", ids[0]!, "passport.json");
+  const closed = JSON.parse(readFileSync(closedPath, "utf8"));
+  closed.status = "completed";
+  writeFileSync(closedPath, JSON.stringify(closed));
+  run(dir, ["task", "switch", ids[2]!]);
+  const corruptId = "task_corrupt";
+  const corruptDir = path.join(dir, ".agentpack", "tasks", corruptId);
+  mkdirSync(corruptDir);
+  writeFileSync(path.join(corruptDir, "passport.json"), "{invalid");
+  const snapshots = new Map<string, string>();
+  const snapshot = (folder: string): void => {
+    for (const item of readdirSync(folder, { withFileTypes: true })) {
+      const file = path.join(folder, item.name);
+      if (item.isDirectory()) snapshot(file);
+      else snapshots.set(file, readFileSync(file, "utf8"));
+    }
+  };
+  snapshot(path.join(dir, ".agentpack"));
+  const mcp = createMcpHarness(dir);
+  let requestId = 0;
+  const call = (args: Record<string, unknown>, modern = false) => mcp.send({
+    jsonrpc: "2.0", id: ++requestId, method: "tools/call",
+    params: { name: "task_list", arguments: args, ...(modern ? { _meta: {
+      "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+      "io.modelcontextprotocol/clientInfo": { name: "test", version: "1" },
+      "io.modelcontextprotocol/clientCapabilities": {}
+    } } : {}) }
+  });
+  const full = await call({});
+  assert.equal(full.result.content[0].text, run(dir, ["task", "list"]).trim());
+  const all = await call({ json: true });
+  const entries = JSON.parse(all.result.content[0].text);
+  assert.equal(entries.length, 3);
+  for (const [args, flags] of [
+    [{ open: true }, ["--open"]],
+    [{ status: ["parked", "active", "parked"], scope: ["api/child", "ui"] }, ["--status", "parked", "--status", "active", "--scope", "api/child", "--scope", "ui"]],
+    [{ status: "completed", scope: "api" }, ["--status", "completed", "--scope", "api"]]
+  ] as Array<[Record<string, unknown>, string[]]>) {
+    const response = await call(args);
+    assert.equal(response.result.content[0].text, run(dir, ["task", "list", ...flags]).trim());
+  }
+  const compact = await call({ open: true, compact: true, limit: 1 });
+  assert.match(compact.result.content[0].text, new RegExp(`\\* ${ids[2]} \\[active\\] Current UI`));
+  assert.doesNotMatch(compact.result.content[0].text, /\(scope:|\(branch:/);
+  assert.match(compact.result.content[0].text, /Showing 1 of 2 matching tasks/);
+  assert.deepEqual(compact.result._meta["io.agentpack/taskListPage"], { matched: 2, returned: 1, omitted: 1 });
+  const compactJson = await call({ json: true, compact: true, limit: 1 }, true);
+  assert.deepEqual(JSON.parse(compactJson.result.content[0].text), entries.slice(0, 1));
+  assert.ok(compactJson.result.content[0].text.length < all.result.content[0].text.length);
+  assert.equal(compactJson.result.content[0].text.includes("\n"), false);
+  assert.equal(compactJson.result._meta["io.agentpack/taskListWarnings"].length, 1);
+  assert.deepEqual(compactJson.result._meta["io.agentpack/taskListPage"], { matched: 3, returned: 1, omitted: 2 });
+  const empty = await call({ scope: "missing", limit: 2, json: true });
+  assert.deepEqual(JSON.parse(empty.result.content[0].text), []);
+  assert.equal(empty.result._meta["io.agentpack/taskListWarnings"].length, 1);
+  const emptyText = await call({ scope: "missing" });
+  assert.match(emptyText.result.content[0].text, /No task passports match the filters/);
+  assert.doesNotMatch(emptyText.result.content[0].text, /Call `task_start`/);
+  assert.deepEqual(JSON.parse((await call({ json: true, open: false })).result.content[0].text), entries);
+  for (const args of [
+    { open: "true" }, { compact: 1 }, { open: null }, { status: [] },
+    { status: "bogus" }, { status: ["active", 1] }, { scope: " " },
+    { scope: [] }, { scope: ["api", null] }, { scope: {} },
+    { open: true, status: "active" }, { limit: 0 }, { limit: -1 },
+    { limit: 1001 }, { limit: 1.5 }, { limit: "1" }, { limit: null }
+  ]) {
+    const response = await call(args);
+    assert.equal(response.error?.code, -32000, JSON.stringify(args));
+  }
+  for (const [file, content] of snapshots) assert.equal(readFileSync(file, "utf8"), content, file);
+});
+
+test("combined park-and-switch validates targets before writes and preserves frozen verdicts", async () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "agentpack-combined-switch-"));
+  runGit(dir, ["init"]);
+  writeFileSync(path.join(dir, "index.js"), "initial\n");
+  runGit(dir, ["add", "index.js"]);
+  commit(dir, "initial");
+  const reviewedHead = runGit(dir, ["rev-parse", "--short", "HEAD"]).trim();
+  run(dir, ["init"]);
+  run(dir, ["task", "start", "Frozen target", "--write-scope", "."]);
+  const target = JSON.parse(run(dir, ["task", "passport"]));
+  run(dir, ["task", "verify", "--status", "passed", "--summary", "Frozen target verdict"]);
+  run(dir, ["task", "park"]);
+  run(dir, ["task", "start", "Current work", "--write-scope", ".", "--next", "Retain finding"]);
+  const current = JSON.parse(run(dir, ["task", "passport"]));
+  const pointer = path.join(dir, ".agentpack", "tasks", "current");
+  const taskFile = (id: string, file: string) => path.join(dir, ".agentpack", "tasks", id, file);
+  const files = [pointer, ...[target.id, current.id].flatMap((id) => [taskFile(id, "passport.json"), taskFile(id, "events.jsonl")])];
+  const snapshot = () => files.map((file) => readFileSync(file, "utf8"));
+  const mcp = createMcpHarness(dir);
+  let requestId = 0;
+  const switchCall = (id: string, parkCurrent: unknown) => mcp.send({
+    jsonrpc: "2.0", id: ++requestId, method: "tools/call",
+    params: { name: "task_switch", arguments: { id, parkCurrent } }
+  });
+  const before = snapshot();
+  assert.notEqual(runWithStatus(dir, ["task", "switch", target.id]).status, 0);
+  for (const flag of [false, "true", null, 1]) {
+    assert.equal((await switchCall(target.id, flag)).error?.code, -32000);
+    assert.deepEqual(snapshot(), before);
+  }
+  for (const id of ["task_missing", "../escape"]) {
+    assert.equal((await switchCall(id, true)).error?.code, -32000);
+    assert.deepEqual(snapshot(), before);
+  }
+  const targetPath = taskFile(target.id, "passport.json");
+  const targetContent = readFileSync(targetPath, "utf8");
+  for (const content of ["{invalid", JSON.stringify({ ...JSON.parse(targetContent), status: "completed" })]) {
+    writeFileSync(targetPath, content);
+    const modified = snapshot();
+    assert.equal((await switchCall(target.id, true)).error?.code, -32000);
+    assert.deepEqual(snapshot(), modified);
+  }
+  writeFileSync(targetPath, targetContent);
+  // An unreadable event destination must fail before either passport changes.
+  const targetEvents = taskFile(target.id, "events.jsonl");
+  const eventsContent = readFileSync(targetEvents, "utf8");
+  unlinkSync(targetEvents);
+  mkdirSync(targetEvents);
+  const currentBefore = readFileSync(taskFile(current.id, "passport.json"), "utf8");
+  assert.equal((await switchCall(target.id, true)).error?.code, -32000);
+  assert.equal(readFileSync(pointer, "utf8").trim(), current.id);
+  assert.equal(readFileSync(taskFile(current.id, "passport.json"), "utf8"), currentBefore);
+  rmdirSync(targetEvents);
+  writeFileSync(targetEvents, eventsContent);
+  // Fail after passports and pointer are installed, then verify full rollback.
+  const beforeFailure = snapshot();
+  const taskModuleUrl = pathToFileURL(path.join(repoRoot, "src", "core", "tasks.js")).href;
+  execFileSync(process.execPath, ["--input-type=module", "-e", `
+    import assert from 'node:assert/strict';
+    import fs from 'node:fs';
+    import path from 'node:path';
+    import { syncBuiltinESMExports } from 'node:module';
+    import { switchTask } from ${JSON.stringify(taskModuleUrl)};
+    const original = fs.renameSync;
+    let injected = false;
+    fs.renameSync = (from, to) => {
+      if (!injected && String(from).endsWith(path.join('staged', '3'))) {
+        injected = true;
+        throw new Error('injected mid-install failure');
+      }
+      return original(from, to);
+    };
+    syncBuiltinESMExports();
+    assert.throws(() => switchTask(${JSON.stringify(dir)}, ${JSON.stringify(target.id)}, { parkCurrent: true }), /injected mid-install failure/);
+    assert.equal(injected, true);
+  `]);
+  assert.deepEqual(snapshot(), beforeFailure);
+  // Both the outgoing and incoming verdicts must retain their historical HEAD.
+  run(dir, ["task", "verify", "--status", "passed", "--summary", "Current frozen verdict"]);
+  writeFileSync(path.join(dir, "index.js"), "next revision\n");
+  runGit(dir, ["add", "index.js"]);
+  commit(dir, "move live head");
+  const response = await switchCall(target.id, true);
+  assert.match(response.result.content[0].text, /Switched to task.*\(verifying\)/);
+  const outgoing = JSON.parse(readFileSync(taskFile(current.id, "passport.json"), "utf8"));
+  const incoming = JSON.parse(readFileSync(targetPath, "utf8"));
+  assert.equal(outgoing.status, "parked");
+  assert.equal(incoming.status, "verifying");
+  assert.equal(outgoing.currentHead, reviewedHead);
+  assert.equal(incoming.currentHead, reviewedHead);
+  assert.deepEqual(outgoing.nextActions, current.nextActions);
+  assert.equal(outgoing.verification.summary, "Current frozen verdict");
+  assert.equal(incoming.verification.summary, "Frozen target verdict");
+  assert.equal(readFileSync(pointer, "utf8").trim(), target.id);
+  assert.equal(JSON.parse(readFileSync(taskFile(current.id, "events.jsonl"), "utf8").trim().split("\n").at(-1)!).type, "task-park");
+  assert.equal(JSON.parse(readFileSync(targetEvents, "utf8").trim().split("\n").at(-1)!).type, "task-switch");
+  run(dir, ["task", "switch", current.id, "--park-current"]);
+  assert.equal(JSON.parse(run(dir, ["task", "passport"])).status, "verifying");
+  const sameTaskBefore = readFileSync(taskFile(current.id, "events.jsonl"), "utf8");
+  run(dir, ["task", "switch", current.id, "--park-current"]);
+  assert.equal(JSON.parse(run(dir, ["task", "passport"])).status, "verifying");
+  const additionalEvents = readFileSync(taskFile(current.id, "events.jsonl"), "utf8").slice(sameTaskBefore.length);
+  assert.doesNotMatch(additionalEvents, /task-park/);
+  run(dir, ["task", "verify", "--status", "pending"]);
+  run(dir, ["task", "block", "--reason", "Keep blocker"]);
+  run(dir, ["task", "switch", target.id, "--park-current"]);
+  assert.equal(JSON.parse(readFileSync(taskFile(current.id, "passport.json"), "utf8")).blockedReason, "Keep blocker");
+  unlinkSync(pointer);
+  run(dir, ["task", "switch", current.id, "--park-current"]);
+  assert.equal(JSON.parse(run(dir, ["task", "passport"])).status, "active");
 });
 
 test("parks current task over MCP so a new task can start", async () => {

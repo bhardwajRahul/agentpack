@@ -40,6 +40,8 @@ import {
   formatVerificationUpdateMessage,
   getCurrentPassport,
   listTasks,
+  OPEN_TASK_STATUSES,
+  TASK_LIST_STATUSES,
   parkCurrentTask,
   readPassport,
   scopeOverlaps,
@@ -49,7 +51,6 @@ import {
   updateCurrentTaskPassport,
   updateCurrentTaskVerification
 } from "../core/tasks.js";
-import type { TaskStatus } from "../core/types.js";
 import {
   appendEvent,
   findPackRoot,
@@ -522,7 +523,7 @@ Common workflow:
 Inspection and coordination:
   agentpack task list [--scope <path>] [--status <status>] [--open]
   agentpack task passport
-  agentpack task switch <id>
+  agentpack task switch <id> [--park-current]
   agentpack task audit [--json]
   agentpack task gate [--file <path> ...] [--staged] [--client claude|codex|cursor] [--json]
   agentpack task park
@@ -581,8 +582,6 @@ function noteCommand(root: string, rest: string[]): void {
   process.stdout.write(`Recorded note ${event.id}\n`);
 }
 
-const TASK_LIST_STATUSES = ["active", "parked", "blocked", "verifying", "completed", "abandoned"] as const satisfies readonly TaskStatus[];
-const OPEN_TASK_STATUSES = ["active", "parked", "blocked", "verifying"] as const satisfies readonly TaskStatus[];
 
 function taskListStatusFilters(options: Record<string, ArgValue>): string[] {
   if (options.open !== undefined && options.status !== undefined) {
@@ -860,7 +859,10 @@ function taskCommand(root: string, rest: string[]): void {
     if (!taskId) {
       throw new Error("task switch requires a task id");
     }
-    const passport = switchTask(root, taskId);
+    if (parsed.options["park-current"] !== undefined && parsed.options["park-current"] !== true) {
+      throw new Error("task switch --park-current takes no value");
+    }
+    const passport = switchTask(root, taskId, { parkCurrent: parsed.options["park-current"] === true });
     process.stdout.write(`Switched to task ${passport.id}\n`);
     return;
   }

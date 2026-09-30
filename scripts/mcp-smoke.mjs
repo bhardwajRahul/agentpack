@@ -174,15 +174,20 @@ try {
   assertEqual(Array.isArray(taskListEntries), true, "task_list json preserves the array contract");
   assertEqual(taskListEntries.length, 2, "task_list json returns both smoke tasks");
 
+  const compactList = await client.request("tools/call", {
+    name: "task_list",
+    arguments: { open: true, compact: true, json: true, limit: 1 }
+  });
+  const compactEntries = JSON.parse(compactList.result?.content?.[0]?.text || "null");
+  assertEqual(compactEntries.length, 1, "limited compact task_list returns one task");
+  assertEqual(compactEntries[0].id, taskListEntries[0].id, "limit preserves newest-first order");
+  assertEqual(compactList.result?._meta?.["io.agentpack/taskListPage"]?.omitted, 1, "limited task_list reports omitted matches");
+
   const parkedTaskId = taskListText.match(/- (task_\S+) \[parked\]/)?.[1] || "";
   const activeTaskId = taskListText.match(/\* (task_\S+) \[active\]/)?.[1] || "";
-  await client.request("tools/call", {
-    name: "task_park",
-    arguments: {}
-  });
   const taskSwitch = await client.request("tools/call", {
     name: "task_switch",
-    arguments: { id: parkedTaskId }
+    arguments: { id: parkedTaskId, parkCurrent: true }
   });
   assertMatch(taskSwitch.result?.content?.[0]?.text || "", /Switched to task task_.* \(active\)\./, "task_switch resumes the parked task");
 
